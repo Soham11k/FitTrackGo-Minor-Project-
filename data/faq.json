@@ -1,0 +1,27 @@
+[
+  {
+    "id": "track-run",
+    "question": "How do I track a run?",
+    "answer": "Open the Run tab, tap Start, and allow location access. Your route will appear on the map. Tap Pause to pause, then Stop to save the run."
+  },
+  {
+    "id": "ai-coach",
+    "question": "How does AI Coach work?",
+    "answer": "Allow camera access when you start an exercise. The app uses pose detection to give real-time form feedback and count reps. If the camera is unavailable, simulated mode still counts reps and gives tips."
+  },
+  {
+    "id": "data-stored",
+    "question": "Where is my data stored?",
+    "answer": "Your workouts, runs, and profile are stored locally on this device. We do not send your data to external servers unless you use cloud backup (if enabled in Settings)."
+  },
+  {
+    "id": "notifications",
+    "question": "How do I get workout reminders?",
+    "answer": "Go to Profile → Notifications and tap Enable notifications. You can manage reminders in your device settings."
+  },
+  {
+    "id": "contact",
+    "question": "How do I contact support?",
+    "answer": "Use the contact form in Profile → Help & Support, or email us at the address shown there. We typically respond within 1–2 business days."
+  }
+]

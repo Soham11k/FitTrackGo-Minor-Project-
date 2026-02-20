@@ -1,0 +1,47 @@
+[
+  {
+    "id": "first5k",
+    "title": "First 5K",
+    "description": "Complete a 5K run",
+    "type": "distance",
+    "targetValue": 5,
+    "unit": "km"
+  },
+  {
+    "id": "100workouts",
+    "title": "100 Workouts",
+    "description": "Complete 100 workouts or AI Coach sessions",
+    "type": "activities",
+    "targetValue": 100
+  },
+  {
+    "id": "perfectform",
+    "title": "Perfect Form",
+    "description": "Score 100% on an AI Coach session",
+    "type": "coachScore",
+    "targetValue": 100
+  },
+  {
+    "id": "weekwarrior",
+    "title": "Week Warrior",
+    "description": "7-day activity streak",
+    "type": "streak",
+    "targetValue": 7,
+    "unit": "days"
+  },
+  {
+    "id": "marathon",
+    "title": "Marathon Ready",
+    "description": "Run 42 km total",
+    "type": "distance",
+    "targetValue": 42,
+    "unit": "km"
+  },
+  {
+    "id": "1000reps",
+    "title": "1000 Reps",
+    "description": "Complete 1000 AI-tracked reps",
+    "type": "totalReps",
+    "targetValue": 1000
+  }
+]

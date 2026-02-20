@@ -1,0 +1,68 @@
+[
+  {
+    "id": 1,
+    "title": "Full Body Strength",
+    "category": "strength",
+    "durationMin": 30,
+    "duration": "30 min",
+    "calories": 280,
+    "difficulty": "Intermediate",
+    "exercises": 12,
+    "rating": 4.8
+  },
+  {
+    "id": 2,
+    "title": "Power Cardio Blast",
+    "category": "cardio",
+    "durationMin": 25,
+    "duration": "25 min",
+    "calories": 350,
+    "difficulty": "Advanced",
+    "exercises": 10,
+    "rating": 4.9
+  },
+  {
+    "id": 3,
+    "title": "Morning Yoga Flow",
+    "category": "yoga",
+    "durationMin": 40,
+    "duration": "40 min",
+    "calories": 180,
+    "difficulty": "Beginner",
+    "exercises": 15,
+    "rating": 4.7
+  },
+  {
+    "id": 4,
+    "title": "Tabata HIIT Challenge",
+    "category": "hiit",
+    "durationMin": 20,
+    "duration": "20 min",
+    "calories": 400,
+    "difficulty": "Advanced",
+    "exercises": 8,
+    "rating": 4.6
+  },
+  {
+    "id": 5,
+    "title": "Upper Body Sculpt",
+    "category": "strength",
+    "durationMin": 35,
+    "duration": "35 min",
+    "calories": 260,
+    "difficulty": "Intermediate",
+    "exercises": 14,
+    "rating": 4.5
+  },
+  {
+    "id": 6,
+    "title": "Endurance Run",
+    "category": "cardio",
+    "durationMin": 45,
+    "duration": "45 min",
+    "calories": 450,
+    "difficulty": "Intermediate",
+    "exercises": 6,
+    "rating": 4.8
+  }
+]

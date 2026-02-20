@@ -1,0 +1,15 @@
+{
+  "companyName": "FitTrackGo",
+  "appName": "FitTrackGo",
+  "tagline": "Move. Track. Conquer.",
+  "supportEmail": "support@fittrackgo.app",
+  "contactFormEndpoint": "",
+  "privacyUrl": "/privacy",
+  "termsUrl": "/terms",
+  "websiteUrl": "https://fittrackgo.app",
+  "social": {
+    "twitter": "",
+    "instagram": "",
+    "facebook": ""
+  }
+}
