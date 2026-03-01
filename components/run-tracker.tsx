@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import dynamic from "next/dynamic"
 import { Play, Pause, Square, MapPin, ChevronDown } from "lucide-react"
 import { addRun } from "@/lib/store-supabase"
+import { isNetworkError } from "@/lib/network-status"
+import { isSecureContext } from "@/lib/secure-context"
 import { toast } from "sonner"
 
 const RunMap = dynamic(() => import("./run-map").then((m) => m.RunMap), { ssr: false })
@@ -43,6 +45,7 @@ export function RunTracker() {
   const [gpsStatus, setGpsStatus] = useState<"off" | "searching" | "good" | "simulated">("off")
   const [showSplits, setShowSplits] = useState(false)
   const [mapReady, setMapReady] = useState(false)
+  const [savingRun, setSavingRun] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const watchIdRef = useRef<number | null>(null)
   const runStateRef = useRef<RunState>("idle")
@@ -80,7 +83,7 @@ export function RunTracker() {
   useEffect(() => {
     if (runState !== "idle") return
     setMapReady(true)
-    if (!navigator.geolocation) return
+    if (!isSecureContext() || !navigator.geolocation) return
     navigator.geolocation.getCurrentPosition(
       (pos) => setMapCenter([pos.coords.latitude, pos.coords.longitude]),
       () => setMapCenter(null),
@@ -90,8 +93,12 @@ export function RunTracker() {
 
   useEffect(() => {
     if (runState !== "running") return
+    if (!isSecureContext() || !navigator.geolocation?.watchPosition) {
+      setGpsStatus("simulated")
+      return
+    }
     setGpsStatus("searching")
-    watchIdRef.current = navigator.geolocation?.watchPosition(
+    watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         if (runStateRef.current !== "running") return
         const { latitude, longitude } = pos.coords
@@ -116,23 +123,27 @@ export function RunTracker() {
   }, [runState])
 
   useEffect(() => {
+    // When GPS is simulated (e.g. insecure HTTP), don't fake distance.
+    // This keeps distance, pace, and calories honest instead of drifting.
     if (runState !== "running" || gpsStatus !== "simulated") return
-    const t = setInterval(() => {
-      setDistance((d) => d + 0.002 + Math.random() * 0.003)
-    }, 1000)
-    return () => clearInterval(t)
   }, [runState, gpsStatus])
 
   useEffect(() => {
-    setCalories(Math.round(distance * 60 + seconds / 60 * 8))
-  }, [distance, seconds])
+    // Simple model: calories scale with distance.
+    // When distance is 0 (standing still), calories stay at 0 so they don't
+    // creep up every second while the user isn't moving.
+    setCalories(Math.round(distance * 60))
+  }, [distance])
 
   useEffect(() => {
-    if (seconds > 0 && distance > 0) {
+    // Guard against noisy GPS: only show pace once we've moved a bit.
+    if (seconds > 0 && distance > 0.05) {
       const paceMin = seconds / 60 / distance
       const m = Math.floor(paceMin)
       const sec = Math.floor((paceMin - m) * 60)
       setPace(`${m}:${String(sec).padStart(2, "0")}`)
+    } else if (distance <= 0.05) {
+      setPace("0:00")
     }
   }, [seconds, distance])
 
@@ -170,6 +181,7 @@ export function RunTracker() {
   const handleResume = () => setRunState("running")
   const handleStop = async () => {
     if (seconds > 0 || distance > 0) {
+      setSavingRun(true)
       try {
         await addRun({
           distance,
@@ -180,8 +192,14 @@ export function RunTracker() {
         })
         toast.success(`Run saved! ${distance.toFixed(2)} km in ${formatTime(seconds)}`)
       } catch (error) {
-        toast.error("Failed to save run")
-        console.error(error)
+        if (isNetworkError(error)) {
+          toast.info("Run queued — will sync when back online")
+        } else {
+          toast.error("Failed to save run")
+          console.error(error)
+        }
+      } finally {
+        setSavingRun(false)
       }
     }
     setRunState("idle")
@@ -234,6 +252,9 @@ export function RunTracker() {
             <p className="text-xs text-muted-foreground mt-1 text-center px-4">
               Tap Start — your route will appear on the map
             </p>
+            <p className="text-[11px] text-muted-foreground/80 mt-2 text-center px-4 max-w-[280px]">
+              Your runs will show here after you finish one.
+            </p>
             {typeof window !== "undefined" && !window.isSecureContext && (
               <p className="text-[10px] text-chart-4 mt-2 text-center px-4 max-w-[260px]">
                 For real GPS, use HTTPS or localhost. Some browsers block location on plain HTTP.
@@ -252,10 +273,11 @@ export function RunTracker() {
         ].map((stat) => (
           <div
             key={stat.label}
-            className={`flex flex-col items-center justify-center bg-background p-5 opacity-0 animate-fade-in-up ${stat.delay}`}
+            className={`flex flex-col items-center justify-center bg-background p-5 opacity-0 animate-slide-in-bottom ${stat.delay}`}
+            style={{ animationFillMode: "forwards" }}
           >
             <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{stat.label}</span>
-            <span className="text-2xl md:text-3xl font-bold text-foreground tabular-nums transition-transform duration-200 hover:scale-105" style={{ fontFamily: "var(--font-heading)" }}>
+            <span className="text-2xl md:text-3xl font-bold text-foreground tabular-nums transition-transform duration-300 hover:scale-110 animate-stat-pop" style={{ fontFamily: "var(--font-heading)" }}>
               {stat.value}
             </span>
             {stat.unit && <span className="text-xs text-muted-foreground">{stat.unit}</span>}
@@ -264,13 +286,13 @@ export function RunTracker() {
       </div>
 
       {splits.length > 0 && (
-        <section className="mx-4 mt-4 rounded-2xl bg-card border border-border overflow-hidden shadow-sm animate-scale-in">
+        <section className="mx-4 mt-4 rounded-2xl bg-card border border-border overflow-hidden shadow-sm animate-scale-in transition-shadow duration-300 hover:shadow-md">
           <button
             onClick={() => setShowSplits((v) => !v)}
-            className="w-full flex items-center justify-between p-4 text-left transition-colors hover:bg-secondary/50"
+            className="w-full flex items-center justify-between p-4 text-left transition-all duration-200 hover:bg-secondary/50 active:scale-[0.99]"
           >
             <span className="text-sm font-semibold text-foreground">Splits / Laps</span>
-            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${showSplits ? "rotate-180" : ""}`} />
+            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${showSplits ? "rotate-180" : ""}`} />
           </button>
           {showSplits && (
             <div className="border-t border-border px-4 pb-4 pt-2 space-y-2 animate-fade-in-up">
@@ -290,18 +312,18 @@ export function RunTracker() {
         {runState === "idle" && (
           <button
             onClick={handleStart}
-            className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-300 hover:scale-110 hover:shadow-xl active:scale-95 animate-scale-in"
+            className="flex h-20 w-20 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-300 hover:scale-110 hover:shadow-xl active:scale-95 animate-scale-in animate-glow-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             aria-label="Start run"
           >
-            <Play className="h-8 w-8 ml-1" fill="currentColor" />
+            <Play className="h-8 w-8 ml-1 animate-float" fill="currentColor" />
           </button>
         )}
         {runState === "running" && (
           <>
-            <button onClick={handleStop} className="flex h-14 w-14 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-all duration-200 hover:scale-105 active:scale-95" aria-label="Stop run">
-              <Square className="h-5 w-5" fill="currentColor" />
+            <button onClick={handleStop} disabled={savingRun} className="flex h-14 w-14 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-all duration-200 hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-70 disabled:pointer-events-none" aria-label="Stop run">
+              {savingRun ? <span className="text-[10px] font-medium">Saving…</span> : <Square className="h-5 w-5" fill="currentColor" />}
             </button>
-            <button onClick={handlePause} className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-200 hover:scale-105 active:scale-95 animate-pulse" aria-label="Pause run">
+            <button onClick={handlePause} className="flex h-20 w-20 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-200 hover:scale-105 active:scale-95 animate-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background" aria-label="Pause run">
               <Pause className="h-8 w-8" fill="currentColor" />
             </button>
             <div className="w-14" />
@@ -309,10 +331,10 @@ export function RunTracker() {
         )}
         {runState === "paused" && (
           <>
-            <button onClick={handleStop} className="flex h-14 w-14 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-all duration-200 hover:scale-105 active:scale-95" aria-label="Stop run">
-              <Square className="h-5 w-5" fill="currentColor" />
+            <button onClick={handleStop} disabled={savingRun} className="flex h-14 w-14 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-all duration-200 hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-70 disabled:pointer-events-none" aria-label="Stop run">
+              {savingRun ? <span className="text-[10px] font-medium">Saving…</span> : <Square className="h-5 w-5" fill="currentColor" />}
             </button>
-            <button onClick={handleResume} className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-200 hover:scale-105 active:scale-95" aria-label="Resume run">
+            <button onClick={handleResume} className="flex h-20 w-20 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-200 hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background" aria-label="Resume run">
               <Play className="h-8 w-8 ml-1" fill="currentColor" />
             </button>
             <div className="w-14" />

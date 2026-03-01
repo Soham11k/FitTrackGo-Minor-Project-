@@ -43,7 +43,7 @@ So we can scan:
      - Decides which **regions** are visible: face, torso, left arm, right arm, left leg, right leg.
      - Counts **visible points** (out of 33).
      - Computes a **coverage %** and a short **summary** (e.g. “face, torso, arms, legs”).
-   - Shown in the AI Coach as “Body scan: …” when a pose is detected.
+   - Shown in the Coach Assist as “Body scan: …” when a pose is detected.
 
 3. **Form analysis**
    - Uses the same 33 points to compute angles (e.g. knee, elbow, back) and alignment for each exercise.

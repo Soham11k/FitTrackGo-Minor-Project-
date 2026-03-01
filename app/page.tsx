@@ -11,8 +11,11 @@ import { AICoach } from "@/components/ai-coach"
 import { ProfileScreen } from "@/components/profile-screen"
 import { WorkoutHistory } from "@/components/workout-history"
 import { SupabaseSetupGuide } from "@/components/supabase-setup-guide"
-import { Activity } from "lucide-react"
+import { NetworkStatusIndicator } from "@/components/network-status-indicator"
+import { Activity, AlertTriangle, X } from "lucide-react"
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client"
+import { getStreak } from "@/lib/store-supabase"
+import { isSecureContext } from "@/lib/secure-context"
 import { siteConfig } from "@/lib/data"
 
 type AppState = "splash" | "login" | "app"
@@ -25,7 +28,18 @@ export default function Page() {
   const [transitioning, setTransitioning] = useState(false)
   const [streak, setStreak] = useState(0)
   const [showSetupGuide, setShowSetupGuide] = useState(false)
+  const [insecureContext, setInsecureContext] = useState(false)
+  const [insecureBannerDismissed, setInsecureBannerDismissed] = useState(false)
   const supabase = createClient()
+
+  useEffect(() => {
+    setInsecureContext(!isSecureContext())
+    try {
+      if (typeof sessionStorage !== "undefined" && sessionStorage.getItem("fit-track-insecure-banner-dismissed") === "1") {
+        setInsecureBannerDismissed(true)
+      }
+    } catch {}
+  }, [])
 
   useEffect(() => {
     // Check if Supabase is configured
@@ -56,6 +70,12 @@ export default function Page() {
 
     return () => subscription.unsubscribe()
   }, [appState, supabase])
+
+  // Load streak for header when user is in app
+  useEffect(() => {
+    if (appState !== "app") return
+    getStreak().then(setStreak).catch(() => setStreak(0))
+  }, [appState])
 
   // Show setup guide if Supabase is not configured
   if (showSetupGuide) {
@@ -89,6 +109,13 @@ export default function Page() {
 
   const handleTabChange = useCallback((tab: TabId) => {
     setActiveTab(tab)
+  }, [])
+
+  const dismissInsecureBanner = useCallback(() => {
+    setInsecureBannerDismissed(true)
+    try {
+      sessionStorage?.setItem("fit-track-insecure-banner-dismissed", "1")
+    } catch {}
   }, [])
 
   // Splash screen
@@ -143,6 +170,24 @@ export default function Page() {
         </div>
       </header>
 
+      {/* Insecure context banner (HTTP / LAN) */}
+      {appState === "app" && insecureContext && !insecureBannerDismissed && (
+        <div className="sticky top-[57px] z-10 flex items-start gap-3 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-amber-200">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-500" />
+          <p className="text-xs flex-1">
+            Use <strong>localhost</strong> or <strong>HTTPS</strong> for camera and GPS (<code className="text-[10px] bg-amber-500/20 px-1 rounded">npm run dev:https</code> for LAN).
+          </p>
+          <button
+            type="button"
+            onClick={dismissInsecureBanner}
+            className="shrink-0 p-1 rounded hover:bg-amber-500/20"
+            aria-label="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Page content */}
       <main>
         {view === "history" ? (
@@ -156,7 +201,7 @@ export default function Page() {
               />
             )}
             {activeTab === "run" && <RunTracker />}
-            {activeTab === "exercises" && <ExerciseLibrary />}
+            {activeTab === "exercises" && <ExerciseLibrary onOpenAICoach={() => handleTabChange("ai-coach")} />}
             {activeTab === "ai-coach" && <AICoach />}
             {activeTab === "profile" && <ProfileScreen onLogout={handleLogout} />}
           </>
@@ -167,6 +212,9 @@ export default function Page() {
       {view === "main" && (
         <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />
       )}
+
+      {/* Network status indicator */}
+      {appState === "app" && <NetworkStatusIndicator />}
     </div>
   )
 }

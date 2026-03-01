@@ -5,8 +5,8 @@ import { Home, MapPin, Dumbbell, ScanLine, User } from "lucide-react"
 const navItems = [
   { icon: Home, label: "Home", id: "home" },
   { icon: MapPin, label: "Run", id: "run" },
-  { icon: Dumbbell, label: "Exercise", id: "exercises" },
-  { icon: ScanLine, label: "AI Coach", id: "ai-coach" },
+  { icon: Dumbbell, label: "Exercises", id: "exercises" },
+  { icon: ScanLine, label: "Coach Assist", id: "ai-coach" },
   { icon: User, label: "Profile", id: "profile" },
 ] as const
 
@@ -28,17 +28,17 @@ export function BottomNav({
             <button
               key={item.id}
               onClick={() => onTabChange(item.id)}
-              className={`group flex flex-col items-center gap-0.5 rounded-xl px-3 py-1.5 transition-all ${
+              className={`group flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-2 transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                 isActive ? "text-primary" : "text-muted-foreground"
               }`}
               aria-label={item.label}
             >
               <div className="relative">
                 {isActive && (
-                  <div className="absolute -inset-2 rounded-full bg-primary/10 animate-in fade-in duration-200" />
+                  <div className="absolute -inset-2 rounded-full bg-primary/10 animate-in fade-in duration-300" />
                 )}
                 <item.icon
-                  className={`relative h-5 w-5 transition-all ${
+                  className={`relative h-5 w-5 transition-all duration-300 ${
                     isActive ? "scale-110" : "group-hover:scale-105"
                   }`}
                   strokeWidth={isActive ? 2.5 : 2}

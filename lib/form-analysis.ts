@@ -20,11 +20,18 @@ function angle(a: Landmark, b: Landmark, c: Landmark): number {
 
 function deg(rad: number) { return (rad * 180) / Math.PI }
 
+export type FormRegion = "torso" | "legs" | "arms" | "core"
+
 export interface FormBreakdown {
   label: string
   value: string
   ok: boolean
   detail?: string
+  /**
+   * High-level body region this metric belongs to.
+   * Used to color skeleton segments (green/red) per region.
+   */
+  region?: FormRegion
 }
 
 export interface FormResult {
@@ -34,10 +41,47 @@ export interface FormResult {
   breakdown: FormBreakdown[]
 }
 
+/** Landmark indices required per exercise for visibility gating */
+const REQUIRED_LANDMARKS: Record<ExerciseId, number[]> = {
+  squat: [11, 12, 23, 24, 25, 26, 27, 28],
+  pushup: [11, 12, 13, 14, 15, 16, 23, 24],
+  plank: [11, 12, 23, 24, 25, 26],
+  lunge: [11, 12, 23, 24, 25, 26, 27, 28],
+  bicep_curl: [11, 12, 13, 14, 15, 16],
+  shoulder_press: [11, 12, 13, 14, 15, 16],
+  jumping_jacks: [11, 12, 15, 16, 23, 24, 27, 28],
+  high_knees: [11, 12, 23, 24, 25, 26, 27, 28],
+  crunch: [0, 11, 12, 23, 24],
+}
+
+const VISIBILITY_MIN = 0.35
+
+export function hasEnoughVisibility(lm: Landmark[], exercise: ExerciseId): boolean {
+  const indices = REQUIRED_LANDMARKS[exercise] ?? REQUIRED_LANDMARKS.squat
+  if (!lm?.length) return false
+  let sum = 0
+  let n = 0
+  for (const i of indices) {
+    const v = lm[i]?.visibility ?? 0
+    sum += v
+    n += 1
+  }
+  return n > 0 && sum / n >= VISIBILITY_MIN
+}
+
 export function analyzeForm(lm: Landmark[], exercise: ExerciseId): FormResult {
   const feedback: string[] = []
   const breakdown: FormBreakdown[] = []
   let score = 100
+
+  if (!hasEnoughVisibility(lm, exercise)) {
+    return {
+      feedback: ["Position yourself in frame"],
+      isGoodForm: false,
+      score: 0,
+      breakdown: [],
+    }
+  }
 
   const vis = (i: number) => (lm[i]?.visibility ?? 1) > 0.4
   const get = (i: number) => lm[i] ?? { x: 0.5, y: 0.5 }
@@ -84,11 +128,11 @@ export function analyzeForm(lm: Landmark[], exercise: ExerciseId): FormResult {
     const backOk = backAngle > 30 && backAngle < 80
     const sym = Math.abs(kneeAngleL - kneeAngleR) < 15
 
-    breakdown.push({ label: "Knee angle", value: `${Math.round(kneeAngle)}°`, ok: kneeOk, detail: "Target 70–100° at bottom" })
-    breakdown.push({ label: "Back angle", value: `${Math.round(backAngle)}°`, ok: backOk, detail: "Keep torso forward" })
-    breakdown.push({ label: "Depth", value: depthOk ? "Good" : "Higher", ok: depthOk, detail: "Break parallel for full rep" })
-    breakdown.push({ label: "Knee tracking", value: kneeTrackingOk ? "Good" : "Caving", ok: kneeTrackingOk, detail: "Knees over toes" })
-    breakdown.push({ label: "Symmetry", value: sym ? "Even" : "Adjust", ok: sym })
+    breakdown.push({ label: "Knee angle", value: `${Math.round(kneeAngle)}°`, ok: kneeOk, detail: "Target 70–100° at bottom", region: "legs" })
+    breakdown.push({ label: "Back angle", value: `${Math.round(backAngle)}°`, ok: backOk, detail: "Keep torso forward", region: "torso" })
+    breakdown.push({ label: "Depth", value: depthOk ? "Good" : "Higher", ok: depthOk, detail: "Break parallel for full rep", region: "legs" })
+    breakdown.push({ label: "Knee tracking", value: kneeTrackingOk ? "Good" : "Caving", ok: kneeTrackingOk, detail: "Knees over toes", region: "legs" })
+    breakdown.push({ label: "Symmetry", value: sym ? "Even" : "Adjust", ok: sym, region: "legs" })
 
     if (!depthOk) { feedback.push("Go deeper: break parallel at the bottom"); score -= 15 }
     if (!kneeOk) { feedback.push("Keep knees over toes, don't cave in"); score -= 10 }
@@ -133,10 +177,10 @@ export function analyzeForm(lm: Landmark[], exercise: ExerciseId): FormResult {
     const flareRatio = elbowWidth / shoulderWidth
     const noFlare = flareRatio < 1.5
 
-    breakdown.push({ label: "Elbow angle", value: `${Math.round(elbowAngle)}°`, ok: elbowOk, detail: "~90° at bottom" })
-    breakdown.push({ label: "Body line", value: bodyStraight ? "Straight" : "Adjust", ok: bodyStraight, detail: "Head to heels in line" })
-    breakdown.push({ label: "Hip position", value: noSag ? "Level" : "Sagging", ok: noSag, detail: "Hips level with shoulders" })
-    breakdown.push({ label: "Elbow flare", value: noFlare ? "Good" : "Wide", ok: noFlare, detail: "Elbows ~45° from body" })
+    breakdown.push({ label: "Elbow angle", value: `${Math.round(elbowAngle)}°`, ok: elbowOk, detail: "~90° at bottom", region: "arms" })
+    breakdown.push({ label: "Body line", value: bodyStraight ? "Straight" : "Adjust", ok: bodyStraight, detail: "Head to heels in line", region: "torso" })
+    breakdown.push({ label: "Hip position", value: noSag ? "Level" : "Sagging", ok: noSag, detail: "Hips level with shoulders", region: "core" })
+    breakdown.push({ label: "Elbow flare", value: noFlare ? "Good" : "Wide", ok: noFlare, detail: "Elbows ~45° from body", region: "arms" })
 
     if (!bodyStraight) { feedback.push("Keep a straight line from head to heels"); score -= 15 }
     if (!noSag) { feedback.push("Engage core and glutes to prevent hip sag"); score -= 12 }
@@ -262,40 +306,104 @@ export function analyzeForm(lm: Landmark[], exercise: ExerciseId): FormResult {
   }
 
   score = Math.max(0, Math.min(100, score))
-  return { feedback, isGoodForm: score >= 70, score, breakdown }
+  // Make "green skeleton" stricter so bad/medium form shows as red more often
+  return { feedback, isGoodForm: score >= 80, score, breakdown }
 }
 
 export type RepPhase = "idle" | "eccentric" | "bottom" | "concentric" | "top"
 
-// Rep phase detection with hysteresis to prevent false counts
+// Rep phase detection with strong hysteresis to prevent false counts
 let lastPhase: RepPhase = "idle"
 let phaseHistory: RepPhase[] = []
+const PHASE_HISTORY_LEN = 9
+const PHASE_CONSISTENCY_REQUIRED = 3
 
 function stabilizePhase(newPhase: RepPhase, exercise: ExerciseId): RepPhase {
   phaseHistory.push(newPhase)
-  if (phaseHistory.length > 5) {
+  if (phaseHistory.length > PHASE_HISTORY_LEN) {
     phaseHistory.shift()
   }
-  
-  // Require consistent phase for 3+ frames before changing
-  if (phaseHistory.length >= 3) {
-    const mostCommon = phaseHistory.slice(-3).reduce((a, b, _, arr) =>
-      arr.filter(v => v === a).length >= arr.filter(v => v === b).length ? a : b
-    )
-    
-    // Hysteresis: require more extreme values to change from current phase
-    if (mostCommon !== lastPhase) {
-      // Only change phase if we've seen the new phase consistently
-      const newPhaseCount = phaseHistory.filter(p => p === mostCommon).length
-      if (newPhaseCount >= 3) {
-        lastPhase = mostCommon
-      }
+
+  if (phaseHistory.length >= PHASE_CONSISTENCY_REQUIRED) {
+    const recent = phaseHistory.slice(-PHASE_CONSISTENCY_REQUIRED)
+    const counts: Record<string, number> = {}
+    recent.forEach((p) => { counts[p] = (counts[p] ?? 0) + 1 })
+    const mostCommon = (Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? lastPhase) as RepPhase
+    if (mostCommon !== lastPhase && (counts[mostCommon] ?? 0) >= PHASE_CONSISTENCY_REQUIRED) {
+      lastPhase = mostCommon
     }
   } else {
     lastPhase = newPhase
   }
-  
   return lastPhase
+}
+
+/** Key landmarks for rep counting (shoulders, elbows, wrists, hips, knees, ankles). Return true if enough are visible. */
+export function hasEnoughVisibleLandmarks(lm: Landmark[], minVisible: number = 8): boolean {
+  if (!lm?.length) return false
+  const keyIndices = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]
+  let visible = 0
+  for (const i of keyIndices) {
+    if ((lm[i]?.visibility ?? 0) > 0.45) visible++
+  }
+  return visible >= minVisible
+}
+
+const LEG_INDICES = [23, 24, 25, 26, 27, 28]
+const ARM_INDICES = [11, 12, 13, 14, 15, 16]
+const TORSO_INDICES = [11, 12, 23, 24]
+const MIN_VIS = 0.42
+
+function countVisible(lm: Landmark[], indices: number[], minVis = MIN_VIS): number {
+  return indices.filter((i) => (lm[i]?.visibility ?? 0) > minVis).length
+}
+
+/** Minimum fraction of exercise-specific required landmarks that must be visible (0–1). */
+const VISIBLE_FRACTION: Record<ExerciseId, number> = {
+  squat: 0.75,
+  lunge: 0.75,
+  pushup: 0.75,
+  plank: 0.67,
+  bicep_curl: 0.67,
+  shoulder_press: 0.67,
+  jumping_jacks: 0.67,
+  high_knees: 0.75,
+  crunch: 0.6,
+}
+
+/** Only count reps when the body parts needed for this exercise are visible (stops counting on wall/partial body). */
+export function hasEnoughVisibilityForExercise(lm: Landmark[], exercise: ExerciseId): boolean {
+  if (!lm?.length) return false
+  const indices = REQUIRED_LANDMARKS[exercise] ?? REQUIRED_LANDMARKS.squat
+  const visible = countVisible(lm, indices)
+  const required = Math.max(1, Math.ceil(indices.length * (VISIBLE_FRACTION[exercise] ?? 0.7)))
+  if (visible < required) return false
+  switch (exercise) {
+    case "squat":
+    case "lunge":
+      if (countVisible(lm, [25, 26, 27, 28]) < 2) return false
+      if (countVisible(lm, TORSO_INDICES) < 2) return false
+      return true
+    case "jumping_jacks":
+    case "high_knees":
+      if (countVisible(lm, LEG_INDICES) < 3) return false
+      if (countVisible(lm, TORSO_INDICES) < 2) return false
+      return true
+    case "crunch":
+      if (countVisible(lm, [0, 11, 12, 23, 24]) < 3) return false
+      return true
+    case "pushup":
+    case "plank":
+      if (countVisible(lm, ARM_INDICES) < 3) return false
+      if (countVisible(lm, TORSO_INDICES) < 2) return false
+      return true
+    case "bicep_curl":
+    case "shoulder_press":
+      if (countVisible(lm, ARM_INDICES) < 3) return false
+      return true
+    default:
+      return visible >= required
+  }
 }
 
 export function getRepPhase(lm: Landmark[], exercise: ExerciseId, reset: boolean = false): RepPhase {
@@ -315,62 +423,55 @@ export function getRepPhase(lm: Landmark[], exercise: ExerciseId, reset: boolean
     const rKnee = get(26)
     const lAnkle = get(27)
     const rAnkle = get(28)
-    
-    // Use average of both legs for more stable detection
     const kneeAngL = angle(lHip, lKnee, lAnkle)
     const kneeAngR = angle(rHip, rKnee, rAnkle)
     const kneeAng = (kneeAngL + kneeAngR) / 2
-    
-    // LENIENT thresholds: count reps even with imperfect form (just movement pattern)
-    // Bottom: any significant bend (relaxed from 95° to 110°)
-    const atBottom = kneeAng < 110
-    // Top: mostly standing (relaxed from 155° to 145°)
-    const atTop = kneeAng > 145
-    // Going down: any downward movement
-    const goingDown = kneeAng < 135 && kneeAng >= 110
-    // Going up: any upward movement
-    const goingUp = kneeAng >= 110 && kneeAng < 145
-    
+
+    // Thresholds: enough range to count reps without requiring extreme depth/extension
+    const atBottom = kneeAng < 108
+    const atTop = kneeAng > 156
+    const goingDown = kneeAng < 142 && kneeAng >= 108
+    const goingUp = kneeAng > 108 && kneeAng < 156
+
     if (lastPhase === "top" || lastPhase === "idle") {
       if (atBottom) rawPhase = "bottom"
-      else if (goingDown || kneeAng < 150) rawPhase = "eccentric"
+      else if (goingDown || (kneeAng < 158 && kneeAng >= 108)) rawPhase = "eccentric"
       else rawPhase = "top"
     } else if (lastPhase === "bottom") {
       if (atTop) rawPhase = "top"
-      else if (goingUp || kneeAng > 105) rawPhase = "concentric"
+      else if (goingUp || kneeAng > 108) rawPhase = "concentric"
       else rawPhase = "bottom"
     } else if (lastPhase === "eccentric") {
       if (atBottom) rawPhase = "bottom"
-      else if (kneeAng < 130) rawPhase = "eccentric"
+      else if (kneeAng < 118) rawPhase = "eccentric"
       else rawPhase = "top"
     } else {
-      // concentric
       if (atTop) rawPhase = "top"
-      else if (kneeAng > 105) rawPhase = "concentric"
+      else if (kneeAng > 98) rawPhase = "concentric"
       else rawPhase = "bottom"
     }
   }
   
   if (exercise === "pushup") {
     const shoulder = (get(11).y + get(12).y) / 2
-    const hip = (get(23).y + get(24).y) / 2
     const wrist = (get(15).y + get(16).y) / 2
-    const dist = hip - shoulder
     const depth = wrist - shoulder
-    
-    // LENIENT pushup detection: count any up/down movement pattern
-    // Bottom: any significant lowering (relaxed threshold)
+
+    // Strict: clear down = bottom, clear up = top
+    const atBottom = depth > 0.09
+    const atTop = depth < 0.02
     if (lastPhase === "top" || lastPhase === "idle") {
-      if (depth > 0.06) rawPhase = "bottom"
-      else if (depth > 0.02) rawPhase = "eccentric"
+      if (atBottom) rawPhase = "bottom"
+      else if (depth > 0.04) rawPhase = "eccentric"
       else rawPhase = "top"
     } else if (lastPhase === "bottom") {
-      if (depth < 0.05) rawPhase = "concentric"
+      if (atTop) rawPhase = "top"
+      else if (depth < 0.06) rawPhase = "concentric"
       else rawPhase = "bottom"
     } else {
-      if (depth > 0.05) rawPhase = "bottom"
-      else if (depth > 0.01) rawPhase = "eccentric"
-      else if (depth > -0.03) rawPhase = "concentric"
+      if (atBottom) rawPhase = "bottom"
+      else if (depth > 0.03) rawPhase = "eccentric"
+      else if (depth > -0.02) rawPhase = "concentric"
       else rawPhase = "top"
     }
   }
@@ -384,17 +485,20 @@ export function getRepPhase(lm: Landmark[], exercise: ExerciseId, reset: boolean
     const kneeAngleR = angle(get(24), get(26), get(28))
     const avg = (kneeAngleL + kneeAngleR) / 2
     const minKnee = Math.min(kneeAngleL, kneeAngleR)
-    
-    // LENIENT lunge detection: count any step down/up movement
+
+    const atBottom = minKnee < 95
+    const atTop = minKnee > 150
     if (lastPhase === "top" || lastPhase === "idle") {
-      if (minKnee < 105) rawPhase = "bottom"  // relaxed from 95
-      else rawPhase = "eccentric"
+      if (atBottom) rawPhase = "bottom"
+      else if (minKnee < 120) rawPhase = "eccentric"
+      else rawPhase = "top"
     } else if (lastPhase === "bottom") {
-      if (minKnee > 115) rawPhase = "concentric"  // relaxed from 105
+      if (atTop) rawPhase = "top"
+      else if (minKnee > 110) rawPhase = "concentric"
       else rawPhase = "bottom"
     } else {
-      if (minKnee < 110) rawPhase = "bottom"
-      else if (avg < 150) rawPhase = "eccentric"
+      if (minKnee < 100) rawPhase = "bottom"
+      else if (avg < 155) rawPhase = "eccentric"
       else rawPhase = "top"
     }
   }
@@ -403,60 +507,81 @@ export function getRepPhase(lm: Landmark[], exercise: ExerciseId, reset: boolean
     const elbowL = angle(get(11), get(13), get(15))
     const elbowR = angle(get(12), get(14), get(16))
     const avg = (elbowL + elbowR) / 2
-    // LENIENT: count any curl/extension movement
+    // Extended arm = high angle (~140–180°); curled = low angle (~30–60°). One rep: top (extended) → bottom (curled) → top.
+    const atBottom = avg < 62
+    const atTop = avg > 138
     if (lastPhase === "top" || lastPhase === "idle") {
-      if (avg < 70) rawPhase = "bottom"  // relaxed from 50
-      else rawPhase = "eccentric"
+      if (atBottom) rawPhase = "bottom"
+      else if (avg < 95) rawPhase = "eccentric"
+      else rawPhase = "top"
     } else if (lastPhase === "bottom") {
-      if (avg > 120) rawPhase = "top"  // relaxed from 130
-      else rawPhase = "concentric"
+      if (atTop) rawPhase = "top"
+      else if (avg > 95) rawPhase = "concentric"
+      else rawPhase = "bottom"
     } else {
-      if (avg < 65) rawPhase = "bottom"
-      else if (avg < 110) rawPhase = "eccentric"
-      else if (avg < 130) rawPhase = "concentric"
+      if (avg < 58) rawPhase = "bottom"
+      else if (avg < 100) rawPhase = "eccentric"
+      else if (avg < 132) rawPhase = "concentric"
       else rawPhase = "top"
     }
   }
 
   if (exercise === "shoulder_press") {
     const elbowAngle = (angle(get(11), get(13), get(15)) + angle(get(12), get(14), get(16))) / 2
-    // LENIENT: count any press/lower movement
+    const atBottom = elbowAngle < 95
+    const atTop = elbowAngle > 165
     if (lastPhase === "top" || lastPhase === "idle") {
-      if (elbowAngle < 100) rawPhase = "bottom"  // relaxed from 90
-      else rawPhase = "eccentric"
+      if (atBottom) rawPhase = "bottom"
+      else if (elbowAngle < 120) rawPhase = "eccentric"
+      else rawPhase = "top"
     } else if (lastPhase === "bottom") {
-      if (elbowAngle > 150) rawPhase = "top"  // relaxed from 160
-      else rawPhase = "concentric"
+      if (atTop) rawPhase = "top"
+      else if (elbowAngle > 140) rawPhase = "concentric"
+      else rawPhase = "bottom"
     } else {
-      if (elbowAngle < 95) rawPhase = "bottom"
-      else if (elbowAngle < 145) rawPhase = "concentric"
+      if (elbowAngle < 90) rawPhase = "bottom"
+      else if (elbowAngle < 155) rawPhase = "concentric"
       else rawPhase = "top"
     }
   }
 
   if (exercise === "jumping_jacks" || exercise === "high_knees") {
-    const spread = Math.abs(get(15).x - get(16).x) + Math.abs(get(27).x - get(28).x)
-    if (lastPhase === "top" || lastPhase === "idle") {
-      if (spread > 0.6) rawPhase = "top"
-      else rawPhase = "bottom"
+    const wristSpread = Math.abs(get(15).x - get(16).x)
+    const ankleSpread = Math.abs(get(27).x - get(28).x)
+    const spread = wristSpread + ankleSpread
+    const armsOut = wristSpread > 0.42
+    const legsOut = ankleSpread > 0.38
+    const atTop = spread > 0.78 && armsOut && legsOut
+    const atBottom = spread < 0.22
+    const deadZone = spread >= 0.22 && spread <= 0.78
+    if (deadZone) {
+      rawPhase = lastPhase
+    } else if (lastPhase === "top" || lastPhase === "idle") {
+      if (atTop) rawPhase = "top"
+      else if (atBottom) rawPhase = "bottom"
+      else rawPhase = lastPhase
     } else {
-      if (spread < 0.3) rawPhase = "bottom"
-      else rawPhase = "top"
+      if (atBottom) rawPhase = "bottom"
+      else if (atTop) rawPhase = "top"
+      else rawPhase = lastPhase
     }
   }
 
   if (exercise === "crunch") {
     const shoulderY = (get(11).y + get(12).y) / 2
     const hipY = (get(23).y + get(24).y) / 2
-    const curl = hipY - shoulderY < 0.15
+    const noseY = get(0).y
+    const curlUp = shoulderY < hipY - 0.08 && noseY < shoulderY + 0.12
+    const flat = hipY - shoulderY > 0.12
     if (lastPhase === "top" || lastPhase === "idle") {
-      if (curl) rawPhase = "bottom"
+      if (curlUp) rawPhase = "bottom"
+      else if (flat) rawPhase = "top"
       else rawPhase = "top"
     } else if (lastPhase === "bottom") {
-      if (!curl) rawPhase = "top"
+      if (flat) rawPhase = "top"
       else rawPhase = "concentric"
     } else {
-      rawPhase = curl ? "bottom" : "top"
+      rawPhase = curlUp ? "bottom" : (flat ? "top" : "concentric")
     }
   }
   

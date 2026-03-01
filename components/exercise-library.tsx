@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { Clock, Flame, ChevronRight, Play, Star, Filter, Dumbbell, Heart, Zap } from "lucide-react"
-import { getFavorites, toggleFavorite, addWorkout, getWorkouts } from "@/lib/store-supabase"
+import { Clock, Flame, ChevronRight, Play, Star, Filter, Dumbbell, Heart, Zap, RefreshCw } from "lucide-react"
+import { getFavorites, toggleFavorite, addWorkout, getWorkouts, formatErr } from "@/lib/store-supabase"
 import { getExercises, type ExerciseItem } from "@/lib/data"
 import { toast } from "sonner"
 
@@ -57,18 +57,23 @@ export function ExerciseLibrary() {
   const [selectedExercise, setSelectedExercise] = useState<(typeof exercises)[0] | null>(null)
   const [favorites, setFavorites] = useState<number[]>([])
   const [completedTitles, setCompletedTitles] = useState<Set<string>>(new Set())
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  const loadFavoritesAndWorkouts = async () => {
+    setLoadError(null)
+    try {
+      const [favs, workouts] = await Promise.all([getFavorites(), getWorkouts()])
+      setFavorites(favs)
+      setCompletedTitles(new Set(workouts.map((w) => w.title)))
+    } catch (error) {
+      const msg = formatErr(error)
+      setLoadError(msg)
+      console.error("Failed to load favorites/workouts:", msg)
+    }
+  }
 
   useEffect(() => {
-    async function load() {
-      try {
-        const [favs, workouts] = await Promise.all([getFavorites(), getWorkouts()])
-        setFavorites(favs)
-        setCompletedTitles(new Set(workouts.map((w) => w.title)))
-      } catch (error) {
-        console.error("Failed to load favorites/workouts:", error)
-      }
-    }
-    load()
+    loadFavoritesAndWorkouts()
   }, [])
 
   const filtered = useMemo(() => {
@@ -123,6 +128,18 @@ export function ExerciseLibrary() {
 
   return (
     <div className="flex flex-col gap-5 px-4 pt-4 pb-28">
+      {loadError && (
+        <div className="rounded-xl bg-destructive/10 text-destructive border border-destructive/20 px-4 py-3 flex items-center justify-between gap-3">
+          <p className="text-sm flex-1 min-w-0">{loadError}</p>
+          <button
+            type="button"
+            onClick={loadFavoritesAndWorkouts}
+            className="shrink-0 flex items-center gap-1.5 rounded-lg bg-destructive/20 px-3 py-1.5 text-sm font-medium hover:bg-destructive/30"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Retry
+          </button>
+        </div>
+      )}
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
@@ -232,10 +249,18 @@ export function ExerciseLibrary() {
           </div>
         ) : (
           filtered.map((exercise) => (
-          <button
+          <div
             key={exercise.id}
+            role="button"
+            tabIndex={0}
             onClick={() => setSelectedExercise(exercise)}
-            className="flex items-center gap-4 rounded-2xl bg-card p-3 border border-border text-left transition-all hover:border-primary/30 active:scale-[0.98]"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault()
+                setSelectedExercise(exercise)
+              }
+            }}
+            className="flex items-center gap-4 rounded-2xl bg-card p-3 border border-border text-left transition-all hover:border-primary/30 active:scale-[0.98] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <div className={`h-20 w-20 rounded-xl bg-gradient-to-br flex items-center justify-center shrink-0 ${categoryGradients[exercise.category]}`}>
               {(() => { const Icon = categoryIcons[exercise.category]; return <Icon className="h-8 w-8 text-white/50" /> })()}
@@ -260,7 +285,7 @@ export function ExerciseLibrary() {
               <Star className={`h-4 w-4 ${favorites.includes(exercise.id) ? "fill-chart-4 text-chart-4" : "text-muted-foreground"}`} />
             </button>
             <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-          </button>
+          </div>
           ))
         )}
       </div>

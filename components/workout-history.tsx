@@ -71,7 +71,7 @@ export function WorkoutHistory({ onBack }: { onBack: () => void }) {
           <div className="rounded-2xl bg-card border border-border p-8 text-center">
             <Flame className="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" />
             <p className="text-sm font-medium text-foreground">No activity yet</p>
-            <p className="text-xs text-muted-foreground mt-1">Runs, workouts, and AI Coach sessions will appear here.</p>
+            <p className="text-xs text-muted-foreground mt-1">Runs, workouts, and Coach Assist sessions will appear here.</p>
           </div>
         ) : (
           items.map((item) => (

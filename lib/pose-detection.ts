@@ -114,9 +114,9 @@ export async function initPoseDetection(): Promise<boolean> {
         runningMode: "VIDEO",
         numPoses: 1,
         // Adaptive thresholds: start lenient, tighten if detection is good
-        minPoseDetectionConfidence: 0.4,
-        minPosePresenceConfidence: 0.4,
-        minTrackingConfidence: 0.4,
+        minPoseDetectionConfidence: 0.55,
+        minPosePresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5,
       })
     } catch (heavyError) {
       console.warn("Heavy model failed, using Lite:", heavyError)
@@ -127,9 +127,9 @@ export async function initPoseDetection(): Promise<boolean> {
         },
         runningMode: "VIDEO",
         numPoses: 1,
-        minPoseDetectionConfidence: 0.4,
-        minPosePresenceConfidence: 0.4,
-        minTrackingConfidence: 0.4,
+        minPoseDetectionConfidence: 0.55,
+        minPosePresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5,
       })
     }
     // Reset tracking state
@@ -144,11 +144,11 @@ export async function initPoseDetection(): Promise<boolean> {
   }
 }
 
-// Improved smoothing: Exponential smoothing with adaptive alpha + weighted history
+// Strong smoothing for stable rep detection: longer history, lower alpha
 let poseHistory: LandmarkPoint[][] = []
 let smoothedPrevious: LandmarkPoint[] | null = null
-const MAX_HISTORY = 7
-const SMOOTHING_ALPHA = 0.7 // Higher = more responsive, lower = smoother
+const MAX_HISTORY = 9
+const SMOOTHING_ALPHA = 0.55
 
 function smoothLandmarks(current: LandmarkPoint[]): LandmarkPoint[] {
   poseHistory.push(current)
@@ -287,12 +287,12 @@ export function detectPose(video: HTMLVideoElement, timestamp: number): PoseResu
     
     consecutiveFailures = 0
     
-    // Use whatever MediaPipe returns - no filtering. Force visibility so skeleton always draws.
+    // Preserve real visibility so rep counting can require enough visible keypoints
     const rawLm = result.landmarks[0].map((p: { x: number; y: number; z?: number; visibility?: number }) => ({
-      x: p.x, 
-      y: p.y, 
-      z: p.z, 
-      visibility: Math.max(0.8, p.visibility ?? 1),
+      x: p.x,
+      y: p.y,
+      z: p.z,
+      visibility: p.visibility ?? 0.5,
     }))
     
     // Interpolate missing landmarks

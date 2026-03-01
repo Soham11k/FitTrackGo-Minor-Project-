@@ -7,43 +7,35 @@ if (typeof window !== "undefined" && window.speechSynthesis) {
 }
 
 const MOTIVATIONAL_PHRASES = [
-  "You've got this!",
-  "Looking strong!",
-  "Keep it up!",
-  "Nice rep!",
-  "That's the way!",
-  "Stay focused!",
-  "One more!",
-  "Great form!",
-  "You're doing great!",
-  "Keep pushing!",
-  "Almost there!",
-  "Strong work!",
-  "Nice and controlled!",
-  "Perfect!",
-  "Get it!",
+  "Looking strong.",
+  "Keep it up.",
+  "Nice and controlled.",
+  "Strong work.",
+  "You're doing great.",
+  "Stay with it, every rep counts.",
+  "Breathe and keep moving.",
+  "Great tempo, keep that rhythm.",
+  "Posture looks good, stay tall.",
+  "Power through the last few seconds.",
 ]
 
 let lastSpokeAt = 0
-const MIN_INTERVAL_MS = 8000
-const REP_SPEAK_DEBOUNCE_MS = 3000
+const MIN_INTERVAL_MS = 18000
+const REP_MILESTONE_INTERVAL = 5
 
-export function speakMotivation(phrase?: string, options?: { force?: boolean; forRep?: boolean }) {
+export function speakMotivation(phrase?: string, options?: { force?: boolean }) {
   if (typeof window === "undefined" || !window.speechSynthesis) return
 
   const now = Date.now()
-  if (!options?.force && !options?.forRep) {
-    if (now - lastSpokeAt < MIN_INTERVAL_MS) return
-  }
-  if (options?.forRep && now - lastSpokeAt < REP_SPEAK_DEBOUNCE_MS) return
+  if (!options?.force && now - lastSpokeAt < MIN_INTERVAL_MS) return
 
   window.speechSynthesis.cancel()
 
   const text = phrase ?? MOTIVATIONAL_PHRASES[Math.floor(Math.random() * MOTIVATIONAL_PHRASES.length)]!
   const u = new SpeechSynthesisUtterance(text)
-  u.rate = 0.95
+  u.rate = 0.9
   u.pitch = 1
-  u.volume = 1
+  u.volume = 0.7
   const voices = window.speechSynthesis.getVoices()
   const en = voices.find((v) => v.lang.startsWith("en"))
   if (en) u.voice = en
@@ -51,25 +43,41 @@ export function speakMotivation(phrase?: string, options?: { force?: boolean; fo
   lastSpokeAt = now
 }
 
+/** Speaks only at rep milestones (1, 5, 10, 15…) so it’s not every rep. */
 export function speakRepComplete(count: number) {
   if (typeof window === "undefined" || !window.speechSynthesis) return
+  const isMilestone = count === 1 || count % REP_MILESTONE_INTERVAL === 0
+  if (!isMilestone) return
+  const now = Date.now()
+  if (now - lastSpokeAt < 4000) return
+
   window.speechSynthesis.cancel()
-  const u = new SpeechSynthesisUtterance(count === 1 ? "One rep! Nice!" : `${count} reps! Keep going!`)
-  u.rate = 0.9
+  const base = count === 1 ? "One rep done." : `${count} reps done.`
+  const extra =
+    count === 1
+      ? "Nice start."
+      : count < 10
+      ? "Good pace."
+      : count < 20
+      ? "Strong set. Stay focused."
+      : "Amazing endurance. Keep pushing."
+  const text = `${base} ${extra}`
+  const u = new SpeechSynthesisUtterance(text)
+  u.rate = 0.85
   u.pitch = 1
-  u.volume = 1
+  u.volume = 0.65
   const voices = window.speechSynthesis.getVoices()
   const en = voices.find((v) => v.lang.startsWith("en"))
   if (en) u.voice = en
   window.speechSynthesis.speak(u)
-  lastSpokeAt = Date.now()
+  lastSpokeAt = now
 }
 
 export function speakGoodForm() {
-  speakMotivation("Good form!", { force: true })
+  speakMotivation("Good form.", { force: true })
 }
 
 export function speakAdjustForm() {
-  if (Date.now() - lastSpokeAt < 5000) return
-  speakMotivation("Adjust your form. You've got this!", { force: true })
+  if (Date.now() - lastSpokeAt < 12000) return
+  speakMotivation("Adjust your form.", { force: true })
 }

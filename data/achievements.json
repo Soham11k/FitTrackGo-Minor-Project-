@@ -10,14 +10,14 @@
   {
     "id": "100workouts",
     "title": "100 Workouts",
-    "description": "Complete 100 workouts or AI Coach sessions",
+    "description": "Complete 100 workouts or Coach Assist sessions",
     "type": "activities",
     "targetValue": 100
   },
   {
     "id": "perfectform",
     "title": "Perfect Form",
-    "description": "Score 100% on an AI Coach session",
+    "description": "Score 100% on an Coach Assist session",
     "type": "coachScore",
     "targetValue": 100
   },

@@ -172,9 +172,9 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
         <div className="mx-auto mb-6 flex w-full max-w-sm rounded-lg bg-secondary p-1">
           <button
             onClick={() => setIsSignUp(false)}
-            className={`flex-1 rounded-md py-2.5 text-sm font-medium transition-all ${
+            className={`flex-1 rounded-md py-2.5 text-sm font-medium transition-all duration-300 ${
               !isSignUp
-                ? "bg-primary text-primary-foreground"
+                ? "bg-primary text-primary-foreground scale-[1.02]"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -182,9 +182,9 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
           </button>
           <button
             onClick={() => setIsSignUp(true)}
-            className={`flex-1 rounded-md py-2.5 text-sm font-medium transition-all ${
+            className={`flex-1 rounded-md py-2.5 text-sm font-medium transition-all duration-300 ${
               isSignUp
-                ? "bg-primary text-primary-foreground"
+                ? "bg-primary text-primary-foreground scale-[1.02]"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -206,7 +206,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
                 placeholder="Full Name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="h-12 rounded-xl border-border bg-secondary pl-10 text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary"
+                className="h-12 rounded-xl border-border bg-secondary pl-10 text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary"
               />
             </div>
           </div>
@@ -219,7 +219,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
               placeholder="Email Address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="h-12 rounded-xl border-border bg-secondary pl-10 text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary"
+              className="h-12 rounded-xl border-border bg-secondary pl-10 text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary"
             />
           </div>
 
@@ -231,7 +231,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="h-12 rounded-xl border-border bg-secondary pl-10 pr-10 text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary"
+              className="h-12 rounded-xl border-border bg-secondary pl-10 pr-10 text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary"
             />
             <button
               type="button"

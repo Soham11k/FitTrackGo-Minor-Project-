@@ -18,14 +18,19 @@ import {
   HelpCircle,
   Mail,
   FileText,
+  UserCheck,
 } from "lucide-react"
 import { useTheme } from "next-themes"
+import { useAccent } from "@/components/accent-provider"
+import { ACCENT_OPTIONS, type AccentId } from "@/lib/accent"
 import type { UserProfile } from "@/lib/store"
-import { getProfile, saveProfile, getTotalStats, getWeeklyActivity, getRuns, getWorkouts, getCoachSessions } from "@/lib/store-supabase"
+import { getProfile, saveProfile, getTotalStats, getWeeklyActivity, getRuns, getWorkouts, getCoachSessions, formatErr } from "@/lib/store-supabase"
 import { getFaq, getAchievements, siteConfig } from "@/lib/data"
 import { ContactForm } from "@/components/contact-form"
 import { toast } from "sonner"
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client"
+import { getFaceEnrollment, saveFaceEnrollment, deleteFaceEnrollment } from "@/lib/face-verification"
+import { FaceEnrollCapture } from "@/components/face-enroll-capture"
 
 const menuItems = [
   { icon: Bell, label: "Notifications", action: "notifications" },
@@ -44,6 +49,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
   const [newGoalInput, setNewGoalInput] = useState("")
   const [panel, setPanel] = useState<"notifications" | "support" | "settings" | null>(null)
   const { theme, setTheme } = useTheme()
+  const { accent, setAccent } = useAccent()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [userEmail, setUserEmail] = useState<string>("")
   const [stats, setStats] = useState({ totalRuns: 0, totalWorkouts: 0, streak: 0, totalCalories: 0, totalDistance: 0, totalActiveMinutes: 0 })
@@ -55,6 +61,13 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
   const [totalDistance, setTotalDistance] = useState(0)
   const [totalReps, setTotalReps] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
+  const [authUserId, setAuthUserId] = useState<string | null>(null)
+  const [faceEnrolledStatus, setFaceEnrolledStatus] = useState<boolean | null>(null)
+  const [showFaceEnrollModal, setShowFaceEnrollModal] = useState(false)
+  const [showDeleteAccountConfirm, setShowDeleteAccountConfirm] = useState(false)
+  const [deleteAccountLoading, setDeleteAccountLoading] = useState(false)
   // Use singleton client to prevent lock conflicts
   const supabase = createClient()
 
@@ -64,6 +77,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
   useEffect(() => {
     async function load() {
       setLoading(true)
+      setLoadError(null)
       try {
         // Check if Supabase is configured
         if (!isSupabaseConfigured()) {
@@ -84,7 +98,10 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
         if (user?.email) {
           setUserEmail(user.email)
         }
-        
+        setAuthUserId(user.id)
+        const faceSig = await getFaceEnrollment(user.id)
+        setFaceEnrolledStatus(!!faceSig?.length)
+
         const [p, s, w, r, wo, cs] = await Promise.all([
           getProfile(),
           getTotalStats(),
@@ -120,9 +137,9 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
           return { title: def.title, description: def.description, earned, progress }
         })
         setAchievements(ach)
-      } catch (error: any) {
-        console.error("Failed to load profile data:", error)
-        const errorMessage = error?.message || "Failed to load profile data"
+      } catch (error: unknown) {
+        const errorMessage = (error as Error)?.message ?? formatErr(error)
+        console.error("Failed to load profile data:", errorMessage)
         
         // Check for database schema errors
         if (errorMessage.includes("Could not find the table") || errorMessage.includes("does not exist")) {
@@ -141,7 +158,11 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
           setTimeout(() => {
             toast.info("Please try logging out and logging back in", { duration: 5000 })
           }, 2000)
+        } else if (errorMessage.includes("Failed to fetch") || errorMessage.includes("fetch")) {
+          setLoadError("Could not load profile. Check your connection.")
+          toast.error("Could not load profile. Check your connection and retry.")
         } else {
+          setLoadError(errorMessage)
           toast.error(errorMessage)
         }
       } finally {
@@ -149,7 +170,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
       }
     }
     load()
-  }, [achievementDefs])
+  }, [achievementDefs, retryCount])
 
   const displayName = profile?.name?.trim() || "Athlete"
   const joinYear = profile?.joinDate ? new Date(profile.joinDate).getFullYear() : new Date().getFullYear()
@@ -275,6 +296,30 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
     )
   }
 
+  // Show connection/profile load error with Retry
+  if (loadError && !loading) {
+    return (
+      <div className="flex flex-col gap-5 px-4 pt-4 pb-28">
+        <div className="rounded-2xl bg-destructive/10 border border-destructive/30 p-6 space-y-4">
+          <h2 className="text-lg font-bold text-destructive">Couldn&apos;t load profile</h2>
+          <p className="text-sm text-muted-foreground">{loadError}</p>
+          {(loadError.includes("fetch") || loadError.includes("Failed to fetch")) && (
+            <p className="text-xs text-muted-foreground">
+              Check <code className="bg-muted px-1 rounded">.env.local</code> (NEXT_PUBLIC_SUPABASE_URL and anon key), then restart the dev server. See <code className="bg-muted px-1 rounded">FAILED-TO-FETCH-FIX.md</code> for steps.
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => setRetryCount((c) => c + 1)}
+            className="rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   // Show database setup message if profile is null and we're not loading
   if (!profile && !loading) {
     return (
@@ -327,9 +372,9 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
   }
 
   return (
-    <div className="flex flex-col gap-5 px-4 pt-4 pb-28">
-      <div className="flex items-center gap-4">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/15">
+    <div className="flex flex-col gap-5 px-4 pt-4 pb-28 animate-fade-in-up">
+      <div className="flex items-center gap-4 opacity-0 animate-slide-in-left" style={{ animationDelay: "0.05s", animationFillMode: "forwards" }}>
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/15 transition-transform duration-300 hover:scale-105">
           <User className="h-8 w-8 text-primary" />
         </div>
         <div className="flex-1 min-w-0">
@@ -372,7 +417,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
       </div>
 
       {/* Profile Details Section */}
-      <section className="rounded-2xl bg-card p-4 border border-border space-y-4">
+      <section className="rounded-2xl bg-card p-4 border border-border space-y-4 opacity-0 animate-fade-in-up transition-shadow duration-300 hover:shadow-md" style={{ animationDelay: "0.1s", animationFillMode: "forwards" }}>
         <h2 className="text-sm font-semibold text-foreground">Profile Details</h2>
         
         {/* Level Selection */}
@@ -579,6 +624,48 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
       </section>
 
       <section className="rounded-2xl bg-card border border-border overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15">
+              <UserCheck className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Coach Assist – Face recognition</h3>
+              <p className="text-xs text-muted-foreground">
+                {faceEnrolledStatus === null ? "…" : faceEnrolledStatus ? "Only your reps count for this account." : "Enroll so only your reps count."}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 px-4 pb-3">
+            <button
+              type="button"
+              onClick={() => setShowFaceEnrollModal(true)}
+              className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              {faceEnrolledStatus ? "Re-enroll face" : "Enroll face"}
+            </button>
+            {faceEnrolledStatus && authUserId && (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await deleteFaceEnrollment(authUserId)
+                    setFaceEnrolledStatus(false)
+                    toast.success("Face un-enrolled. Anyone in frame can count reps in Coach Assist.")
+                  } catch {
+                    toast.error("Could not un-enroll face.")
+                  }
+                }}
+                className="rounded-xl bg-secondary px-4 py-2 text-sm font-medium text-foreground hover:bg-secondary/80"
+              >
+                Un-enroll face
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl bg-card border border-border overflow-hidden">
         {menuItems.map((item, i) => (
           <div
             key={item.label}
@@ -636,7 +723,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
                 >
                   Enable notifications
                 </button>
-                <p className="text-xs text-muted-foreground pt-2">Workout reminders, streak alerts, and achievements will appear here when enabled.</p>
+                <p className="text-xs text-muted-foreground pt-2">Enable browser notifications to get alerts from this app. In-app reminders and achievements may be added in a future update.</p>
               </>
             )}
             {panel === "support" && (
@@ -672,11 +759,127 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
                     <span>Theme</span>
                     <span className="text-muted-foreground">Use the Dark mode toggle above</span>
                   </div>
+                  <div className="flex items-center justify-between gap-3 py-3 border-b border-border">
+                    <span>Theme color</span>
+                    <div className="flex gap-2" role="group" aria-label="Accent color">
+                      {ACCENT_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setAccent(opt.id as AccentId); toast.success(`${opt.name} theme`); }}
+                          className={`h-8 w-8 rounded-full border-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${accent === opt.id ? "border-foreground scale-110" : "border-transparent hover:scale-105"}`}
+                          style={{ backgroundColor: opt.lightHex }}
+                          title={opt.name}
+                          aria-pressed={accent === opt.id}
+                        />
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </>
             )}
           </div>
         </section>
+      )}
+
+      {showFaceEnrollModal && authUserId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-card border border-border shadow-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-foreground">Enroll your face</h2>
+              <button type="button" onClick={() => setShowFaceEnrollModal(false)} className="p-1 rounded-lg hover:bg-secondary text-muted-foreground" aria-label="Close">
+                ×
+              </button>
+            </div>
+            <FaceEnrollCapture
+              onEnrolled={async (signature) => {
+                try {
+                  await saveFaceEnrollment(authUserId, signature)
+                  setFaceEnrolledStatus(true)
+                  setShowFaceEnrollModal(false)
+                  toast.success("Face enrolled. Only your reps will count in Coach Assist.")
+                } catch {
+                  toast.error("Could not save face enrollment.")
+                }
+              }}
+              onCancel={() => setShowFaceEnrollModal(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Danger zone: Delete account */}
+      <section className="rounded-2xl bg-card border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border">
+          <h3 className="text-sm font-semibold text-destructive">Danger zone</h3>
+          <p className="text-xs text-muted-foreground">Permanently delete your account and all data.</p>
+        </div>
+        <div className="p-4">
+          <button
+            type="button"
+            onClick={() => setShowDeleteAccountConfirm(true)}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-destructive/10 py-3 text-sm font-medium text-destructive transition-all hover:bg-destructive/20"
+          >
+            Delete account
+          </button>
+        </div>
+      </section>
+
+      {showDeleteAccountConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-card border border-border shadow-xl p-4 space-y-4">
+            <h2 className="text-lg font-semibold text-foreground">Delete account?</h2>
+            <p className="text-sm text-muted-foreground">
+              This will permanently delete your account, profile, workouts, runs, and coach sessions. This cannot be undone.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowDeleteAccountConfirm(false)}
+                disabled={deleteAccountLoading}
+                className="rounded-xl bg-secondary px-4 py-2 text-sm font-medium text-foreground hover:bg-secondary/80"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setDeleteAccountLoading(true)
+                  try {
+                    const { data: { session } } = await supabase.auth.getSession()
+                    if (!session?.access_token) {
+                      toast.error("Not signed in.")
+                      setDeleteAccountLoading(false)
+                      return
+                    }
+                    const res = await fetch("/api/delete-account", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({}),
+                      credentials: "include",
+                    })
+                    if (!res.ok) {
+                      const j = await res.json().catch(() => ({}))
+                      toast.error(j?.error ?? "Failed to delete account.")
+                      setDeleteAccountLoading(false)
+                      return
+                    }
+                    setShowDeleteAccountConfirm(false)
+                    toast.success("Account deleted.")
+                    onLogout()
+                  } catch (e) {
+                    toast.error("Something went wrong.")
+                    setDeleteAccountLoading(false)
+                  }
+                }}
+                disabled={deleteAccountLoading}
+                className="rounded-xl bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+              >
+                {deleteAccountLoading ? "Deleting…" : "Delete account"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Logout */}

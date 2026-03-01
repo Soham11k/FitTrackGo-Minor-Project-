@@ -17,6 +17,12 @@ export interface SiteConfig {
   social: { twitter?: string; instagram?: string; facebook?: string }
 }
 
+export interface ExerciseStep {
+  name: string
+  duration: string
+  reps: string
+}
+
 export interface ExerciseItem {
   id: number
   title: string
@@ -27,6 +33,7 @@ export interface ExerciseItem {
   difficulty: string
   exercises: number
   rating: number
+  steps?: ExerciseStep[]
 }
 
 export interface AchievementDef {

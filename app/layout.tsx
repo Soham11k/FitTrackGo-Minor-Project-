@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter, Space_Grotesk } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
+import { AccentProvider } from '@/components/accent-provider'
 import { Toaster } from '@/components/ui/sonner'
 import { siteConfig } from '@/lib/data'
 import './globals.css'
@@ -48,11 +49,18 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`} suppressHydrationWarning>
       <body className="font-sans antialiased overflow-x-hidden">
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var k='fittrackgo_accent';var v=localStorage.getItem(k);var o=['green','blue','purple','orange','rose'];var a=o.indexOf(v)!==-1?v:'green';document.documentElement.setAttribute('data-accent',a);})();`,
+          }}
+        />
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+          <AccentProvider>
           {children}
           <div id="supabase-setup-root" />
           <Toaster position="top-center" richColors closeButton />
           <Analytics />
+          </AccentProvider>
         </ThemeProvider>
       </body>
     </html>

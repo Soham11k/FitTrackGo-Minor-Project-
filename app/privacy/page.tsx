@@ -28,7 +28,7 @@ export default function PrivacyPage() {
           <strong>Data you provide:</strong> When you sign up, we may collect your name and email. When you contact support, we receive the content of your message and contact details you provide.
         </p>
         <p>
-          <strong>Data stored on your device:</strong> Workouts, runs, AI Coach sessions, and profile data are stored locally on your device. We do not upload this data to our servers unless you use an optional cloud backup feature (if we offer it in the future).
+          <strong>Data stored on your device:</strong> Workouts, runs, Coach Assist sessions, and profile data are stored locally on your device. We do not upload this data to our servers unless you use an optional cloud backup feature (if we offer it in the future).
         </p>
         <p>
           <strong>Technical data:</strong> We may collect anonymous usage and analytics data (e.g. app version, device type) to improve the product. This does not include your personal fitness data unless you opt in.

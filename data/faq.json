@@ -6,7 +6,7 @@
   },
   {
     "id": "ai-coach",
-    "question": "How does AI Coach work?",
+    "question": "How does Coach Assist work?",
     "answer": "Allow camera access when you start an exercise. The app uses pose detection to give real-time form feedback and count reps. If the camera is unavailable, simulated mode still counts reps and gives tips."
   },
   {
