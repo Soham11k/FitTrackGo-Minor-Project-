@@ -1,3 +1,6 @@
+import { VIS_FORM_ANALYSIS, VIS_EXERCISE_GATE } from "./pose-config"
+import { angle2d, jointAngle, hipPlumbLineDeviation } from "./pose-geometry"
+
 export interface Landmark {
   x: number
   y: number
@@ -7,18 +10,12 @@ export interface Landmark {
 
 export type ExerciseId = "squat" | "pushup" | "plank" | "lunge" | "bicep_curl" | "shoulder_press" | "jumping_jacks" | "high_knees" | "crunch"
 
-// MediaPipe indices: 11,12 shoulders, 13,14 elbows, 15,16 wrists, 23,24 hips, 25,26 knees, 27,28 ankles
-function angle(a: Landmark, b: Landmark, c: Landmark): number {
-  const ax = b.x - a.x
-  const ay = b.y - a.y
-  const cx = b.x - c.x
-  const cy = b.y - c.y
-  const dot = ax * cx + ay * cy
-  const mag = Math.sqrt(ax * ax + ay * ay) * Math.sqrt(cx * cx + cy * cy) || 1
-  return (Math.acos(Math.max(-1, Math.min(1, dot / mag))) * 180) / Math.PI
+export interface AnalyzeFormOptions {
+  /** MediaPipe world landmarks (same indices as image) for 3D joint angles when available. */
+  world?: Landmark[]
+  /** 0–1 from getDetectionQuality(); down-weights score when tracking is poor. */
+  trackingQuality?: number
 }
-
-function deg(rad: number) { return (rad * 180) / Math.PI }
 
 export type FormRegion = "torso" | "legs" | "arms" | "core"
 
@@ -39,6 +36,8 @@ export interface FormResult {
   isGoodForm: boolean
   score: number
   breakdown: FormBreakdown[]
+  /** 0–1; lower when `trackingQuality` was applied to the final score. */
+  trackingReliability?: number
 }
 
 /** Landmark indices required per exercise for visibility gating */
@@ -54,8 +53,6 @@ const REQUIRED_LANDMARKS: Record<ExerciseId, number[]> = {
   crunch: [0, 11, 12, 23, 24],
 }
 
-const VISIBILITY_MIN = 0.35
-
 export function hasEnoughVisibility(lm: Landmark[], exercise: ExerciseId): boolean {
   const indices = REQUIRED_LANDMARKS[exercise] ?? REQUIRED_LANDMARKS.squat
   if (!lm?.length) return false
@@ -66,13 +63,27 @@ export function hasEnoughVisibility(lm: Landmark[], exercise: ExerciseId): boole
     sum += v
     n += 1
   }
-  return n > 0 && sum / n >= VISIBILITY_MIN
+  return n > 0 && sum / n >= VIS_FORM_ANALYSIS
 }
 
-export function analyzeForm(lm: Landmark[], exercise: ExerciseId): FormResult {
+function applyTrackingScale(rawScore: number, trackingQuality: number | undefined): { score: number; trackingReliability: number } {
+  if (trackingQuality === undefined || Number.isNaN(trackingQuality)) {
+    return { score: rawScore, trackingReliability: 1 }
+  }
+  const t = Math.max(0, Math.min(1, trackingQuality))
+  // Floor so score never fully collapses; scale gently from moderate tracking up
+  const reliability = 0.32 + 0.68 * t
+  return { score: Math.round(rawScore * reliability), trackingReliability: reliability }
+}
+
+export function analyzeForm(lm: Landmark[], exercise: ExerciseId, opts: AnalyzeFormOptions = {}): FormResult {
   const feedback: string[] = []
   const breakdown: FormBreakdown[] = []
   let score = 100
+  const { world, trackingQuality } = opts
+  const w = (i: number) => world?.[i]
+  const wTri = (a: number, b: number, c: number) =>
+    w(a) && w(b) && w(c) ? { a: w(a)!, b: w(b)!, c: w(c)! } : undefined
 
   if (!hasEnoughVisibility(lm, exercise)) {
     return {
@@ -80,10 +91,10 @@ export function analyzeForm(lm: Landmark[], exercise: ExerciseId): FormResult {
       isGoodForm: false,
       score: 0,
       breakdown: [],
+      trackingReliability: 0,
     }
   }
 
-  const vis = (i: number) => (lm[i]?.visibility ?? 1) > 0.4
   const get = (i: number) => lm[i] ?? { x: 0.5, y: 0.5 }
 
   if (exercise === "squat") {
@@ -95,16 +106,12 @@ export function analyzeForm(lm: Landmark[], exercise: ExerciseId): FormResult {
     const rAnkle = get(28)
     const lShoulder = get(11)
     const rShoulder = get(12)
-    const lWrist = get(15)
-    const rWrist = get(16)
-    
-    const kneeAngleL = angle(lHip, lKnee, lAnkle)
-    const kneeAngleR = angle(rHip, rKnee, rAnkle)
+    const kneeAngleL = jointAngle(lHip, lKnee, lAnkle, wTri(23, 25, 27))
+    const kneeAngleR = jointAngle(rHip, rKnee, rAnkle, wTri(24, 26, 28))
     const kneeAngle = (kneeAngleL + kneeAngleR) / 2
-    
-    // Enhanced back angle calculation
-    const backAngleL = angle(lShoulder, lHip, lKnee)
-    const backAngleR = angle(rShoulder, rHip, rKnee)
+
+    const backAngleL = jointAngle(lShoulder, lHip, lKnee, wTri(11, 23, 25))
+    const backAngleR = jointAngle(rShoulder, rHip, rKnee, wTri(12, 24, 26))
     const backAngle = (backAngleL + backAngleR) / 2
     
     // Knee tracking (knee should be over ankle, not caving in)
@@ -112,11 +119,6 @@ export function analyzeForm(lm: Landmark[], exercise: ExerciseId): FormResult {
     const kneeTrackingR = Math.abs(rKnee.x - rAnkle.x)
     const kneeTracking = (kneeTrackingL + kneeTrackingR) / 2
     const kneeTrackingOk = kneeTracking < 0.05
-    
-    // Hip-knee-ankle alignment
-    const hipKneeAnkleL = angle(lHip, lKnee, lAnkle)
-    const hipKneeAnkleR = angle(rHip, rKnee, rAnkle)
-    const alignmentOk = Math.abs(hipKneeAnkleL - hipKneeAnkleR) < 10
     
     // Depth calculation (hip below knee)
     const hipHeight = (lHip.y + rHip.y) / 2
@@ -153,21 +155,29 @@ export function analyzeForm(lm: Landmark[], exercise: ExerciseId): FormResult {
     const rWrist = get(16)
     const lAnkle = get(27)
     const rAnkle = get(28)
-    
-    // Body alignment: shoulder-hip-ankle line
+
+    const plumbW =
+      w(11) && w(12) && w(23) && w(24) && w(27) && w(28)
+        ? {
+            lShoulder: w(11)!,
+            rShoulder: w(12)!,
+            lHip: w(23)!,
+            rHip: w(24)!,
+            lAnkle: w(27)!,
+            rAnkle: w(28)!,
+          }
+        : undefined
+    const plumb = hipPlumbLineDeviation(lShoulder, rShoulder, lHip, rHip, lAnkle, rAnkle, plumbW)
+    const bodyStraight = plumb.deviationFromStraight < 16
     const shoulderY = (lShoulder.y + rShoulder.y) / 2
     const hipY = (lHip.y + rHip.y) / 2
-    const ankleY = (lAnkle.y + rAnkle.y) / 2
-    const bodyLineAngle = Math.abs(Math.atan2(hipY - shoulderY, 0.1) - Math.atan2(ankleY - hipY, 0.1)) * (180 / Math.PI)
-    const bodyStraight = bodyLineAngle < 15
-    
-    // Hip sag (hips shouldn't be lower than shoulders)
-    const hipSag = hipY - shoulderY
-    const noSag = hipSag < 0.05
-    
-    // Elbow angle
-    const elbowL = angle(lShoulder, lElbow, lWrist)
-    const elbowR = angle(rShoulder, rElbow, rWrist)
+    const hipSagY = hipY - shoulderY
+    const noSagDroop = hipSagY < 0.09
+    const noPike = shoulderY - hipY < 0.12
+    const noSag = noSagDroop && noPike
+
+    const elbowL = jointAngle(lShoulder, lElbow, lWrist, wTri(11, 13, 15))
+    const elbowR = jointAngle(rShoulder, rElbow, rWrist, wTri(12, 14, 16))
     const elbowAngle = (elbowL + elbowR) / 2
     const elbowOk = elbowAngle > 70 && elbowAngle < 100
     
@@ -194,16 +204,36 @@ export function analyzeForm(lm: Landmark[], exercise: ExerciseId): FormResult {
     const rShoulder = get(12)
     const lHip = get(23)
     const rHip = get(24)
+    const lKnee = get(25)
+    const rKnee = get(26)
     const lAnkle = get(27)
     const rAnkle = get(28)
-    const slope = Math.atan2((lHip.y + rHip.y) / 2 - (lShoulder.y + rShoulder.y) / 2, 0.1) * (180 / Math.PI)
-    const hipOk = Math.abs(slope) < 15
-    const shoulderOk = (lShoulder.y + rShoulder.y) / 2 < (lHip.y + rHip.y) / 2 + 0.05
+    const plumbWPlank =
+      w(11) && w(12) && w(23) && w(24) && w(27) && w(28)
+        ? {
+            lShoulder: w(11)!,
+            rShoulder: w(12)!,
+            lHip: w(23)!,
+            rHip: w(24)!,
+            lAnkle: w(27)!,
+            rAnkle: w(28)!,
+          }
+        : undefined
+    const plumb = hipPlumbLineDeviation(lShoulder, rShoulder, lHip, rHip, lAnkle, rAnkle, plumbWPlank)
+    const hipOk = plumb.deviationFromStraight < 16
+    const shoulderY = (lShoulder.y + rShoulder.y) / 2
+    const hipY = (lHip.y + rHip.y) / 2
+    const shoulderOk = shoulderY < hipY + 0.06
+    // Mid shoulder–knee for mild extra check
+    const midKx = (lKnee.x + rKnee.x) / 2
+    const midHx = (lHip.x + rHip.x) / 2
+    const noTwist = Math.abs(midKx - midHx) < 0.12
 
-    breakdown.push({ label: "Hip height", value: hipOk ? "Neutral" : "Raise/lower", ok: hipOk, detail: "Hips in line with shoulders" })
-    breakdown.push({ label: "Shoulders", value: shoulderOk ? "Above hips" : "Adjust", ok: shoulderOk })
+    breakdown.push({ label: "Hip height", value: hipOk && noTwist ? "Neutral" : "Align", ok: hipOk && noTwist, detail: "Shoulder–hip–ankle in line" })
+    breakdown.push({ label: "Shoulders", value: shoulderOk ? "Over wrists" : "Adjust", ok: shoulderOk })
 
     if (!hipOk) { feedback.push("Keep hips level — don't sag or pike"); score -= 15 }
+    if (!noTwist) { feedback.push("Stack hips and knees — no twisting"); score -= 6 }
     if (!shoulderOk) { feedback.push("Stack shoulders over wrists"); score -= 10 }
     if (feedback.length === 0) feedback.push("Strong plank — neutral spine and hips")
   }
@@ -215,8 +245,8 @@ export function analyzeForm(lm: Landmark[], exercise: ExerciseId): FormResult {
     const rKnee = get(26)
     const lAnkle = get(27)
     const rAnkle = get(28)
-    const kneeAngleL = angle(lHip, lKnee, lAnkle)
-    const kneeAngleR = angle(rHip, rKnee, rAnkle)
+    const kneeAngleL = jointAngle(lHip, lKnee, lAnkle, wTri(23, 25, 27))
+    const kneeAngleR = jointAngle(rHip, rKnee, rAnkle, wTri(24, 26, 28))
     const frontKnee = kneeAngleL < 120 ? kneeAngleL : kneeAngleR
     const frontOk = frontKnee > 80 && frontKnee < 100
     const backKnee = kneeAngleL >= 120 ? kneeAngleL : kneeAngleR
@@ -238,8 +268,8 @@ export function analyzeForm(lm: Landmark[], exercise: ExerciseId): FormResult {
     const rElbow = get(14)
     const lWrist = get(15)
     const rWrist = get(16)
-    const elbowL = angle(lShoulder, lElbow, lWrist)
-    const elbowR = angle(rShoulder, rElbow, rWrist)
+    const elbowL = jointAngle(lShoulder, lElbow, lWrist, wTri(11, 13, 15))
+    const elbowR = jointAngle(rShoulder, rElbow, rWrist, wTri(12, 14, 16))
     const elbowAngle = (elbowL + elbowR) / 2
     const fullRange = elbowAngle > 30 && elbowAngle < 160
     const noSwing = Math.abs(lElbow.x - lShoulder.x) < 0.15 && Math.abs(rElbow.x - rShoulder.x) < 0.15
@@ -257,11 +287,10 @@ export function analyzeForm(lm: Landmark[], exercise: ExerciseId): FormResult {
     const rElbow = get(14)
     const lWrist = get(15)
     const rWrist = get(16)
-    const elbowL = angle(lShoulder, lElbow, lWrist)
-    const elbowR = angle(rShoulder, rElbow, rWrist)
+    const elbowL = jointAngle(lShoulder, lElbow, lWrist, wTri(11, 13, 15))
+    const elbowR = jointAngle(rShoulder, rElbow, rWrist, wTri(12, 14, 16))
     const elbowAngle = (elbowL + elbowR) / 2
     const sym = Math.abs(elbowL - elbowR) < 15
-    const elbowsIn = (lElbow.x + rElbow.x) / 2 > 0.3 && (lElbow.x + rElbow.x) / 2 < 0.7
     breakdown.push({ label: "Elbow angle", value: `${Math.round(elbowAngle)}°`, ok: elbowAngle > 60, detail: "Extend overhead" })
     breakdown.push({ label: "Symmetry", value: sym ? "Even" : "Adjust", ok: sym })
     if (!sym) { feedback.push("Press evenly — both arms together"); score -= 12 }
@@ -306,8 +335,17 @@ export function analyzeForm(lm: Landmark[], exercise: ExerciseId): FormResult {
   }
 
   score = Math.max(0, Math.min(100, score))
-  // Make "green skeleton" stricter so bad/medium form shows as red more often
-  return { feedback, isGoodForm: score >= 80, score, breakdown }
+  const { score: finalScore, trackingReliability } = applyTrackingScale(score, trackingQuality)
+  if (trackingQuality !== undefined && trackingQuality < 0.42) {
+    feedback.unshift("Track quality is low — stay centered and add light for a truer score.")
+  }
+  return {
+    feedback,
+    isGoodForm: finalScore >= 80,
+    score: finalScore,
+    breakdown,
+    trackingReliability,
+  }
 }
 
 export type RepPhase = "idle" | "eccentric" | "bottom" | "concentric" | "top"
@@ -318,7 +356,7 @@ let phaseHistory: RepPhase[] = []
 const PHASE_HISTORY_LEN = 9
 const PHASE_CONSISTENCY_REQUIRED = 3
 
-function stabilizePhase(newPhase: RepPhase, exercise: ExerciseId): RepPhase {
+function stabilizePhase(newPhase: RepPhase): RepPhase {
   phaseHistory.push(newPhase)
   if (phaseHistory.length > PHASE_HISTORY_LEN) {
     phaseHistory.shift()
@@ -352,9 +390,8 @@ export function hasEnoughVisibleLandmarks(lm: Landmark[], minVisible: number = 8
 const LEG_INDICES = [23, 24, 25, 26, 27, 28]
 const ARM_INDICES = [11, 12, 13, 14, 15, 16]
 const TORSO_INDICES = [11, 12, 23, 24]
-const MIN_VIS = 0.42
 
-function countVisible(lm: Landmark[], indices: number[], minVis = MIN_VIS): number {
+function countVisible(lm: Landmark[], indices: number[], minVis = VIS_EXERCISE_GATE): number {
   return indices.filter((i) => (lm[i]?.visibility ?? 0) > minVis).length
 }
 
@@ -423,8 +460,8 @@ export function getRepPhase(lm: Landmark[], exercise: ExerciseId, reset: boolean
     const rKnee = get(26)
     const lAnkle = get(27)
     const rAnkle = get(28)
-    const kneeAngL = angle(lHip, lKnee, lAnkle)
-    const kneeAngR = angle(rHip, rKnee, rAnkle)
+    const kneeAngL = angle2d(lHip, lKnee, lAnkle)
+    const kneeAngR = angle2d(rHip, rKnee, rAnkle)
     const kneeAng = (kneeAngL + kneeAngR) / 2
 
     // Thresholds: enough range to count reps without requiring extreme depth/extension
@@ -481,8 +518,8 @@ export function getRepPhase(lm: Landmark[], exercise: ExerciseId, reset: boolean
   }
   
   if (exercise === "lunge") {
-    const kneeAngleL = angle(get(23), get(25), get(27))
-    const kneeAngleR = angle(get(24), get(26), get(28))
+    const kneeAngleL = angle2d(get(23), get(25), get(27))
+    const kneeAngleR = angle2d(get(24), get(26), get(28))
     const avg = (kneeAngleL + kneeAngleR) / 2
     const minKnee = Math.min(kneeAngleL, kneeAngleR)
 
@@ -504,8 +541,8 @@ export function getRepPhase(lm: Landmark[], exercise: ExerciseId, reset: boolean
   }
 
   if (exercise === "bicep_curl") {
-    const elbowL = angle(get(11), get(13), get(15))
-    const elbowR = angle(get(12), get(14), get(16))
+    const elbowL = angle2d(get(11), get(13), get(15))
+    const elbowR = angle2d(get(12), get(14), get(16))
     const avg = (elbowL + elbowR) / 2
     // Extended arm = high angle (~140–180°); curled = low angle (~30–60°). One rep: top (extended) → bottom (curled) → top.
     const atBottom = avg < 62
@@ -527,7 +564,7 @@ export function getRepPhase(lm: Landmark[], exercise: ExerciseId, reset: boolean
   }
 
   if (exercise === "shoulder_press") {
-    const elbowAngle = (angle(get(11), get(13), get(15)) + angle(get(12), get(14), get(16))) / 2
+    const elbowAngle = (angle2d(get(11), get(13), get(15)) + angle2d(get(12), get(14), get(16))) / 2
     const atBottom = elbowAngle < 95
     const atTop = elbowAngle > 165
     if (lastPhase === "top" || lastPhase === "idle") {
@@ -585,7 +622,7 @@ export function getRepPhase(lm: Landmark[], exercise: ExerciseId, reset: boolean
     }
   }
   
-  return stabilizePhase(rawPhase, exercise)
+  return stabilizePhase(rawPhase)
 }
 
 export const EXERCISE_TIPS: Record<ExerciseId, string[]> = {

@@ -2,7 +2,6 @@
 
 let audioContext: AudioContext | null = null
 let oscillator: OscillatorNode | null = null
-let gainNode: GainNode | null = null
 let intervalId: ReturnType<typeof setInterval> | null = null
 
 export function playFallAlarm(): void {
@@ -21,7 +20,6 @@ export function playFallAlarm(): void {
     gain.connect(ctx.destination)
     osc.start(ctx.currentTime)
     oscillator = osc
-    gainNode = gain
     intervalId = setInterval(() => {
       if (!ctx || ctx.state === "closed") return
       const o = ctx.createOscillator()
@@ -55,7 +53,6 @@ export function stopFallAlarm(): void {
       audioContext?.close()
     }
     audioContext = null
-    gainNode = null
   } catch {
     // ignore
   }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Mail, Send, Loader2 } from "lucide-react"
+import { Send, Loader2 } from "lucide-react"
 import { siteConfig } from "@/lib/data"
 import { toast } from "sonner"
 

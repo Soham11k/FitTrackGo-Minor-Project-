@@ -1,5 +1,7 @@
 "use client"
 
+import { getCoachA11yPrefs } from "@/lib/coach-a11y"
+
 // Load voices (needed on some browsers)
 if (typeof window !== "undefined" && window.speechSynthesis) {
   window.speechSynthesis.getVoices()
@@ -46,6 +48,7 @@ export function speakMotivation(phrase?: string, options?: { force?: boolean }) 
 /** Speaks only at rep milestones (1, 5, 10, 15…) so it’s not every rep. */
 export function speakRepComplete(count: number) {
   if (typeof window === "undefined" || !window.speechSynthesis) return
+  if (!getCoachA11yPrefs().announceReps) return
   const isMilestone = count === 1 || count % REP_MILESTONE_INTERVAL === 0
   if (!isMilestone) return
   const now = Date.now()

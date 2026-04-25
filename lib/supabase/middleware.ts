@@ -1,7 +1,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { isSupabaseFetchError, validateSupabaseEnv } from '@/lib/supabase/config'
 
-export async function updateSession(request: NextRequest) {
+export async function updateSession(request: NextRequest, _requestId?: string) {
   // Skip processing /login route - it doesn't exist and is handled client-side
   if (request.nextUrl.pathname === '/login' || request.nextUrl.pathname.startsWith('/login')) {
     return NextResponse.next({ request })
@@ -11,16 +12,22 @@ export async function updateSession(request: NextRequest) {
     request,
   })
 
+  const { isConfigured, url, key, reason } = validateSupabaseEnv()
+  if (!isConfigured) {
+    console.warn(`[supabase] Skipping proxy auth refresh: ${reason ?? 'invalid configuration'}`)
+    return supabaseResponse
+  }
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url!,
+    key!,
     {
       cookies: {
         getAll() {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
             request,
           })
@@ -37,7 +44,15 @@ export async function updateSession(request: NextRequest) {
   // issues with users being randomly logged out.
 
   // Refresh the session - this updates the cookies
-  await supabase.auth.getUser()
+  try {
+    await supabase.auth.getUser()
+  } catch (error) {
+    if (isSupabaseFetchError(error)) {
+      console.warn('[supabase] Session refresh skipped because Supabase is unreachable.')
+      return supabaseResponse
+    }
+    throw error
+  }
 
   // Note: We don't redirect here because the app uses client-side routing.
   // The client-side code in app/page.tsx handles showing the login screen

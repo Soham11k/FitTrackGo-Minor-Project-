@@ -25,6 +25,7 @@ export function RunMap({ path, center, runState, className = "" }: RunMapProps) 
   useEffect(() => {
     if (typeof window === "undefined" || !containerRef.current) return
 
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const L = require("leaflet") as typeof import("leaflet")
 
     const mapCenter = center ?? (path.length > 0 ? path[path.length - 1]! : DEFAULT_CENTER)

@@ -1,16 +1,34 @@
 "use client"
 
-import { Home, MapPin, Dumbbell, ScanLine, User } from "lucide-react"
+import { motion, useReducedMotion } from "framer-motion"
+import { Home, MapPin, Dumbbell, ScanLine, Trophy, User } from "lucide-react"
+import { useLocale } from "@/components/locale-provider"
 
+/** Each tab maps to a metric tint used for the active highlight. */
 const navItems = [
-  { icon: Home, label: "Home", id: "home" },
-  { icon: MapPin, label: "Run", id: "run" },
-  { icon: Dumbbell, label: "Exercises", id: "exercises" },
-  { icon: ScanLine, label: "Coach Assist", id: "ai-coach" },
-  { icon: User, label: "Profile", id: "profile" },
+  { icon: Home, labelKey: "nav.home", id: "home", tint: "primary" },
+  { icon: MapPin, labelKey: "nav.run", id: "run", tint: "metric-run" },
+  { icon: Dumbbell, labelKey: "nav.exercises", id: "exercises", tint: "metric-move" },
+  { icon: ScanLine, labelKey: "nav.coach", id: "ai-coach", tint: "metric-coach" },
+  { icon: Trophy, labelKey: "nav.arena", id: "arena", tint: "metric-streak" },
+  { icon: User, labelKey: "nav.profile", id: "profile", tint: "metric-spo2" },
 ] as const
 
 export type TabId = (typeof navItems)[number]["id"]
+
+/**
+ * Map each tab's tint to the static Tailwind classes it needs. Tailwind cannot
+ * safelist `bg-${tint}/25` from a runtime string, so we resolve to full
+ * classnames up-front (keeps JIT + tree-shaking happy).
+ */
+const tintClasses = {
+  primary: { bg: "bg-primary/25", text: "text-primary" },
+  "metric-run": { bg: "bg-metric-run/25", text: "text-metric-run" },
+  "metric-move": { bg: "bg-metric-move/25", text: "text-metric-move" },
+  "metric-coach": { bg: "bg-metric-coach/25", text: "text-metric-coach" },
+  "metric-streak": { bg: "bg-metric-streak/25", text: "text-metric-streak" },
+  "metric-spo2": { bg: "bg-metric-spo2/25", text: "text-metric-spo2" },
+} as const
 
 export function BottomNav({
   activeTab,
@@ -19,44 +37,65 @@ export function BottomNav({
   activeTab: TabId
   onTabChange: (tab: TabId) => void
 }) {
+  const { t } = useLocale()
+  const prefersReducedMotion = useReducedMotion()
+  const activeIndex = Math.max(
+    0,
+    navItems.findIndex((item) => item.id === activeTab)
+  )
+  const activeItem = navItems[activeIndex]
+  const activeTint = tintClasses[activeItem.tint]
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-background/80 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-lg items-center justify-around px-2 py-2">
-        {navItems.map((item) => {
-          const isActive = activeTab === item.id
-          return (
-            <button
-              key={item.id}
-              onClick={() => onTabChange(item.id)}
-              className={`group flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-2 transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-                isActive ? "text-primary" : "text-muted-foreground"
-              }`}
-              aria-label={item.label}
-            >
-              <div className="relative">
-                {isActive && (
-                  <div className="absolute -inset-2 rounded-full bg-primary/10 animate-in fade-in duration-300" />
-                )}
-                <item.icon
-                  className={`relative h-5 w-5 transition-all duration-300 ${
-                    isActive ? "scale-110" : "group-hover:scale-105"
+    <nav className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
+      <div className="mx-auto max-w-lg px-4 pb-2 pointer-events-auto">
+        <div className="relative rounded-full border border-border/80 bg-background/55 p-1.5 shadow-[var(--shadow-nav)] backdrop-blur-2xl dark:border-white/10 dark:bg-background/50">
+          <div className="pointer-events-none absolute inset-y-1.5 left-1.5 right-1.5 overflow-hidden rounded-full">
+            <motion.div
+              className={`h-full w-1/6 rounded-full ${activeTint.bg}`}
+              animate={{ x: `${activeIndex * 100}%` }}
+              transition={
+                prefersReducedMotion
+                  ? { duration: 0 }
+                  : { type: "spring", stiffness: 420, damping: 32, mass: 0.7 }
+              }
+            />
+          </div>
+          <div className="relative grid grid-cols-6 gap-0">
+            {navItems.map((item) => {
+              const isActive = activeTab === item.id
+              const label = t(item.labelKey)
+              const activeText = tintClasses[item.tint].text
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  data-testid={`nav-tab-${item.id}`}
+                  onClick={() => onTabChange(item.id)}
+                  className={`relative z-[1] flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-full py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                    isActive ? activeText : "text-muted-foreground"
                   }`}
-                  strokeWidth={isActive ? 2.5 : 2}
-                />
-              </div>
-              <span
-                className={`text-[10px] font-medium transition-all ${
-                  isActive ? "text-primary" : ""
-                }`}
-              >
-                {item.label}
-              </span>
-            </button>
-          )
-        })}
+                  aria-label={label}
+                  title={label}
+                >
+                  <item.icon
+                    className={`h-5 w-5 transition-transform duration-200 ease-out ${
+                      isActive ? "scale-110" : "scale-100 opacity-80"
+                    }`}
+                    strokeWidth={isActive ? 2.5 : 2}
+                  />
+                  {isActive && (
+                    <span className="text-[9px] font-bold uppercase tracking-[0.08em] leading-none">
+                      {label}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
       </div>
-      {/* Safe area spacer for mobile */}
-      <div className="h-safe-area-inset-bottom" />
+      <div className="h-safe-area-inset-bottom pointer-events-none" />
     </nav>
   )
 }

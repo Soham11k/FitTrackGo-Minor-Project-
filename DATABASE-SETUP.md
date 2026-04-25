@@ -51,6 +51,24 @@ The error means your Supabase database tables haven't been created yet. Here's h
 
 ## Troubleshooting
 
+### Error: `PGRST204: Could not find the 'effective_reps' column of 'coach_sessions'`
+
+Your `coach_sessions` table was created before **competition / form-weighted** columns were added. Add them in the SQL Editor (safe to run more than once):
+
+1. Open **SQL Editor** → New query.
+2. Paste and run:
+
+```sql
+ALTER TABLE coach_sessions
+  ADD COLUMN IF NOT EXISTS effective_reps REAL,
+  ADD COLUMN IF NOT EXISTS verified_movement BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS face_verified_session BOOLEAN DEFAULT FALSE;
+```
+
+3. Optionally run **Database** → **Schema** → reload, or wait a minute for PostgREST to refresh its cache.
+
+The same SQL lives in `supabase/migrations/20250301000000_coach_session_competition.sql`.
+
 ### Error: "relation already exists"
 - Some tables already exist - that's okay!
 - The schema uses `CREATE TABLE IF NOT EXISTS` so it's safe to run again

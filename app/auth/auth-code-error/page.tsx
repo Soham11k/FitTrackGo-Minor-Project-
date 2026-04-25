@@ -38,9 +38,9 @@ function AuthCodeErrorContent() {
               router.push("/")
             }, 2000)
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           setStatus("error")
-          setMessage(err.message || "An error occurred")
+          setMessage(err instanceof Error ? err.message : "An error occurred")
         }
       } else {
         setStatus("error")

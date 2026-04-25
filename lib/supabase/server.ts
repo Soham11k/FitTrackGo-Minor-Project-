@@ -1,12 +1,27 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { validateSupabaseEnv } from '@/lib/supabase/config'
 
 export async function createClient() {
   const cookieStore = await cookies()
+  const { isConfigured, url, key, reason } = validateSupabaseEnv()
+
+  if (!isConfigured) {
+    const message = `Supabase server client unavailable: ${reason ?? 'invalid configuration'}`
+    return {
+      auth: {
+        getUser: async () => ({ data: { user: null }, error: { message } }),
+        exchangeCodeForSession: async () => ({ data: { user: null }, error: { message } }),
+      },
+      from: () => ({
+        upsert: async () => ({ error: { message } }),
+      }),
+    } as unknown as ReturnType<typeof createServerClient>
+  }
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url!,
+    key!,
     {
       cookies: {
         getAll() {

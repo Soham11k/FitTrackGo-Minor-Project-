@@ -5,6 +5,7 @@ import { Activity, Eye, EyeOff, Mail, Lock, User, ArrowRight, Chrome, Loader2 } 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { createClient } from "@/lib/supabase/client"
+import { getAuthErrorMessage } from "@/lib/supabase/config"
 import { saveProfile } from "@/lib/store-supabase"
 import { siteConfig } from "@/lib/data"
 import { toast } from "sonner"
@@ -16,7 +17,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
-  const [animateIn, setAnimateIn] = useState(true)
+  const [animateIn] = useState(true)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
   const supabase = createClient()
@@ -58,23 +59,31 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
         if (error) throw error
 
         if (data.user) {
-          // Save profile with name
           try {
-            await saveProfile({ name: trimmedName, onboarded: true })
+            await saveProfile({ name: trimmedName, onboarded: false })
           } catch (err) {
             console.error("Profile save error:", err)
+            toast.warning("Account created, but we couldn't save your profile yet. You can finish onboarding after signing in.")
           }
 
-          toast.success("Account created! Please check your email to verify your account.")
-          // Auto sign in after signup
+          // If the project requires email confirmation, the session won't be set.
+          if (!data.session) {
+            toast.success("Account created! Check your email to verify, then sign in.")
+            setIsSignUp(false)
+            return
+          }
+
+          toast.success("Account created!")
           const { error: signInError } = await supabase.auth.signInWithPassword({
             email: trimmedEmail,
             password: trimmedPassword,
           })
-          if (!signInError) {
-            onLogin()
-            router.refresh()
+          if (signInError) {
+            toast.error(getAuthErrorMessage(signInError, "Could not sign in after signup. Please try logging in."))
+            return
           }
+          onLogin()
+          router.refresh()
         }
       } else {
         // Sign in
@@ -89,8 +98,8 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
         onLogin()
         router.refresh()
       }
-    } catch (error: any) {
-      toast.error(error.message || "Authentication failed. Please try again.")
+    } catch (error: unknown) {
+      toast.error(getAuthErrorMessage(error, "Authentication failed. Please try again."))
     } finally {
       setLoading(false)
     }
@@ -106,8 +115,8 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
         },
       })
       if (error) throw error
-    } catch (error: any) {
-      toast.error(error.message || `Sign in with ${provider} failed.`)
+    } catch (error: unknown) {
+      toast.error(getAuthErrorMessage(error, `Sign in with ${provider} failed.`))
       setLoading(false)
     }
   }
@@ -125,8 +134,8 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
       })
       if (error) throw error
       toast.success("Password reset email sent! Check your inbox.")
-    } catch (error: any) {
-      toast.error(error.message || "Failed to send reset email.")
+    } catch (error: unknown) {
+      toast.error(getAuthErrorMessage(error, "Failed to send reset email."))
     } finally {
       setLoading(false)
     }
@@ -163,16 +172,39 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
           <p className="mt-1 text-xs tracking-widest uppercase text-muted-foreground">
             {siteConfig.tagline}
           </p>
+          <div className="mt-3 flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 rounded-full bg-metric-move/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-metric-move">
+              Goals
+            </span>
+            <span className="text-muted-foreground/40" aria-hidden>·</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-metric-run/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-metric-run">
+              Runs
+            </span>
+            <span className="text-muted-foreground/40" aria-hidden>·</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-metric-coach/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-metric-coach">
+              Coach
+            </span>
+          </div>
         </div>
       </div>
 
       {/* Form section */}
       <div className="flex flex-1 flex-col px-6 pt-6 pb-8">
         {/* Toggle */}
-        <div className="mx-auto mb-6 flex w-full max-w-sm rounded-lg bg-secondary p-1">
+        <div
+          role="tablist"
+          aria-label="Authentication mode"
+          className="mx-auto mb-6 flex w-full max-w-sm rounded-lg bg-secondary p-1"
+        >
           <button
+            type="button"
+            role="tab"
+            id="auth-tab-signin"
+            aria-selected={!isSignUp}
+            aria-controls="auth-panel"
+            tabIndex={!isSignUp ? 0 : -1}
             onClick={() => setIsSignUp(false)}
-            className={`flex-1 rounded-md py-2.5 text-sm font-medium transition-all duration-300 ${
+            className={`flex-1 rounded-md py-2.5 text-sm font-medium transition-all duration-300 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
               !isSignUp
                 ? "bg-primary text-primary-foreground scale-[1.02]"
                 : "text-muted-foreground hover:text-foreground"
@@ -181,8 +213,14 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
             Sign In
           </button>
           <button
+            type="button"
+            role="tab"
+            id="auth-tab-signup"
+            aria-selected={isSignUp}
+            aria-controls="auth-panel"
+            tabIndex={isSignUp ? 0 : -1}
             onClick={() => setIsSignUp(true)}
-            className={`flex-1 rounded-md py-2.5 text-sm font-medium transition-all duration-300 ${
+            className={`flex-1 rounded-md py-2.5 text-sm font-medium transition-all duration-300 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
               isSignUp
                 ? "bg-primary text-primary-foreground scale-[1.02]"
                 : "text-muted-foreground hover:text-foreground"
@@ -192,7 +230,13 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mx-auto w-full max-w-sm space-y-4">
+        <form
+          id="auth-panel"
+          role="tabpanel"
+          aria-labelledby={isSignUp ? "auth-tab-signup" : "auth-tab-signin"}
+          onSubmit={handleSubmit}
+          className="mx-auto w-full max-w-sm space-y-4"
+        >
           {/* Name field (sign up only) */}
           <div
             className={`overflow-hidden transition-all duration-300 ${
@@ -260,7 +304,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
           <Button
             type="submit"
             disabled={loading}
-            className="h-12 w-full rounded-xl bg-primary text-primary-foreground font-semibold text-base hover:bg-primary/90 transition-all disabled:opacity-50"
+            className="h-12 w-full rounded-xl bg-primary text-primary-foreground font-semibold text-base hover:bg-primary/90 transition-all active:scale-[0.98] disabled:opacity-50 shadow-[var(--shadow-card)]"
           >
             {loading ? (
               <>

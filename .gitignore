@@ -6,6 +6,17 @@ __v0_jsx-dev-runtime.ts
 # Common ignores
 node_modules/
 .next/
+# Static export output (Next `out/`). Do not commit unless you intentionally version a static site artifact.
+out/
 .env*.local
 .DS_Store
 certificates
+test-results/
+playwright-report/
+.cache/
+coverage/
+*.tsbuildinfo
+supabase/.temp/
+# Editor / local
+.cursor/worktrees.json
+**/*.backup

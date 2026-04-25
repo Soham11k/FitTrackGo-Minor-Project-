@@ -4,9 +4,10 @@ import { isNetworkError, offlineQueue } from './network-status'
 
 // Use singleton client instance to prevent lock conflicts
 const supabase = createClient()
+type AuthUserResult = Awaited<ReturnType<typeof supabase.auth.getUser>>
 
 // Small helper to avoid hammering auth.getUser in parallel and triggering browser locks
-let cachedAuthUserPromise: Promise<any> | null = null
+let cachedAuthUserPromise: Promise<AuthUserResult> | null = null
 let cachedAuthUserAt = 0
 const AUTH_USER_CACHE_MS = 15_000
 
@@ -32,6 +33,11 @@ function toLocalDateStr(isoOrDate: string | Date): string {
 }
 
 async function withNetworkHandling<T>(id: string, fn: () => Promise<T>): Promise<T> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    offlineQueue.add(() => fn().then(() => {}), id)
+    const err = new TypeError('Failed to fetch: offline')
+    throw err
+  }
   try {
     return await fn()
   } catch (error) {
@@ -41,6 +47,15 @@ async function withNetworkHandling<T>(id: string, fn: () => Promise<T>): Promise
     }
     throw error
   }
+}
+
+/** True when coach_sessions row references columns not present in the remote DB (run `20250301000000_coach_session_competition.sql`). */
+function coachSessionOptionalColumnsUnsupported(e: unknown): boolean {
+  const code = (e as { code?: string })?.code
+  const msg = (e as { message?: string })?.message ?? ''
+  if (code === 'PGRST204') return true
+  if (/schema cache/i.test(msg) && /effective_reps|verified_movement|face_verified_session/i.test(msg)) return true
+  return false
 }
 
 /** Serialize any error to a readable string (Supabase errors often log as "{}" otherwise). */
@@ -66,11 +81,12 @@ async function retryWithBackoff<T>(
   for (let i = 0; i < maxRetries; i++) {
     try {
       return await fn()
-    } catch (error: any) {
-      const msg = error?.message ?? ''
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error)
+      const errorName = error instanceof Error ? error.name : ""
       const isLockError = msg.includes('LockManager') || msg.includes('lock') || msg.includes('timeout')
       const isNetworkError = msg.includes('Failed to fetch') || msg.includes('fetch') ||
-        error?.name === 'TypeError' || msg.includes('NetworkError')
+        errorName === 'TypeError' || msg.includes('NetworkError')
       
       if ((isLockError || isNetworkError) && i < maxRetries - 1) {
         // Wait with exponential backoff before retrying
@@ -154,7 +170,12 @@ export async function saveProfile(patch: Partial<UserProfile>) {
   const { data: { user } } = await getCachedAuthUser()
   if (!user) throw new Error('Not authenticated')
 
-  const updates: any = {}
+  const updates: Partial<{
+    name: string
+    level: UserProfile['level']
+    goals: string[]
+    onboarded: boolean
+  }> = {}
   if (patch.name !== undefined) updates.name = patch.name
   if (patch.level !== undefined) updates.level = patch.level
   if (patch.goals !== undefined) updates.goals = patch.goals
@@ -308,15 +329,26 @@ export async function addCoachSession(r: Omit<CoachRecord, 'id' | 'completedAt'>
     const { data: { user } } = await getCachedAuthUser()
     if (!user) throw new Error('Not authenticated')
 
-    const { error } = await supabase
-      .from('coach_sessions')
-      .insert({
-        user_id: user.id,
-        exercise: r.exercise,
-        reps: r.reps,
-        score: r.score,
-        rep_scores: r.repScores,
-      })
+    const row: Record<string, unknown> = {
+      user_id: user.id,
+      exercise: r.exercise,
+      reps: r.reps,
+      score: r.score,
+      rep_scores: r.repScores,
+    }
+    if (r.effectiveReps !== undefined) row.effective_reps = r.effectiveReps
+    if (r.verifiedMovement !== undefined) row.verified_movement = r.verifiedMovement
+    if (r.faceVerifiedSession !== undefined) row.face_verified_session = r.faceVerifiedSession
+
+    let { error } = await supabase.from('coach_sessions').insert(row)
+    // Older DBs without migration 20250301000000: PostgREST schema cache has no effective_reps / etc.
+    if (error && coachSessionOptionalColumnsUnsupported(error)) {
+      const minimal = { ...row } as Record<string, unknown>
+      delete minimal.effective_reps
+      delete minimal.verified_movement
+      delete minimal.face_verified_session
+      ;({ error } = await supabase.from('coach_sessions').insert(minimal))
+    }
 
     if (error) throw error
     await refreshStreak()
@@ -338,13 +370,26 @@ export async function getCoachSessions(): Promise<CoachRecord[]> {
     return []
   }
 
-  return ((data || []) as Array<{ id: string; exercise: string; reps?: number; score?: number; rep_scores?: number[]; completed_at?: string | null }>).map((c) => ({
+  return ((data || []) as Array<{
+    id: string
+    exercise: string
+    reps?: number
+    score?: number
+    rep_scores?: number[]
+    effective_reps?: number | null
+    verified_movement?: boolean | null
+    face_verified_session?: boolean | null
+    completed_at?: string | null
+  }>).map((c) => ({
     id: c.id,
     exercise: c.exercise,
     reps: c.reps || 0,
     score: c.score || 0,
     repScores: c.rep_scores || [],
     completedAt: c.completed_at ?? '',
+    effectiveReps: c.effective_reps ?? undefined,
+    verifiedMovement: c.verified_movement ?? undefined,
+    faceVerifiedSession: c.face_verified_session ?? undefined,
   }))
 }
 
@@ -459,7 +504,10 @@ export async function getRecentActivity(limit = 10) {
 
   const all: { type: string; title: string; detail: string; time: string }[] = [
     ...workouts.map((w) => ({ type: 'workout', title: w.title, detail: `${w.exerciseCount} exercises · ${Math.round(w.duration / 60)}min`, time: w.completedAt })),
-    ...runs.map((r) => ({ type: 'run', title: 'Run', detail: `${r.distance.toFixed(2)} km · ${r.pace} pace`, time: r.completedAt })),
+    ...runs.map((r) => {
+      const km = Number.isFinite(r.distance) ? r.distance : 0
+      return { type: 'run', title: 'Run', detail: `${km.toFixed(2)} km · ${r.pace ?? '—'} pace`, time: r.completedAt }
+    }),
     ...coachSessions.map((c) => ({ type: 'coach', title: `AI: ${c.exercise}`, detail: `${c.reps} reps · ${c.score}%`, time: c.completedAt })),
   ]
   all.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
@@ -486,7 +534,6 @@ export async function getTodaySummary() {
 }
 
 export async function getLastDoneExerciseIds(): Promise<number[]> {
-  const workouts = await getWorkouts()
-  const titles = new Set(workouts.map((w) => w.title))
+  await getWorkouts()
   return [] // map title to exercise id if you have a mapping
 }

@@ -2,8 +2,9 @@
 
 import { useState, useMemo, useEffect } from "react"
 import { Clock, Flame, ChevronRight, Play, Star, Filter, Dumbbell, Heart, Zap, RefreshCw } from "lucide-react"
-import { getFavorites, toggleFavorite, addWorkout, getWorkouts, formatErr } from "@/lib/store-supabase"
+import { getFavorites, toggleFavorite, getWorkouts, formatErr } from "@/lib/store-supabase"
 import { getExercises, type ExerciseItem } from "@/lib/data"
+import { WorkoutPlayer } from "@/components/workout-player"
 import { toast } from "sonner"
 
 type Category = "all" | "strength" | "cardio" | "yoga" | "hiit"
@@ -49,7 +50,7 @@ const categoryIcons: Record<Category, typeof Dumbbell> = {
   hiit: Zap,
 }
 
-export function ExerciseLibrary() {
+export function ExerciseLibrary({ onOpenAICoach: _onOpenAICoach }: { onOpenAICoach?: () => void } = {}) {
   const [activeCategory, setActiveCategory] = useState<Category>("all")
   const [durationFilter, setDurationFilter] = useState<DurationFilter>("all")
   const [sortBy, setSortBy] = useState<SortBy>("default")
@@ -58,6 +59,7 @@ export function ExerciseLibrary() {
   const [favorites, setFavorites] = useState<number[]>([])
   const [completedTitles, setCompletedTitles] = useState<Set<string>>(new Set())
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [initialLoading, setInitialLoading] = useState(true)
 
   const loadFavoritesAndWorkouts = async () => {
     setLoadError(null)
@@ -69,6 +71,8 @@ export function ExerciseLibrary() {
       const msg = formatErr(error)
       setLoadError(msg)
       console.error("Failed to load favorites/workouts:", msg)
+    } finally {
+      setInitialLoading(false)
     }
   }
 
@@ -226,13 +230,36 @@ export function ExerciseLibrary() {
         </div>
         <div className="absolute bottom-0 left-0 right-0 p-5">
           <DifficultyBadge level={featured.difficulty} />
-          <h3 className="mt-2 text-lg font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
+          <h3 className="mt-2 text-xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
             {featured.title}
           </h3>
-          <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {featured.duration}</span>
-            <span className="flex items-center gap-1"><Flame className="h-3 w-3" /> {featured.calories} cal</span>
-            <span className="flex items-center gap-1"><Star className="h-3 w-3 text-chart-4" fill="currentColor" /> {featured.rating}</span>
+          <div className="mt-1 flex items-end gap-3">
+            <div className="flex items-baseline gap-1">
+              <span
+                className="text-2xl font-bold tabular-nums text-foreground"
+                style={{ fontFamily: "var(--font-heading)" }}
+              >
+                {featured.durationMin}
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                min
+              </span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span
+                className="text-2xl font-bold tabular-nums text-metric-hr"
+                style={{ fontFamily: "var(--font-heading)" }}
+              >
+                {featured.calories}
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                kcal
+              </span>
+            </div>
+            <span className="ml-auto flex items-center gap-1 text-xs font-semibold tabular-nums text-metric-streak">
+              <Star className="h-3.5 w-3.5" fill="currentColor" />
+              {featured.rating}
+            </span>
           </div>
         </div>
         <div className="absolute right-4 bottom-5 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
@@ -241,7 +268,24 @@ export function ExerciseLibrary() {
       </div>
 
       <div className="flex flex-col gap-3">
-        {filtered.length === 0 ? (
+        {initialLoading ? (
+          <div className="space-y-3" aria-busy="true" aria-label="Loading exercises">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="flex items-center gap-4 rounded-2xl bg-card p-3 border border-border"
+              >
+                <div className="h-20 w-20 animate-pulse rounded-xl bg-muted" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 w-20 animate-pulse rounded-full bg-muted" />
+                  <div className="h-4 w-40 animate-pulse rounded-md bg-muted" />
+                  <div className="h-3 w-32 animate-pulse rounded-full bg-muted/70" />
+                </div>
+                <div className="h-6 w-10 animate-pulse rounded bg-muted/70" />
+              </div>
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="rounded-2xl bg-card border border-border p-8 text-center">
             <Dumbbell className="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" />
             <p className="text-sm font-medium text-foreground">No exercises found</p>
@@ -260,7 +304,7 @@ export function ExerciseLibrary() {
                 setSelectedExercise(exercise)
               }
             }}
-            className="flex items-center gap-4 rounded-2xl bg-card p-3 border border-border text-left transition-all hover:border-primary/30 active:scale-[0.98] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="flex items-center gap-4 rounded-2xl bg-card p-3 border border-border text-left transition-transform hover:border-primary/30 active:scale-[0.98] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <div className={`h-20 w-20 rounded-xl bg-gradient-to-br flex items-center justify-center shrink-0 ${categoryGradients[exercise.category]}`}>
               {(() => { const Icon = categoryIcons[exercise.category]; return <Icon className="h-8 w-8 text-white/50" /> })()}
@@ -269,20 +313,42 @@ export function ExerciseLibrary() {
               <div className="flex items-center gap-2 flex-wrap">
                 <DifficultyBadge level={exercise.difficulty} />
                 {completedTitles.has(exercise.title) && (
-                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-primary/15 text-primary">Done</span>
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-metric-move/15 text-metric-move">Done</span>
                 )}
               </div>
               <h3 className="mt-1 text-sm font-semibold text-foreground truncate">{exercise.title}</h3>
-              <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {exercise.duration}</span>
-                <span className="flex items-center gap-1"><Flame className="h-3 w-3" /> {exercise.calories} cal</span>
+              <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                <span>{exercise.duration}</span>
+              </div>
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="flex items-baseline justify-end gap-1">
+                <span
+                  className="text-lg font-bold tabular-nums leading-none text-foreground"
+                  style={{ fontFamily: "var(--font-heading)" }}
+                >
+                  {exercise.durationMin}
+                </span>
+                <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                  min
+                </span>
+              </div>
+              <div className="mt-1 flex items-baseline justify-end gap-1">
+                <span className="text-sm font-semibold tabular-nums leading-none text-metric-hr">
+                  {exercise.calories}
+                </span>
+                <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                  kcal
+                </span>
               </div>
             </div>
             <button
               onClick={(e) => handleToggleFavorite(e, exercise.id)}
               className="p-2 shrink-0 rounded-full hover:bg-secondary"
+              aria-label="Toggle favorite"
             >
-              <Star className={`h-4 w-4 ${favorites.includes(exercise.id) ? "fill-chart-4 text-chart-4" : "text-muted-foreground"}`} />
+              <Star className={`h-4 w-4 ${favorites.includes(exercise.id) ? "fill-metric-streak text-metric-streak" : "text-muted-foreground"}`} />
             </button>
             <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
           </div>
@@ -307,32 +373,30 @@ function ExerciseDetail({
   onToggleFavorite: () => void
   lastDone: boolean
 }) {
-  const exerciseSteps = [
-    { name: "Warm Up", duration: "3 min", reps: "Dynamic stretches" },
-    { name: "Push Ups", duration: "45 sec", reps: "15 reps x 3 sets" },
-    { name: "Squats", duration: "45 sec", reps: "20 reps x 3 sets" },
-    { name: "Plank Hold", duration: "60 sec", reps: "3 sets" },
-    { name: "Lunges", duration: "45 sec", reps: "12 each leg x 3" },
-    { name: "Burpees", duration: "30 sec", reps: "10 reps x 3 sets" },
-    { name: "Mountain Climbers", duration: "30 sec", reps: "20 reps x 3" },
-    { name: "Cool Down", duration: "5 min", reps: "Stretching" },
-  ]
+  const [playing, setPlaying] = useState(false)
 
-  const handleStartWorkout = async () => {
-    try {
-      await addWorkout({
-        title: exercise.title,
-        category: exercise.category,
-        duration: exercise.durationMin * 60,
-        calories: exercise.calories,
-        exerciseCount: exercise.exercises,
-      })
-      toast.success(`"${exercise.title}" completed!`)
-      onBack()
-    } catch (error) {
-      toast.error("Failed to save workout")
-      console.error(error)
-    }
+  const exerciseSteps = exercise.steps && exercise.steps.length > 0
+    ? exercise.steps
+    : [
+        { name: "Warm up", duration: "3 min", reps: "Dynamic stretches" },
+        { name: exercise.title, duration: `${exercise.durationMin} min`, reps: "Steady pace" },
+        { name: "Cool down", duration: "3 min", reps: "Stretching" },
+      ]
+
+  if (playing) {
+    return (
+      <WorkoutPlayer
+        exercise={exercise}
+        onExit={(completed) => {
+          setPlaying(false)
+          if (completed) onBack()
+        }}
+      />
+    )
+  }
+
+  const handleStartWorkout = () => {
+    setPlaying(true)
   }
 
   return (

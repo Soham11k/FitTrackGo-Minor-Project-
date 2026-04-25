@@ -12,6 +12,7 @@ import { fileURLToPath } from "url"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function p(text, opts = {}) {
   return new Paragraph({
     children: [new TextRun({ text, ...opts })],

@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest"
 import { analyzeForm, getRepPhase, type Landmark, type ExerciseId } from "./form-analysis"
 
 /** Build a minimal landmark array (33 MediaPipe indices). */
-function makeLandmarks(overrides: Partial<Record<number, { x: number; y: number }>> = {}): Landmark[] {
-  const lm: Landmark[] = Array.from({ length: 33 }, (_, i) => ({
+function makeLandmarks(overrides: Partial<Record<number, Pick<Landmark, "x" | "y"> & Partial<Pick<Landmark, "z" | "visibility">>>> = {}): Landmark[] {
+  const lm: Landmark[] = Array.from({ length: 33 }, () => ({
     x: 0.5,
     y: 0.5,
     visibility: 1,
@@ -61,6 +61,42 @@ describe("form-analysis", () => {
       const result = analyzeForm(lm, "squat")
       expect(result.score).toBeGreaterThanOrEqual(0)
       expect(result.breakdown.length).toBeGreaterThan(0)
+    })
+
+    it("applies trackingQuality scale to the final score", () => {
+      const lm = makeLandmarks()
+      const full = analyzeForm(lm, "plank", { trackingQuality: 1 })
+      const low = analyzeForm(lm, "plank", { trackingQuality: 0.1 })
+      expect(full.trackingReliability).toBe(1)
+      expect(low.trackingReliability).toBeLessThan(1)
+      expect(low.score).toBeLessThanOrEqual(full.score)
+    })
+
+    it("world landmarks can change squat score vs image-only (3D path)", () => {
+      const lm = makeLandmarks({
+        23: { x: 0.5, y: 0.55, visibility: 1 },
+        24: { x: 0.52, y: 0.55, visibility: 1 },
+        25: { x: 0.48, y: 0.65, visibility: 1 },
+        26: { x: 0.54, y: 0.65, visibility: 1 },
+        27: { x: 0.46, y: 0.8, visibility: 1 },
+        28: { x: 0.56, y: 0.8, visibility: 1 },
+        11: { x: 0.45, y: 0.4, visibility: 1 },
+        12: { x: 0.55, y: 0.4, visibility: 1 },
+      })
+      const world: Landmark[] = Array.from({ length: 33 }, () => ({ x: 0, y: 0, z: 0, visibility: 1 }))
+      world[23] = { x: -0.1, y: 0, z: 0, visibility: 1 }
+      world[24] = { x: 0.1, y: 0, z: 0, visibility: 1 }
+      world[25] = { x: -0.1, y: -0.4, z: 0.1, visibility: 1 }
+      world[26] = { x: 0.1, y: -0.4, z: 0.1, visibility: 1 }
+      world[27] = { x: -0.1, y: -0.85, z: 0, visibility: 1 }
+      world[28] = { x: 0.1, y: -0.85, z: 0, visibility: 1 }
+      world[11] = { x: -0.1, y: 0.45, z: 0, visibility: 1 }
+      world[12] = { x: 0.1, y: 0.45, z: 0, visibility: 1 }
+      const a = analyzeForm(lm, "squat", { world: undefined })
+      const b = analyzeForm(lm, "squat", { world })
+      expect(a.score).toBeDefined()
+      expect(b.score).toBeDefined()
+      expect(b.breakdown[0].value).toMatch(/°/)
     })
   })
 

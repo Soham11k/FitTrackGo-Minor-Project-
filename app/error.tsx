@@ -3,6 +3,7 @@
 import { useEffect } from "react"
 import { AlertCircle, RefreshCw, Home } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useLocale } from "@/components/locale-provider"
 
 export default function Error({
   error,
@@ -11,10 +12,27 @@ export default function Error({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  const { t } = useLocale()
+  const isDev = process.env.NODE_ENV === "development"
+
   useEffect(() => {
-    // Log error to console for debugging
     console.error("Application error:", error)
-  }, [error])
+    const url = process.env.NEXT_PUBLIC_ERROR_REPORTING_URL || "/api/report-error"
+    if (typeof fetch !== "function") return
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: error.message,
+        digest: error.digest,
+        name: error.name,
+        stack: isDev ? error.stack : undefined,
+        url: typeof window !== "undefined" ? window.location.href : undefined,
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
+      }),
+      keepalive: true,
+    }).catch(() => {})
+  }, [error, isDev])
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
@@ -27,18 +45,21 @@ export default function Error({
         
         <div className="space-y-2">
           <h1 className="text-2xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
-            Something went wrong
+            {t("error.title")}
           </h1>
           <p className="text-sm text-muted-foreground">
-            We encountered an unexpected error. Don't worry, your data is safe.
+            {t("error.description")}
           </p>
         </div>
 
-        {error.message && (
+        {isDev && error.message && (
           <div className="rounded-lg bg-card border border-border p-4 text-left">
-            <p className="text-xs font-medium text-muted-foreground mb-1">Error details:</p>
+            <p className="text-xs font-medium text-muted-foreground mb-1">{t("error.details")}</p>
             <p className="text-sm text-foreground font-mono break-all">{error.message}</p>
           </div>
+        )}
+        {error.digest && (
+          <p className="text-xs text-muted-foreground">{t("error.reference")} {error.digest}</p>
         )}
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -47,7 +68,7 @@ export default function Error({
             className="flex items-center gap-2"
           >
             <RefreshCw className="h-4 w-4" />
-            Try again
+            {t("error.tryAgain")}
           </Button>
           <Button
             variant="outline"
@@ -55,12 +76,12 @@ export default function Error({
             className="flex items-center gap-2"
           >
             <Home className="h-4 w-4" />
-            Go home
+            {t("error.goHome")}
           </Button>
         </div>
 
         <p className="text-xs text-muted-foreground pt-4">
-          If this problem persists, try refreshing the page or clearing your browser cache.
+          {t("error.footerHint")}
         </p>
       </div>
     </div>

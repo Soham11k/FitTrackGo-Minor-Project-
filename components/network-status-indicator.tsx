@@ -4,21 +4,23 @@ import { useNetworkStatus } from "@/lib/network-status"
 import { Wifi, WifiOff, AlertCircle, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { useEffect } from "react"
+import { useLocale } from "@/components/locale-provider"
 
 export function NetworkStatusIndicator() {
+  const { t } = useLocale()
   const { status, isOffline, isSlow, queuedActions } = useNetworkStatus()
 
   useEffect(() => {
     if (isOffline) {
-      toast.error("You're offline. Some features may be limited.", {
+      toast.error(t("network.offlineToast"), {
         duration: 5000,
       })
     } else if (isSlow) {
-      toast.warning("Slow connection detected. Actions may take longer.", {
+      toast.warning(t("network.slowToast"), {
         duration: 3000,
       })
     }
-  }, [isOffline, isSlow])
+  }, [isOffline, isSlow, t])
 
   if (status === "online" && queuedActions.length === 0) {
     return null
@@ -32,11 +34,11 @@ export function NetworkStatusIndicator() {
             <>
               <WifiOff className="h-4 w-4 text-destructive" />
               <span className="text-xs font-medium text-foreground">
-                Offline
+                {t("network.offlineLabel")}
               </span>
               {queuedActions.length > 0 && (
                 <span className="text-xs text-muted-foreground">
-                  ({queuedActions.length} pending)
+                  ({queuedActions.length} {t("network.pending")})
                 </span>
               )}
             </>
@@ -44,21 +46,21 @@ export function NetworkStatusIndicator() {
             <>
               <AlertCircle className="h-4 w-4 text-chart-4" />
               <span className="text-xs font-medium text-foreground">
-                Slow connection
+                {t("network.slowLabel")}
               </span>
             </>
           ) : queuedActions.length > 0 ? (
             <>
               <RefreshCw className="h-4 w-4 text-primary animate-spin" />
               <span className="text-xs font-medium text-foreground">
-                Syncing {queuedActions.length} action{queuedActions.length !== 1 ? "s" : ""}
+                {t("network.syncing")} {queuedActions.length}
               </span>
             </>
           ) : (
             <>
               <Wifi className="h-4 w-4 text-primary" />
               <span className="text-xs font-medium text-foreground">
-                Online
+                {t("network.online")}
               </span>
             </>
           )}

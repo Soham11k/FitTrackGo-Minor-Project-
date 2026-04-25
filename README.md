@@ -40,6 +40,15 @@ Without Supabase configured, the app shows an in-app setup guide instead of the 
 | `npm run start` | Start production   |
 | `npm run lint`  | Run ESLint         |
 | `npm run test`  | Run unit tests     |
+| `npm run ci:check` | Same gates as CI: validate-env, lint, typecheck, test, build, bundle guard |
+| `npm run synthetic-checks` | HTTP smoke for `/`, `/api/health`, `/login` (`SYNTHETIC_BASE_URL` for deploys) |
+| `npm run test:e2e` | Playwright (run after `npm run build && npm run start`) |
+
+## Release quality
+
+See [docs/PRODUCTION-CHECKLIST.md](./docs/PRODUCTION-CHECKLIST.md) and [docs/API-SECURITY-ROUTES.md](./docs/API-SECURITY-ROUTES.md).
+
+The `out/` directory is a **Next.js static export** output when you use `next export` / static builds; it is gitignored by default. Android/Capacitor flows that generate a static bundle are documented in [ANDROID-BUILD.md](./ANDROID-BUILD.md).
 
 ## Tech
 

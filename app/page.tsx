@@ -1,20 +1,43 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
+import dynamic from "next/dynamic"
 import { SplashScreen } from "@/components/splash-screen"
 import { LoginScreen } from "@/components/login-screen"
 import { BottomNav, type TabId } from "@/components/bottom-nav"
 import { Dashboard } from "@/components/dashboard"
-import { RunTracker } from "@/components/run-tracker"
-import { ExerciseLibrary } from "@/components/exercise-library"
-import { AICoach } from "@/components/ai-coach"
+
+const TabLoader = () => (
+  <div className="flex h-[70vh] items-center justify-center" aria-busy="true" aria-label="Loading">
+    <div className="h-10 w-10 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
+  </div>
+)
+
+const RunTracker = dynamic(() => import("@/components/run-tracker").then((m) => m.RunTracker), {
+  ssr: false,
+  loading: () => <TabLoader />,
+})
+const ExerciseLibrary = dynamic(
+  () => import("@/components/exercise-library").then((m) => m.ExerciseLibrary),
+  { ssr: false, loading: () => <TabLoader /> }
+)
+const AICoach = dynamic(() => import("@/components/ai-coach").then((m) => m.AICoach), {
+  ssr: false,
+  loading: () => <TabLoader />,
+})
+const ArenaHub = dynamic(() => import("@/components/arena-hub").then((m) => m.ArenaHub), {
+  ssr: false,
+  loading: () => <TabLoader />,
+})
 import { ProfileScreen } from "@/components/profile-screen"
 import { WorkoutHistory } from "@/components/workout-history"
+import { OnboardingWizard } from "@/components/onboarding-wizard"
 import { SupabaseSetupGuide } from "@/components/supabase-setup-guide"
 import { NetworkStatusIndicator } from "@/components/network-status-indicator"
 import { Activity, AlertTriangle, X } from "lucide-react"
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client"
-import { getStreak } from "@/lib/store-supabase"
+import { getAuthErrorMessage } from "@/lib/supabase/config"
+import { getProfile } from "@/lib/store-supabase"
 import { isSecureContext } from "@/lib/secure-context"
 import { siteConfig } from "@/lib/data"
 
@@ -26,10 +49,11 @@ export default function Page() {
   const [activeTab, setActiveTab] = useState<TabId>("home")
   const [view, setView] = useState<View>("main")
   const [transitioning, setTransitioning] = useState(false)
-  const [streak, setStreak] = useState(0)
   const [showSetupGuide, setShowSetupGuide] = useState(false)
   const [insecureContext, setInsecureContext] = useState(false)
   const [insecureBannerDismissed, setInsecureBannerDismissed] = useState(false)
+  const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null)
+  const [initialName, setInitialName] = useState<string>("")
   const supabase = createClient()
 
   useEffect(() => {
@@ -50,17 +74,24 @@ export default function Page() {
     setShowSetupGuide(false)
 
     async function checkAuth() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user && appState === "splash") {
-        setAppState("app")
-      } else if (!user && appState === "app") {
-        setAppState("login")
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user && appState === "splash") {
+          setAppState("app")
+        } else if (!user && appState === "app") {
+          setAppState("login")
+        }
+      } catch (error) {
+        console.warn("Auth check failed:", getAuthErrorMessage(error, "Unable to validate auth session."))
+        if (appState === "app") {
+          setAppState("login")
+        }
       }
     }
     checkAuth()
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, session: { user?: unknown } | null) => {
       if (event === "SIGNED_IN" && session) {
         setAppState("app")
       } else if (event === "SIGNED_OUT") {
@@ -71,16 +102,23 @@ export default function Page() {
     return () => subscription.unsubscribe()
   }, [appState, supabase])
 
-  // Load streak for header when user is in app
+  // Check onboarding flag once the user is signed in.
   useEffect(() => {
     if (appState !== "app") return
-    getStreak().then(setStreak).catch(() => setStreak(0))
+    let cancelled = false
+    getProfile()
+      .then((p) => {
+        if (cancelled) return
+        setInitialName(p?.name ?? "")
+        setNeedsOnboarding(p?.onboarded === false)
+      })
+      .catch(() => {
+        if (!cancelled) setNeedsOnboarding(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [appState])
-
-  // Show setup guide if Supabase is not configured
-  if (showSetupGuide) {
-    return <SupabaseSetupGuide />
-  }
 
   const handleSplashComplete = useCallback(() => {
     setAppState("login")
@@ -118,12 +156,14 @@ export default function Page() {
     } catch {}
   }, [])
 
-  // Splash screen
+  if (showSetupGuide) {
+    return <SupabaseSetupGuide />
+  }
+
   if (appState === "splash") {
     return <SplashScreen onComplete={handleSplashComplete} />
   }
 
-  // Login screen
   if (appState === "login") {
     return (
       <div
@@ -136,15 +176,24 @@ export default function Page() {
     )
   }
 
-  // Main app
+  if (needsOnboarding) {
+    return (
+      <OnboardingWizard
+        initialName={initialName}
+        onComplete={() => setNeedsOnboarding(false)}
+      />
+    )
+  }
+
   return (
     <div
       className={`min-h-screen bg-background transition-opacity duration-300 ${
         transitioning ? "opacity-0" : "opacity-100"
       }`}
     >
-      {/* Top bar */}
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-background/80 backdrop-blur-xl px-4 py-3">
+      {/* Top bar — slim, brand-only. Streak lives in the Dashboard hero to
+          avoid duplicate chrome. */}
+      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-background/80 backdrop-blur-xl px-4 py-2.5">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Activity className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
@@ -162,11 +211,6 @@ export default function Page() {
               siteConfig.appName
             )}
           </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-card border border-border" title="Day streak">
-            <span className="text-xs font-bold text-primary">{streak}</span>
-          </div>
         </div>
       </header>
 
@@ -203,6 +247,7 @@ export default function Page() {
             {activeTab === "run" && <RunTracker />}
             {activeTab === "exercises" && <ExerciseLibrary onOpenAICoach={() => handleTabChange("ai-coach")} />}
             {activeTab === "ai-coach" && <AICoach />}
+            {activeTab === "arena" && <ArenaHub />}
             {activeTab === "profile" && <ProfileScreen onLogout={handleLogout} />}
           </>
         )}

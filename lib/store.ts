@@ -35,6 +35,12 @@ export interface CoachRecord {
   score: number
   repScores: number[]
   completedAt: string
+  /** Form-weighted rep volume (for fair rankings) */
+  effectiveReps?: number
+  /** Met verified-movement tier (high form bar) */
+  verifiedMovement?: boolean
+  /** Face-enrolled user with verified identity during counted reps */
+  faceVerifiedSession?: boolean
 }
 
 export interface AppData {
@@ -185,7 +191,6 @@ export function getTodaySummary() {
 }
 
 export function getLastDoneExerciseIds(): number[] {
-  const d = load()
-  const titles = new Set(d.workouts.map((w) => w.title))
+  load()
   return [] // map title to exercise id if you have a mapping; for now return []
 }

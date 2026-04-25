@@ -35,7 +35,7 @@ This writes the static site into the `out` folder. Use that folder as the Capaci
 
 On **Windows (CMD)** run `set BUILD_FOR_ANDROID=1 && npm run build` instead. On **PowerShell**: `$env:BUILD_FOR_ANDROID=1; npm run build`.
 
-**Note:** Your app has a server route (`/auth/callback`) for OAuth. Static export cannot run it, so `npm run build:android` temporarily swaps in a static stub (see `scripts/prepare-android-build.mjs` and `route.static.ts`) and restores the real route after the build. For the APK:
+**Note:** Static export cannot run real API routes or OAuth callbacks. `npm run build:android` temporarily swaps **`route.ts`** with **`route.static.ts`** stubs for **auth/callback** and **every `app/api/**/route`** (health, wearables, delete-account, etc.), then restores the real files after the build (see `scripts/prepare-android-build.mjs` / `restore-after-android-build.mjs`). The APK uses **Supabase from the client**; Fitbit OAuth, sync, and other APIs need your **hosted** deployment (or you point the WebView at that URL). For the APK:
 
 - **Email/password sign-in** works as-is (client-side).
 - **Google/Apple OAuth:** Deploy this app to a host (e.g. Vercel), set the Supabase redirect URL to your hosted URL (e.g. `https://your-app.vercel.app/auth/callback`). In the Android app you can open that URL in an in-app browser for sign-in, or use Supabase + Capacitor deep links (see [Supabase Auth with Capacitor](https://supabase.com/docs/guides/auth/native-mobile-deep-linking)).

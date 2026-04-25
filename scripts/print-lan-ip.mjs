@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import os from "os";
+import os from "node:os"
 const nets = os.networkInterfaces();
 for (const name of Object.keys(nets)) {
   for (const n of nets[name]) {
