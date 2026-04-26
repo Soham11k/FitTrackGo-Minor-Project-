@@ -87,9 +87,25 @@ export function isSupabaseFetchError(error: unknown): boolean {
   )
 }
 
+function isSupabaseEmailRateLimitError(error: unknown): boolean {
+  const msg = (error instanceof Error ? error.message : String(error ?? "")).toLowerCase()
+  if (msg.includes("email rate limit") || msg.includes("over_email_send_rate_limit")) {
+    return true
+  }
+  const o = error as { code?: string }
+  if (o.code === "over_email_send_rate_limit") {
+    return true
+  }
+  return false
+}
+
 export function getAuthErrorMessage(error: unknown, fallback: string): string {
   if (isSupabaseFetchError(error)) {
     return "Cannot reach Supabase right now. Check your internet and NEXT_PUBLIC_SUPABASE_URL in .env.local."
+  }
+
+  if (isSupabaseEmailRateLimitError(error)) {
+    return "Supabase email limit reached. Retry in a while, or under Authentication → Providers → Email turn off “Confirm email” for testing (stops a mail on every sign-up)."
   }
 
   if (error instanceof Error && error.message.trim().length > 0) {

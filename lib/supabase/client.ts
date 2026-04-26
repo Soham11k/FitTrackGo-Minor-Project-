@@ -19,9 +19,13 @@ export function createClient() {
     // Return a mock client that won't break the build
     return {
       auth: {
-        getUser: () => Promise.resolve({ 
-          data: { user: null }, 
-          error: { message: setupMessage } 
+        getUser: () => Promise.resolve({
+          data: { user: null },
+          error: { message: setupMessage },
+        }),
+        getSession: () => Promise.resolve({
+          data: { session: null },
+          error: { message: setupMessage },
         }),
         signUp: () => Promise.resolve({ 
           data: { user: null }, 

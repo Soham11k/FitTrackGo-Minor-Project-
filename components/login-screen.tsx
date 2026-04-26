@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { createClient } from "@/lib/supabase/client"
 import { getAuthErrorMessage } from "@/lib/supabase/config"
-import { saveProfile } from "@/lib/store-supabase"
+import { invalidateAuthUserCache, saveProfile } from "@/lib/store-supabase"
 import { siteConfig } from "@/lib/data"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
@@ -59,11 +59,15 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
         if (error) throw error
 
         if (data.user) {
-          try {
-            await saveProfile({ name: trimmedName, onboarded: false })
-          } catch (err) {
-            console.error("Profile save error:", err)
-            toast.warning("Account created, but we couldn't save your profile yet. You can finish onboarding after signing in.")
+          // No JWT until the user confirms email — getProfile() will create the row on first real sign-in (uses user_metadata.name).
+          if (data.session) {
+            invalidateAuthUserCache()
+            try {
+              await saveProfile({ name: trimmedName, onboarded: false })
+            } catch (err) {
+              console.error("Profile save error:", err)
+              toast.warning("Account created, but we couldn't save your profile yet. You can finish onboarding after signing in.")
+            }
           }
 
           // If the project requires email confirmation, the session won't be set.
@@ -82,6 +86,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
             toast.error(getAuthErrorMessage(signInError, "Could not sign in after signup. Please try logging in."))
             return
           }
+          invalidateAuthUserCache()
           onLogin()
           router.refresh()
         }
@@ -94,6 +99,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
 
         if (error) throw error
 
+        invalidateAuthUserCache()
         toast.success("Signed in successfully!")
         onLogin()
         router.refresh()

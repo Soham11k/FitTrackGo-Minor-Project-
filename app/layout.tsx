@@ -73,8 +73,13 @@ export default async function RootLayout({
 }>) {
   const nonce = (await headers()).get('x-nonce') ?? undefined
   return (
-    <html lang={DEFAULT_LOCALE} className={`${inter.variable} ${spaceGrotesk.variable}`} suppressHydrationWarning>
-      <body className="font-sans antialiased overflow-x-hidden">
+    <html
+      lang={DEFAULT_LOCALE}
+      className={`${inter.variable} ${spaceGrotesk.variable} min-h-dvh`}
+      suppressHydrationWarning
+    >
+      {/* Fixed full-viewport UIs do not grow body; min-h-dvh keeps the document (and a11y tree) non-zero height. */}
+      <body className="min-h-dvh font-sans antialiased overflow-x-hidden">
         {/* Browsers strip the `nonce` attribute from the DOM after parsing
             (CSP nonce-hiding), so `element.nonce` reads back as "" during
             hydration. Suppress the mismatch — the nonce still works for CSP. */}

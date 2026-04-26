@@ -24,6 +24,12 @@ async function getCachedAuthUser() {
   return cachedAuthUserPromise
 }
 
+/** After sign-in / sign-up, clear the cache so getUser() sees the new session (avoids a stale 15s window with no user). */
+export function invalidateAuthUserCache() {
+  cachedAuthUserPromise = null
+  cachedAuthUserAt = 0
+}
+
 function toLocalDateStr(isoOrDate: string | Date): string {
   const d = typeof isoOrDate === 'string' ? new Date(isoOrDate) : isoOrDate
   const y = d.getFullYear()

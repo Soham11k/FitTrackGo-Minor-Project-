@@ -3,15 +3,13 @@ import { NextResponse } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 
 /**
- * Phase 4 — nonce-based CSP. We generate a per-request nonce and set it as a
- * request header that the root layout reads via `headers().get('x-nonce')`,
- * then mirror a tightened CSP on the response. This replaces the static
- * 'unsafe-inline'/'unsafe-eval' policy from next.config.mjs for HTML routes.
+ * Edge entry for Next.js 16+ (Turbopack): CSP nonces + Supabase session refresh
+ * via `updateSession`. Only this root `proxy.ts` is allowed — do not add
+ * `middleware.ts` (build error: middleware-to-proxy).
  *
- * Inline <script> tags that need to run (theme / accent bootstrap) must carry
- * `nonce={nonce}`. Third-party CDNs that require 'unsafe-inline' get
- * allowed via explicit hashes or host rules — never via 'unsafe-inline'
- * which would collapse the whole policy.
+ * We set `x-nonce` for the root layout and mirror CSP on the response (stricter
+ * than next.config.mjs). Inline scripts (theme / accent bootstrap) must use
+ * `nonce={nonce}`. Third-party script hosts are allowlisted explicitly.
  */
 export async function proxy(request: NextRequest) {
   const requestId = request.headers.get('x-request-id') || crypto.randomUUID()
