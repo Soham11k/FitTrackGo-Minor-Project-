@@ -55,6 +55,7 @@ import { isInCenter } from "@/lib/center-check"
 import { detectFall, resetFallDetection } from "@/lib/fall-detection"
 import { playFallAlarm, stopFallAlarm } from "@/lib/alarm-sound"
 import { Phone } from "lucide-react"
+import { AICoachLlmPanel } from "@/components/ai-coach-llm-panel"
 
 const POSTURE_PENALTY_THRESHOLD = 75
 const POSTURE_PENALTY_NO_ACCUM_THRESHOLD = 85
@@ -1313,6 +1314,16 @@ export function AICoach() {
           </div>
         ))}
       </div>
+      {selectedExercise && (
+        <AICoachLlmPanel
+          exerciseId={selectedExercise}
+          exerciseName={exerciseName}
+          reps={reps}
+          score={Math.round(score)}
+          repScores={repScores}
+          feedback={feedback}
+        />
+      )}
       <div className="flex gap-3 w-full max-w-sm">
         <button
           onClick={() => {

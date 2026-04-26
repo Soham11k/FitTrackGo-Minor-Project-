@@ -27,6 +27,7 @@ function restoreRoute(parts) {
 
 const ROUTES_TO_RESTORE = [
   ['auth', 'callback'],
+  ['api', 'ai-coach', 'chat'],
   ['api', 'health'],
   ['api', 'report-error'],
   ['api', 'delete-account'],

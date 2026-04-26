@@ -34,6 +34,7 @@ function swapRoute(parts) {
 
 const ROUTES_TO_STUB = [
   ['auth', 'callback'],
+  ['api', 'ai-coach', 'chat'],
   ['api', 'health'],
   ['api', 'report-error'],
   ['api', 'delete-account'],

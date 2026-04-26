@@ -27,4 +27,9 @@ if (missing.length > 0) {
   console.error('Missing required env:', missing.join(', '))
   process.exit(1)
 }
+if (!env.OPENAI_API_KEY?.trim()) {
+  console.warn(
+    'Optional: OPENAI_API_KEY is not set — AI coach (/api/ai-coach/chat) will return 503 until you add it. See .env.local.example.',
+  )
+}
 console.log('Env validation OK')
