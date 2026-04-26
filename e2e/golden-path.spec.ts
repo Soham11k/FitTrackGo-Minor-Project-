@@ -17,9 +17,9 @@ test("golden path: shell is healthy and nav transitions work", async ({ page }) 
   const body = page.locator("body")
   await expect(body).toBeVisible()
 
-  const links = page.locator("a, button")
-  const count = await links.count()
-  expect(count).toBeGreaterThan(0)
+  // Splash has no <a> or <button> (only div/h1) for ~3s. CI is fast enough to
+  // hit 0 links; wait for post-splash setup guide or login (always has controls).
+  await expect(page.locator("a, button").first()).toBeVisible({ timeout: 12_000 })
 
   const errors: string[] = []
   page.on("pageerror", (err) => errors.push(err.message))
