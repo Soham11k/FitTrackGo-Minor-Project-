@@ -1,20 +1,12 @@
 /**
- * Async form duels — stored locally until you add a shared backend.
+ * Async form duels — stored locally when not signed in or as offline fallback.
  */
 
-const KEY = "fittrackgo_duels_v1"
+import type { Duel } from "./duels-types"
 
-export interface Duel {
-  id: string
-  code: string
-  exercise: string
-  createdAt: string
-  challengerScore: number | null
-  challengerName: string
-  opponentScore: number | null
-  opponentName: string | null
-  settled: boolean
-}
+export type { Duel }
+
+const KEY = "fittrackgo_duels_v1"
 
 interface Store { duels: Duel[] }
 

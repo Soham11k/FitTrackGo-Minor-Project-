@@ -38,6 +38,10 @@ const ROUTES_TO_RESTORE = [
   ['api', 'wearables', 'status'],
   ['api', 'wearables', 'fitbit', 'authorize'],
   ['api', 'wearables', 'fitbit', 'callback'],
+  ['api', 'wearables', '[provider]', 'auth'],
+  ['api', 'wearables', '[provider]', 'callback'],
+  ['api', 'wearables', '[provider]', 'disconnect'],
+  ['api', 'cron', 'reminders'],
 ]
 
 for (const parts of ROUTES_TO_RESTORE) {

@@ -12,6 +12,14 @@
 
 export type ProviderId = "fitbit" | "google_fit" | "apple_health" | "garmin"
 
+/** Keep in sync with `ProviderId`; used for static export of `/api/wearables/[provider]/*`. */
+export const ALL_PROVIDER_IDS: ProviderId[] = [
+  "fitbit",
+  "google_fit",
+  "apple_health",
+  "garmin",
+]
+
 export interface ProviderDailyMetrics {
   date: string
   steps: number | null

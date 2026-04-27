@@ -1,6 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import type { AuthChangeEvent } from "@supabase/supabase-js"
+import { toast } from "sonner"
 import { Trophy, Shield, Swords, Sparkles, Globe, Info, Flame } from "lucide-react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { getCoachSessions, getProfile } from "@/lib/store-supabase"
@@ -12,6 +14,16 @@ import {
   VERIFIED_FORM_MIN,
 } from "@/lib/competition"
 import { insightsFromRepScores } from "@/lib/movement-insights"
+import { createClient, isSupabaseConfigured } from "@/lib/supabase/client"
+import {
+  arenaDuelsForceLocalOnly,
+  createFormDuelRemote,
+  isArenaCloudBackendUnavailableError,
+  joinFormDuelRemote,
+  listFormDuelsRemote,
+  submitFormDuelScoreRemote,
+  resolveDuelToastMessage,
+} from "@/lib/duels-supabase"
 import {
   createDuel,
   joinDuelByCode,
@@ -20,13 +32,37 @@ import {
   type Duel,
 } from "@/lib/duels-local"
 
+function latestCoachSessionForExercise(
+  sessions: CoachRecord[],
+  exercise: string
+): CoachRecord | null {
+  const t = exercise.trim().toLowerCase()
+  for (const s of sessions) {
+    if (s.exercise.trim().toLowerCase() === t) return s
+  }
+  return sessions[0] ?? null
+}
+
+function toastDuelFailure(e: unknown) {
+  toast.error(resolveDuelToastMessage(e))
+}
+
 export function ArenaHub() {
   const [sessions, setSessions] = useState<CoachRecord[]>([])
   const [name, setName] = useState("You")
+  const [userId, setUserId] = useState<string | null>(null)
+  const [arenaCloudBlocked, setArenaCloudBlocked] = useState(false)
   const [duels, setDuels] = useState<Duel[]>([])
   const [code, setCode] = useState("")
   const [joinCode, setJoinCode] = useState("")
   const [pickExercise, setPickExercise] = useState("Squats")
+  const deviceOnlyExplainedRef = useRef(false)
+
+  const useCloudDuels =
+    userId !== null &&
+    isSupabaseConfigured() &&
+    !arenaCloudBlocked &&
+    !arenaDuelsForceLocalOnly()
 
   const reload = useCallback(async () => {
     try {
@@ -36,12 +72,88 @@ export function ArenaHub() {
     } catch {
       setSessions([])
     }
-    setDuels(listDuels())
-  }, [])
+
+    if (!isSupabaseConfigured()) {
+      setUserId(null)
+      setDuels(listDuels())
+      return
+    }
+
+    const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    setUserId(user?.id ?? null)
+
+    const tryCloud =
+      !!user && !arenaDuelsForceLocalOnly() && !arenaCloudBlocked
+
+    if (tryCloud) {
+      try {
+        setDuels(await listFormDuelsRemote())
+      } catch (e) {
+        if (isArenaCloudBackendUnavailableError(e)) {
+          setArenaCloudBlocked(true)
+          setDuels(listDuels())
+          if (!deviceOnlyExplainedRef.current) {
+            deviceOnlyExplainedRef.current = true
+            toast.message(
+              "Arena is using device-only duels. Your Supabase project can’t run cloud duels right now (paused, billing, or missing migration). Add NEXT_PUBLIC_ARENA_DUELS_LOCAL_ONLY=1 to .env.local to always skip the server."
+            )
+          }
+        } else {
+          setDuels([])
+        }
+      }
+    } else {
+      setDuels(listDuels())
+    }
+  }, [arenaCloudBlocked])
 
   useEffect(() => {
-    reload()
+    void reload()
   }, [reload])
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return
+    const supabase = createClient()
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event: AuthChangeEvent) => {
+      if (event === "SIGNED_OUT") {
+        setArenaCloudBlocked(false)
+        deviceOnlyExplainedRef.current = false
+      }
+      void reload()
+    })
+    return () => subscription.unsubscribe()
+  }, [reload])
+
+  useEffect(() => {
+    if (
+      !isSupabaseConfigured() ||
+      !userId ||
+      arenaCloudBlocked ||
+      arenaDuelsForceLocalOnly()
+    )
+      return
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`form_duels:${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "form_duels" },
+        () => {
+          void listFormDuelsRemote()
+            .then(setDuels)
+            .catch(() => {})
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [userId, arenaCloudBlocked])
 
   const totalEffective = sessions.reduce(
     (a, s) => a + (s.effectiveReps ?? effectiveRepCount(s.reps, s.repScores, s.score)),
@@ -70,15 +182,122 @@ export function ArenaHub() {
     return [...m.entries()].sort((a, b) => b[1].composite - a[1].composite).slice(0, 6)
   })()
 
-  function onCreateDuel() {
-    const d = createDuel(pickExercise, name)
-    setCode(d.code)
-    setDuels(listDuels())
+  async function onCreateDuel() {
+    try {
+      if (useCloudDuels) {
+        try {
+          const d = await createFormDuelRemote(pickExercise, name)
+          setCode(d.code)
+          setDuels(await listFormDuelsRemote())
+          toast.success("Duel created — share the code.")
+        } catch (e) {
+          if (isArenaCloudBackendUnavailableError(e)) {
+            setArenaCloudBlocked(true)
+            const d = createDuel(pickExercise, name)
+            setCode(d.code)
+            setDuels(listDuels())
+            if (!deviceOnlyExplainedRef.current) {
+              deviceOnlyExplainedRef.current = true
+              toast.message(
+                "Switched to device-only duels. Cloud isn’t available on your Supabase project right now."
+              )
+            }
+          } else {
+            throw e
+          }
+        }
+      } else {
+        const d = createDuel(pickExercise, name)
+        setCode(d.code)
+        setDuels(listDuels())
+        if (!isSupabaseConfigured()) {
+          toast.message("Saved on this device only — add Supabase for cloud duels.")
+        } else if (!userId) {
+          toast.message("Sign in to challenge friends on another device (when cloud duels work).")
+        }
+      }
+    } catch (e) {
+      toastDuelFailure(e)
+    }
   }
 
-  function onJoin() {
-    const d = joinDuelByCode(joinCode, name)
-    if (d) setDuels(listDuels())
+  async function onJoin() {
+    if (!joinCode.trim()) {
+      toast.error("Enter a duel code.")
+      return
+    }
+    try {
+      if (useCloudDuels) {
+        try {
+          await joinFormDuelRemote(joinCode, name)
+          setDuels(await listFormDuelsRemote())
+          toast.success("Joined duel.")
+          setJoinCode("")
+        } catch (e) {
+          if (isArenaCloudBackendUnavailableError(e)) {
+            setArenaCloudBlocked(true)
+            setDuels(listDuels())
+            const d = joinDuelByCode(joinCode, name)
+            if (d) {
+              setDuels(listDuels())
+              toast.success("Joined on this device.")
+              setJoinCode("")
+            } else if (!deviceOnlyExplainedRef.current) {
+              deviceOnlyExplainedRef.current = true
+              toast.message("Cloud unavailable — only duels created on this device can be joined here.")
+            } else {
+              toast.error("No matching open duel on this device.")
+            }
+          } else {
+            throw e
+          }
+        }
+      } else {
+        const d = joinDuelByCode(joinCode, name)
+        if (d) {
+          setDuels(listDuels())
+          toast.success("Matched on this device.")
+          setJoinCode("")
+        } else {
+          toast.error(
+            isSupabaseConfigured()
+              ? "No matching open duel on this device — sign in to join friends online."
+              : "No matching open duel on this device."
+          )
+        }
+      }
+    } catch (e) {
+      toastDuelFailure(e)
+    }
+  }
+
+  async function applyScoreFromLatestSession(d: Duel, role: "challenger" | "opponent") {
+    const s = latestCoachSessionForExercise(sessions, d.exercise)
+    if (!s) {
+      toast.error("Complete a coach session for this exercise first.")
+      return
+    }
+    const sc = duelCompositeScore(s.reps, s.repScores, s.score)
+    try {
+      if (useCloudDuels) {
+        await submitFormDuelScoreRemote(d.id, sc)
+        setDuels(await listFormDuelsRemote())
+      } else {
+        submitDuelScore(d.id, role, sc)
+        setDuels(listDuels())
+      }
+      toast.success("Score logged.")
+    } catch (e) {
+      if (useCloudDuels && isArenaCloudBackendUnavailableError(e)) {
+        setArenaCloudBlocked(true)
+        setDuels(listDuels())
+        toast.message(
+          "Cloud unavailable — start a new device-only duel to log scores locally."
+        )
+      } else {
+        toastDuelFailure(e)
+      }
+    }
   }
 
   return (
@@ -89,7 +308,7 @@ export function ArenaHub() {
           Arena
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Form-weighted scoring, verified sessions, local duels, and training insights — built for fair global competition later.
+          Form-weighted scoring, verified sessions, duels, and training insights — built for fair competition.
         </p>
       </header>
 
@@ -189,10 +408,14 @@ export function ArenaHub() {
       <section className="rounded-2xl border border-border bg-card p-4 space-y-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <Swords className="h-4 w-4 text-destructive" />
-          Async form duels (device)
+          Async form duels {useCloudDuels ? "(cloud)" : "(this device)"}
         </div>
         <p className="text-xs text-muted-foreground">
-          Create a code, share with a friend, both log a coach session and enter composite scores here. Stored on this device until cloud duels ship.
+          {useCloudDuels
+            ? "Create a code and share it — a signed-in friend enters it on their phone to join. Scores sync when you log them (live updates if Realtime is enabled on your project)."
+            : userId && (arenaCloudBlocked || arenaDuelsForceLocalOnly())
+              ? "Cloud duels are off — codes and scores stay on this browser only (e.g. project paused, no credits, or NEXT_PUBLIC_ARENA_DUELS_LOCAL_ONLY=1). Cross-device needs an active Supabase project with the form_duels migration."
+              : "Create a code for practice on this device, or sign in when your Supabase project can host cloud duels."}
         </p>
         <div className="flex flex-col gap-2">
           <input
@@ -203,7 +426,7 @@ export function ArenaHub() {
           />
           <button
             type="button"
-            onClick={onCreateDuel}
+            onClick={() => void onCreateDuel()}
             className="rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground"
           >
             Create duel code
@@ -219,51 +442,67 @@ export function ArenaHub() {
               placeholder="Enter code"
               maxLength={8}
             />
-            <button type="button" onClick={onJoin} className="rounded-xl bg-secondary px-4 text-sm font-medium">
+            <button type="button" onClick={() => void onJoin()} className="rounded-xl bg-secondary px-4 text-sm font-medium">
               Join
             </button>
           </div>
         </div>
         {duels.length > 0 && (
           <ul className="space-y-2 pt-2 border-t border-border">
-            {duels.slice(0, 5).map((d) => (
-              <li key={d.id} className="text-[11px] rounded-lg bg-secondary/30 px-2 py-2 space-y-1">
-                <div className="font-medium text-foreground">{d.exercise} · {d.code}</div>
-                <div className="text-muted-foreground">
-                  {d.challengerName}: {d.challengerScore ?? "—"} vs {d.opponentName ?? "?"}: {d.opponentScore ?? "—"}
-                </div>
-                {!d.settled && d.opponentName && (
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="button"
-                      className="text-[10px] underline text-primary"
-                      onClick={() => {
-                        const s = sessions[0]
-                        if (!s) return
-                        const sc = duelCompositeScore(s.reps, s.repScores, s.score)
-                        submitDuelScore(d.id, "challenger", sc)
-                        setDuels(listDuels())
-                      }}
-                    >
-                      Log challenger score (uses latest session)
-                    </button>
+            {duels.slice(0, 5).map((d) => {
+              const showChallenger =
+                !useCloudDuels ||
+                (d.challengerUserId != null && userId === d.challengerUserId)
+              const showOpponent =
+                !useCloudDuels ||
+                (d.opponentUserId != null && userId === d.opponentUserId)
+              const showScoreActions =
+                !d.settled && d.opponentName && (showChallenger || showOpponent)
+
+              return (
+                <li key={d.id} className="text-[11px] rounded-lg bg-secondary/30 px-2 py-2 space-y-1">
+                  <div className="font-medium text-foreground">{d.exercise} · {d.code}</div>
+                  <div className="text-muted-foreground">
+                    {d.challengerName}: {d.challengerScore ?? "—"} vs {d.opponentName ?? "?"}: {d.opponentScore ?? "—"}
                   </div>
-                )}
-                {d.settled && d.challengerScore != null && d.opponentScore != null && (
-                  <div className="mt-1 -mx-2 flex items-center gap-2 rounded-lg bg-metric-streak/15 px-3 py-2">
-                    <Trophy className="h-5 w-5 shrink-0 text-metric-streak" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-metric-streak">
-                        Winner
-                      </div>
-                      <div className="truncate text-2xl font-bold text-foreground">
-                        {d.challengerScore >= d.opponentScore ? d.challengerName : d.opponentName}
+                  {showScoreActions && (
+                    <div className="flex flex-col gap-1 pt-1">
+                      {showChallenger && (
+                        <button
+                          type="button"
+                          className="text-left text-[10px] underline text-primary"
+                          onClick={() => void applyScoreFromLatestSession(d, "challenger")}
+                        >
+                          Log your score (challenger) — uses latest session for {d.exercise}
+                        </button>
+                      )}
+                      {showOpponent && (
+                        <button
+                          type="button"
+                          className="text-left text-[10px] underline text-primary"
+                          onClick={() => void applyScoreFromLatestSession(d, "opponent")}
+                        >
+                          Log your score (opponent) — uses latest session for {d.exercise}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {d.settled && d.challengerScore != null && d.opponentScore != null && (
+                    <div className="mt-1 -mx-2 flex items-center gap-2 rounded-lg bg-metric-streak/15 px-3 py-2">
+                      <Trophy className="h-5 w-5 shrink-0 text-metric-streak" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-metric-streak">
+                          Winner
+                        </div>
+                        <div className="truncate text-2xl font-bold text-foreground">
+                          {d.challengerScore >= d.opponentScore ? d.challengerName : d.opponentName}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
-              </li>
-            ))}
+                  )}
+                </li>
+              )
+            })}
           </ul>
         )}
       </section>

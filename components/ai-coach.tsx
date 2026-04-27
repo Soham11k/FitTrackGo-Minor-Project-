@@ -24,7 +24,17 @@ import {
   UserCheck,
 } from "lucide-react"
 import { initPoseDetection, detectPose, drawSkeleton, getBodyScanDetail, assessEnvironment, getDetectionQuality, type EnvironmentAssessment } from "@/lib/pose-detection"
-import { analyzeForm, getRepPhase, hasEnoughVisibilityForExercise, EXERCISE_TIPS, type ExerciseId, type FormBreakdown, type Landmark } from "@/lib/form-analysis"
+import {
+  analyzeForm,
+  getRepPhase,
+  hasEnoughVisibilityForExercise,
+  EXERCISE_TIPS,
+  type ExerciseId,
+  type FormBreakdown,
+  type FormResult,
+  type Landmark,
+  type RepPhase,
+} from "@/lib/form-analysis"
 import { detectFaults } from "@/lib/coach-vision/faults"
 import { renderFaults } from "@/lib/coach-vision/fault-overlay"
 import { skeletonAnim } from "@/lib/skeleton-animations"
@@ -44,13 +54,19 @@ import { speakRepComplete, speakGoodForm } from "@/lib/speech"
 import {
   faceMatches,
   createFaceMatchSmoother,
+  createMeshFaceMatchSmoother,
+  meshEmbeddingMatches,
   passesCKFaceFilter,
   getFaceEnrollment,
   saveFaceEnrollment,
   FACE_ENROLL_STABLE_FRAMES,
+  EMBEDDING_VERSION_FACE_MESH,
+  EMBEDDING_VERSION_POSE,
+  type FaceEnrollmentRecord,
   type LandmarkPoint,
 } from "@/lib/face-verification"
-import { pushConsecutiveEnrollmentFrame } from "@/lib/face-enrollment-capture"
+import { initFaceLandmarker, isFaceLandmarkerReady, detectFaceSignature } from "@/lib/face-landmarker-client"
+import { pushConsecutiveEnrollmentFrame, pushConsecutiveMeshEnrollmentFrame } from "@/lib/face-enrollment-capture"
 import { isInCenter } from "@/lib/center-check"
 import { detectFall, resetFallDetection } from "@/lib/fall-detection"
 import { playFallAlarm, stopFallAlarm } from "@/lib/alarm-sound"
@@ -59,7 +75,18 @@ import { AICoachLlmPanel } from "@/components/ai-coach-llm-panel"
 
 const POSTURE_PENALTY_THRESHOLD = 75
 const POSTURE_PENALTY_NO_ACCUM_THRESHOLD = 85
+/** Require this many consecutive frames at top before a rep can complete (reduces single-frame noise). */
+const MIN_TOP_FRAMES_FOR_REP = 2
 const EMERGENCY_NUMBER = "911"
+
+/** Good-form badge: avoid "Good form" while resting at idle for rep-based exercises; respect tracking reliability. */
+function goodFormBadge(exercise: ExerciseId, phase: RepPhase, res: FormResult): boolean {
+  if (!res.isGoodForm) return false
+  if (res.trackingReliability !== undefined && res.trackingReliability < 0.48) return false
+  if (exercise === "plank") return true
+  if (exercise === "jumping_jacks" || exercise === "high_knees") return true
+  return phase !== "idle"
+}
 
 type DetectionState = "select" | "setup" | "enrolling" | "detecting" | "feedback"
 
@@ -106,13 +133,18 @@ export function AICoach() {
   const displayedScoreRef = useRef(0)
   const goalReachedAnnouncedRef = useRef(false)
   const faceSignatureRef = useRef<number[] | null>(null)
+  const faceEmbeddingVersionRef = useRef<number>(1)
   const faceMatchSmootherRef = useRef<ReturnType<typeof createFaceMatchSmoother> | null>(null)
-  const enrollBufferRef = useRef<number[][]>([])
+  const meshFaceMatchSmootherRef = useRef<ReturnType<typeof createMeshFaceMatchSmoother> | null>(null)
+  const enrollMeshBufferRef = useRef<number[][]>([])
+  const enrollPoseBufferRef = useRef<number[][]>([])
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const animRef = useRef<number>(0)
   const lastPhaseRef = useRef<string>("idle")
+  /** Phase entered from when the current stretch of `top` started (required when topHeld needs 2+ frames). */
+  const phaseBeforeTopStreakRef = useRef<string | null>(null)
   const repScoreStatsRef = useRef<{ sum: number; w: number; min: number | null }>({ sum: 0, w: 0, min: null })
   const lastRepAtRef = useRef<number>(0)
   const lastVoiceAtRef = useRef<number>(0)
@@ -144,6 +176,7 @@ export function AICoach() {
     setBreakdown([])
     repScoreStatsRef.current = { sum: 0, w: 0, min: null }
     lastPhaseRef.current = "idle"
+    phaseBeforeTopStreakRef.current = null
     bottomFrameCountRef.current = 0
     bottomWasHeldRef.current = false
     topFrameCountRef.current = 0
@@ -233,28 +266,32 @@ export function AICoach() {
     setSessionDna(null)
   }, [])
 
-  // Init pose (including "enrolling" so coach face capture can use detectPose)
+  // Init pose + face landmarker (enrolling / setup / detecting)
   useEffect(() => {
     if (state !== "setup" && state !== "detecting" && state !== "enrolling") return
     let cancelled = false
-    initPoseDetection().then((ok) => {
+    void Promise.all([initPoseDetection(), initFaceLandmarker()]).then(([poseOk]) => {
       if (!cancelled) {
-        setPoseReady(ok)
-        if (!ok) {
+        setPoseReady(poseOk)
+        if (!poseOk) {
           console.error("[AI Coach] Pose detection failed to initialize")
           toast.error("Pose detection failed to initialize")
         }
       }
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [state])
 
-  // Stop fall alarm when leaving detecting; reset face match smoother for new session
+  // Stop fall alarm when leaving detecting; reset face match smoothers for new session
   useEffect(() => {
     if (state === "detecting") {
       faceMatchSmootherRef.current = createFaceMatchSmoother()
+      meshFaceMatchSmootherRef.current = createMeshFaceMatchSmoother(faceSignatureRef.current)
     } else {
       faceMatchSmootherRef.current = null
+      meshFaceMatchSmootherRef.current = null
     }
     if (state !== "detecting") {
       detectingStartedAtRef.current = 0
@@ -269,30 +306,66 @@ export function AICoach() {
   useEffect(() => {
     if (state !== "setup" && state !== "enrolling" && state !== "detecting") return
     let cancelled = false
+    const detecting = state === "detecting"
     createClient()
       .auth.getUser()
       .then(({ data: { user } }: { data: { user: { id: string } | null } }) => {
         if (cancelled || !user) return
         return getFaceEnrollment(user.id)
       })
-      .then((sig: number[] | null) => {
+      .then((rec: FaceEnrollmentRecord | null | undefined) => {
         if (cancelled) return
-        faceSignatureRef.current = sig ?? null
-        setFaceEnrolled(!!sig?.length)
+        faceSignatureRef.current = rec?.signature ?? null
+        faceEmbeddingVersionRef.current = rec?.embeddingVersion ?? EMBEDDING_VERSION_POSE
+        setFaceEnrolled(!!rec?.signature?.length)
+        if (detecting) {
+          meshFaceMatchSmootherRef.current = createMeshFaceMatchSmoother(rec?.signature ?? null)
+        }
       })
       .catch(() => {})
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [state])
 
-  // Enrolling: await pose, then camera; require consecutive stable frames then averaged signature
+  // Enrolling: face mesh when available, else pose; consecutive stable frames → averaged signature
   useEffect(() => {
     if (state !== "enrolling") return
     let cancelled = false
     let stream: MediaStream | null = null
     let running = true
     let lastTime = 0
-    enrollBufferRef.current = []
+    enrollMeshBufferRef.current = []
+    enrollPoseBufferRef.current = []
     setEnrollProgress(0)
+
+    function finishEnrollment(sig: number[], embeddingVersion: number) {
+      createClient()
+        .auth.getUser()
+        .then(async ({ data: { user } }: { data: { user: { id: string } | null } }) => {
+          if (!user) {
+            toast.error("Sign in to enroll your face")
+            setState("setup")
+            return
+          }
+          const ok = await saveFaceEnrollment(user.id, sig, embeddingVersion)
+          if (cancelled) return
+          if (!ok) {
+            toast.error("Could not save face (storage blocked). Check browser site settings and try again.")
+            setState("setup")
+            return
+          }
+          faceSignatureRef.current = sig
+          faceEmbeddingVersionRef.current = embeddingVersion
+          setFaceEnrolled(true)
+          setState("setup")
+          toast.success("Face enrolled — only your reps will count")
+        })
+        .catch(() => {
+          toast.error("Could not enroll face")
+          setState("setup")
+        })
+    }
 
     function runEnroll(timestamp: number) {
       if (!running || cancelled) return
@@ -305,11 +378,32 @@ export function AICoach() {
       if (timestamp - lastTime < 100) return
       lastTime = timestamp
       if (video.readyState < 2 || video.videoWidth === 0) return
+
+      if (isFaceLandmarkerReady()) {
+        enrollPoseBufferRef.current = []
+        const meshSig = detectFaceSignature(video, timestamp, "enroll")
+        const { buffer, signature, progress } = pushConsecutiveMeshEnrollmentFrame(
+          enrollMeshBufferRef.current,
+          meshSig
+        )
+        enrollMeshBufferRef.current = buffer
+        setEnrollProgress(progress)
+        if (!signature) return
+        running = false
+        cancelAnimationFrame(animRef.current)
+        if (stream) stream.getTracks().forEach((t) => t.stop())
+        stream = null
+        streamRef.current = null
+        finishEnrollment(signature, EMBEDDING_VERSION_FACE_MESH)
+        return
+      }
+
+      enrollMeshBufferRef.current = []
       const result = detectPose(video, timestamp)
       if (!result?.landmarks?.length) return
       const lm = result.landmarks as LandmarkPoint[]
-      const { buffer, signature, progress } = pushConsecutiveEnrollmentFrame(enrollBufferRef.current, lm)
-      enrollBufferRef.current = buffer
+      const { buffer, signature, progress } = pushConsecutiveEnrollmentFrame(enrollPoseBufferRef.current, lm)
+      enrollPoseBufferRef.current = buffer
       setEnrollProgress(progress)
       if (!signature) return
       running = false
@@ -317,36 +411,12 @@ export function AICoach() {
       if (stream) stream.getTracks().forEach((t) => t.stop())
       stream = null
       streamRef.current = null
-      const sig = signature
-      createClient()
-        .auth.getUser()
-        .then(async ({ data: { user } }: { data: { user: { id: string } | null } }) => {
-          if (!user) {
-            toast.error("Sign in to enroll your face")
-            setState("setup")
-            return
-          }
-          const ok = await saveFaceEnrollment(user.id, sig)
-          if (cancelled) return
-          if (!ok) {
-            toast.error("Could not save face (storage blocked). Check browser site settings and try again.")
-            setState("setup")
-            return
-          }
-          faceSignatureRef.current = sig
-          setFaceEnrolled(true)
-          setState("setup")
-          toast.success("Face enrolled — only your reps will count")
-        })
-        .catch(() => {
-          toast.error("Could not enroll face")
-          setState("setup")
-        })
+      finishEnrollment(signature, EMBEDDING_VERSION_POSE)
     }
 
-    void initPoseDetection().then((ok) => {
+    void Promise.all([initPoseDetection(), initFaceLandmarker()]).then(([poseOk]) => {
       if (cancelled) return
-      if (!ok) {
+      if (!poseOk) {
         toast.error("Pose model failed to load. Try again or check your network.")
         setState("setup")
         return
@@ -491,11 +561,38 @@ export function AICoach() {
           setUserCentered(centered)
           const storedSig = faceSignatureRef.current
           const hasEnrollment = !!storedSig?.length
-          const smooth = faceMatchSmootherRef.current
-          const match = !hasEnrollment ? true : smooth ? smooth(lm, storedSig) : faceMatches(lm, storedSig)
-          const instantMatch = !hasEnrollment ? true : faceMatches(lm, storedSig)
+          const embedVer = faceEmbeddingVersionRef.current
+          const meshReady = isFaceLandmarkerReady()
+          const useMeshVerify = hasEnrollment && embedVer >= EMBEDDING_VERSION_FACE_MESH && meshReady
+          let liveMeshSig: number[] | null = null
+          if (useMeshVerify) {
+            liveMeshSig = detectFaceSignature(video, timestamp, "match")
+          }
+          const poseSmooth = faceMatchSmootherRef.current
+          const meshSmooth = meshFaceMatchSmootherRef.current
+          const match = !hasEnrollment
+            ? true
+            : embedVer >= EMBEDDING_VERSION_FACE_MESH
+              ? !meshReady
+                ? true
+                : meshSmooth
+                  ? meshSmooth(liveMeshSig)
+                  : meshEmbeddingMatches(liveMeshSig, storedSig)
+              : poseSmooth
+                ? poseSmooth(lm, storedSig)
+                : faceMatches(lm, storedSig)
+          const instantMatch = !hasEnrollment
+            ? true
+            : embedVer >= EMBEDDING_VERSION_FACE_MESH
+              ? !meshReady
+                ? true
+                : meshEmbeddingMatches(liveMeshSig, storedSig)
+              : faceMatches(lm, storedSig)
           setFaceMatch(match)
-          const ckOk = passesCKFaceFilter(lm)
+          const ckOk =
+            embedVer >= EMBEDDING_VERSION_FACE_MESH && meshReady
+              ? liveMeshSig !== null
+              : passesCKFaceFilter(lm)
           const exerciseBodyOk = hasEnoughVisibilityForExercise(result.landmarks, exercise)
           // Face gate: if a face is enrolled, only that face with good visibility can count reps (smoothed match)
           const faceOk = hasEnrollment ? (match && ckOk) : true
@@ -524,14 +621,7 @@ export function AICoach() {
             trackingQuality: getDetectionQuality(),
           })
           setScore(res.score)
-          setIsGoodForm(res.isGoodForm)
           setBreakdown(res.breakdown)
-
-          // Form change → ripple animation
-          if (res.isGoodForm !== prevFormGoodRef.current) {
-            prevFormGoodRef.current = res.isGoodForm
-            skeletonAnim.onFormChange(res.isGoodForm, result.landmarks)
-          }
 
           if (!exerciseBodyOk) {
             setLiveFeedback("Get your full body in frame so the coach can see you.")
@@ -552,9 +642,24 @@ export function AICoach() {
           const phase = enoughVisible ? getRepPhase(result.landmarks, exercise, false) : "idle"
           if (!enoughVisible) {
             lastPhaseRef.current = "idle"
+            phaseBeforeTopStreakRef.current = null
             bottomFrameCountRef.current = 0
             topFrameCountRef.current = 0
+          } else if (phase === "top") {
+            if (lastPhaseRef.current !== "top") {
+              phaseBeforeTopStreakRef.current = lastPhaseRef.current
+            }
+          } else {
+            phaseBeforeTopStreakRef.current = null
           }
+
+          const showGoodForm = goodFormBadge(exercise, phase, res)
+          setIsGoodForm(showGoodForm)
+          if (showGoodForm !== prevFormGoodRef.current) {
+            prevFormGoodRef.current = showGoodForm
+            skeletonAnim.onFormChange(showGoodForm, result.landmarks)
+          }
+
           const now = Date.now()
 
           const W_BOTTOM = 2.1
@@ -570,6 +675,7 @@ export function AICoach() {
           if (phase === "bottom") {
             bottomFrameCountRef.current += 1
             topFrameCountRef.current = 0
+            bottomWasHeldRef.current = bottomFrameCountRef.current >= 1
             addRepFormSample(res.score, W_BOTTOM)
           } else if (phase === "eccentric" || phase === "concentric") {
             addRepFormSample(res.score, W_MOVE)
@@ -589,10 +695,11 @@ export function AICoach() {
           }
 
           const isCardio = exercise === "jumping_jacks" || exercise === "high_knees"
-          const topHeld = topFrameCountRef.current >= 1
+          const topHeld = topFrameCountRef.current >= MIN_TOP_FRAMES_FOR_REP
+          const priorPhase = phaseBeforeTopStreakRef.current
           const standardRepComplete =
             phase === "top" &&
-            (lastPhaseRef.current === "concentric" || lastPhaseRef.current === "bottom") &&
+            (priorPhase === "concentric" || priorPhase === "bottom") &&
             repScoreStatsRef.current.w > 0 &&
             canCountRep &&
             bottomWasHeldRef.current &&
@@ -600,16 +707,23 @@ export function AICoach() {
           const cardioRepComplete =
             isCardio &&
             phase === "top" &&
-            lastPhaseRef.current === "bottom" &&
+            priorPhase === "bottom" &&
             canCountRep &&
             bottomWasHeldRef.current &&
             topHeld
-          // Very permissive fallback: if we reach TOP after leaving it and the body + face are ok, count a rep
-          const simpleRepComplete = phase === "top" && lastPhaseRef.current !== "top" && exerciseBodyOk && faceOk
-          const repComplete = standardRepComplete || cardioRepComplete || simpleRepComplete
+          const narrowRepFallback =
+            !isCardio &&
+            phase === "top" &&
+            canCountRep &&
+            bottomWasHeldRef.current &&
+            topHeld &&
+            repScoreStatsRef.current.w > 0 &&
+            priorPhase === "eccentric"
+          const repComplete = standardRepComplete || cardioRepComplete || narrowRepFallback
           if (repComplete && now - lastRepAtRef.current >= 600) {
             lastRepAtRef.current = now
             bottomWasHeldRef.current = false
+            phaseBeforeTopStreakRef.current = null
             skeletonAnim.onRepComplete(result.landmarks)
             setRepBounce(true)
             setTimeout(() => setRepBounce(false), 400)
@@ -682,6 +796,7 @@ export function AICoach() {
         } else {
           setBodyScanSummary(null)
           lastPhaseRef.current = "idle"
+          phaseBeforeTopStreakRef.current = null
           bottomFrameCountRef.current = 0
           topFrameCountRef.current = 0
           ctx.clearRect(0, 0, cw, ch)
@@ -987,6 +1102,11 @@ export function AICoach() {
             style={{ transform: "scaleX(-1)", zIndex: 10 }}
             aria-label="Skeleton overlay"
           />
+          {useCamera && faceEnrolled && !a11yPrefs.reduceMotion && (
+            <div className="pointer-events-none absolute inset-0 z-[12] overflow-hidden" aria-hidden>
+              <div className="coach-face-scan-line absolute left-0 right-0 top-0 h-14 bg-gradient-to-b from-transparent via-primary/40 to-transparent" />
+            </div>
+          )}
           {fallDetected && (
             <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-black/85 backdrop-blur-sm p-6">
               <div className="rounded-2xl bg-destructive/20 border-2 border-destructive p-6 text-center max-w-sm">
@@ -1067,13 +1187,41 @@ export function AICoach() {
             <span className="text-xs font-semibold">{isGoodForm ? "Good Form" : "Adjust Form"}</span>
           </div>
           <div className="absolute top-4 left-4 flex flex-col gap-1.5">
-            <div className={`rounded-xl bg-background/80 backdrop-blur-sm px-4 py-2 transition-transform duration-300 ${repBounce ? "animate-rep-bounce" : ""}`}>
+            <div
+              className={`rounded-xl bg-background/80 backdrop-blur-sm px-4 py-2 transition-transform duration-300 ${
+                repBounce && !a11yPrefs.reduceMotion ? "animate-rep-bounce" : ""
+              }`}
+            >
               <span className="text-xs text-muted-foreground block">{targetReps > 0 ? "Reps (goal)" : "Reps"}</span>
-              <span className="text-2xl font-bold text-foreground tabular-nums" style={{ fontFamily: "var(--font-heading)" }}>
-                {targetReps > 0 ? `${reps} / ${targetReps}` : reps}
-              </span>
-              {targetReps > 0 && reps >= targetReps && (
-                <span className="text-[10px] font-semibold text-primary mt-0.5 block">Goal reached!</span>
+              {targetReps > 0 ? (
+                <div className="mt-1.5 flex flex-col items-start gap-1">
+                  <RingGauge
+                    value={reps}
+                    max={targetReps}
+                    size={84}
+                    thickness={7}
+                    spring
+                    progressClassName="stroke-primary"
+                  >
+                    <span
+                      className="text-2xl font-bold tabular-nums leading-none text-foreground"
+                      style={{ fontFamily: "var(--font-heading)" }}
+                    >
+                      {reps}
+                    </span>
+                    <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">of {targetReps}</span>
+                  </RingGauge>
+                  {reps >= targetReps && (
+                    <span className="text-[10px] font-semibold text-primary">Goal reached!</span>
+                  )}
+                </div>
+              ) : (
+                <span
+                  className="text-3xl font-bold text-foreground tabular-nums block mt-0.5"
+                  style={{ fontFamily: "var(--font-heading)" }}
+                >
+                  {reps}
+                </span>
               )}
             </div>
             {useCamera && (
@@ -1088,10 +1236,12 @@ export function AICoach() {
                 </span>
                 {faceEnrolled && (
                   <span
-                    className={`rounded-full px-2.5 py-1 text-[10px] font-semibold backdrop-blur-sm ${
-                      faceMatch ? "bg-emerald-500/25 text-emerald-300" : "bg-destructive/25 text-destructive"
+                    className={`rounded-full px-2.5 py-1 text-[10px] font-semibold backdrop-blur-sm motion-reduce:animate-none ${
+                      faceMatch
+                        ? "bg-emerald-500/25 text-emerald-300"
+                        : "bg-destructive/25 text-destructive motion-safe:animate-pulse"
                     }`}
-                    title={faceMatch ? "Your face — reps count" : "Different face — reps not counted"}
+                    title={faceMatch ? "Your face — reps count" : "Checking face — hold steady if this is you"}
                   >
                     {faceMatch ? "You ✓" : "Other"}
                   </span>
@@ -1322,6 +1472,26 @@ export function AICoach() {
           score={Math.round(score)}
           repScores={repScores}
           feedback={feedback}
+          breakdown={breakdown}
+          exerciseTips={EXERCISE_TIPS[selectedExercise]}
+          sessionDnaSummary={
+            sessionDna
+              ? {
+                  effectiveReps: sessionDna.effectiveReps,
+                  verifiedMovement: sessionDna.verifiedMovement,
+                  faceVerifiedSession: sessionDna.faceVerifiedSession,
+                }
+              : null
+          }
+          repScoreStats={
+            repScores.length
+              ? {
+                  min: Math.min(...repScores),
+                  max: Math.max(...repScores),
+                  avg: Math.round(repScores.reduce((a, b) => a + b, 0) / repScores.length),
+                }
+              : null
+          }
         />
       )}
       <div className="flex gap-3 w-full max-w-sm">

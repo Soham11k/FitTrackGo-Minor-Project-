@@ -20,15 +20,23 @@ const SEVERITY_COLORS: Record<FormFault["severity"], string> = {
 }
 
 const SEVERITY_WIDTHS: Record<FormFault["severity"], number> = {
-  minor: 4,
-  moderate: 6,
-  severe: 8,
+  minor: 5,
+  moderate: 7,
+  severe: 9,
 }
+
+const SEVERITY_RANK: Record<FormFault["severity"], number> = {
+  minor: 0,
+  moderate: 1,
+  severe: 2,
+}
+
+const MIN_VIS_SEGMENT = 0.28
 
 export interface OverlayOptions {
   /** Video element's intrinsic width; used to scale landmark coords. */
   width: number
-  /** Video element's intrinsic height. */
+  /** Video element's intrinsic height; */
   height: number
   /** Mirror landmarks horizontally (selfie / front-facing camera). */
   mirror?: boolean
@@ -46,6 +54,8 @@ export function renderFaults(
 
   const { width, height, mirror = false, pulse = 0 } = opts
 
+  const vis = (i: number) => landmarks[i]?.visibility ?? 1
+
   const project = (i: number): [number, number] | null => {
     const lm = landmarks[i]
     if (!lm) return null
@@ -54,20 +64,33 @@ export function renderFaults(
     return [x, y]
   }
 
-  for (const fault of faults) {
+  const sorted = [...faults].sort(
+    (a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]
+  )
+
+  for (const fault of sorted) {
     const color = SEVERITY_COLORS[fault.severity]
     const baseWidth = SEVERITY_WIDTHS[fault.severity]
-    const pulseAdd = fault.severity === "severe" ? pulse * 2 : 0
+    const pulseAdd = fault.severity === "severe" ? pulse * 2.5 : fault.severity === "moderate" ? pulse * 1.2 : 0
 
-    ctx.strokeStyle = color
-    ctx.lineWidth = baseWidth + pulseAdd
     ctx.lineCap = "round"
     ctx.lineJoin = "round"
 
     const strokeSeg = (a: number, b: number) => {
+      if (vis(a) < MIN_VIS_SEGMENT || vis(b) < MIN_VIS_SEGMENT) return
       const pa = project(a)
       const pb = project(b)
       if (!pa || !pb) return
+
+      ctx.strokeStyle = "rgba(180, 20, 30, 0.45)"
+      ctx.lineWidth = baseWidth + pulseAdd + 10
+      ctx.beginPath()
+      ctx.moveTo(pa[0], pa[1])
+      ctx.lineTo(pb[0], pb[1])
+      ctx.stroke()
+
+      ctx.strokeStyle = color
+      ctx.lineWidth = baseWidth + pulseAdd
       ctx.beginPath()
       ctx.moveTo(pa[0], pa[1])
       ctx.lineTo(pb[0], pb[1])
@@ -89,19 +112,34 @@ export function renderFaults(
 
     ctx.fillStyle = color
     for (const idx of fault.landmarkIndices) {
+      if (vis(idx) < MIN_VIS_SEGMENT) continue
       const p = project(idx)
       if (!p) continue
       ctx.beginPath()
-      ctx.arc(p[0], p[1], baseWidth + 1, 0, Math.PI * 2)
+      ctx.arc(p[0], p[1], baseWidth + 2, 0, Math.PI * 2)
       ctx.fill()
     }
   }
 
-  // Show up to 2 fault labels stacked vertically
-  const LABEL_STACK_GAP = 40
-  faults.slice(0, 2).forEach((fault, stackIdx) => {
+  const LABEL_STACK_GAP = 44
+  const forLabels = [...sorted].reverse()
+  forLabels.slice(0, 2).forEach((fault, stackIdx) => {
     drawPrimaryLabel(ctx, fault, project, width, stackIdx * LABEL_STACK_GAP)
   })
+}
+
+function truncateToWidth(ctx: CanvasRenderingContext2D, text: string, maxInner: number): string {
+  if (ctx.measureText(text).width <= maxInner) return text
+  const ell = "…"
+  let lo = 0
+  let hi = text.length
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2)
+    const t = text.slice(0, mid) + ell
+    if (ctx.measureText(t).width <= maxInner) lo = mid
+    else hi = mid - 1
+  }
+  return text.slice(0, Math.max(0, lo)) + ell
 }
 
 function drawPrimaryLabel(
@@ -118,22 +156,25 @@ function drawPrimaryLabel(
     [canvasWidth / 2, 40]
   const [x, y] = anchor
 
-  const text = fault.label
-  ctx.font = "600 15px 'Inter', system-ui, sans-serif"
+  const raw = fault.cue.length > 52 ? fault.label : fault.cue
+  ctx.font = "600 16px 'Inter', system-ui, sans-serif"
+  const padX = 12
+  const maxBox = canvasWidth - 24
+  const maxInner = maxBox - padX * 2
+  const text = truncateToWidth(ctx, raw, maxInner)
   const metrics = ctx.measureText(text)
-  const padX = 10
-  const w = metrics.width + padX * 2
-  const h = 28
+  const w = Math.min(metrics.width + padX * 2, maxBox)
+  const h = 30
 
   const bx = Math.min(Math.max(x - w / 2, 6), canvasWidth - w - 6)
-  const by = Math.max(y - h - 16 - yOffset, 6 + yOffset)
+  const by = Math.max(y - h - 18 - yOffset, 6 + yOffset)
 
-  ctx.fillStyle = "rgba(10, 10, 12, 0.90)"
+  ctx.fillStyle = "rgba(8, 8, 10, 0.92)"
   roundRect(ctx, bx, by, w, h, 10)
   ctx.fill()
 
   ctx.strokeStyle = SEVERITY_COLORS[fault.severity]
-  ctx.lineWidth = 1.5
+  ctx.lineWidth = 2
   roundRect(ctx, bx, by, w, h, 10)
   ctx.stroke()
 

@@ -2,11 +2,10 @@
 
 /**
  * One account, one face: verify the person in frame is the enrolled user.
- * Uses pose face landmarks (indices 0–10: nose, eyes, ears, mouth).
- * CK-style filter: require face region clearly visible before counting reps.
+ * - v1 (legacy): pose landmarks 0–10 only.
+ * - v2: MediaPipe Face Landmarker mesh embedding (see `face-landmarker-client`).
  *
- * **Storage:** Embeddings are stored in **browser IndexedDB** per device (not synced via Supabase).
- * Re-enroll on each browser or after clearing site data.
+ * **Storage:** Embeddings in **browser IndexedDB** per device (not synced via Supabase).
  */
 
 const FACE_DB = "fittrackgo_face"
@@ -14,20 +13,42 @@ const FACE_STORE = "face_embedding"
 const FACE_LANDMARK_INDICES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 const VIS_THRESH = 0.32
 /** Cosine similarity gate; pose face vectors drift with light/angle. */
-const MATCH_THRESHOLD = 0.82
+const MATCH_THRESHOLD_POSE = 0.82
+/** Mesh embeddings are L2-normalized; strict gate to reduce different-person false accepts. */
+export const MATCH_THRESHOLD_MESH = 0.925
 const CK_MIN_VISIBLE = 4
+
+/** Legacy pose-only embedding from body model face points. */
+export const EMBEDDING_VERSION_POSE = 1
+/** Face Landmarker mesh signature. */
+export const EMBEDDING_VERSION_FACE_MESH = 2
 
 /** Consecutive good frames before saving enrollment (see `pushConsecutiveEnrollmentFrame`). */
 export const FACE_ENROLL_STABLE_FRAMES = 5
 
 const MATCH_SMOOTH_WINDOW = 5
 const MATCH_SMOOTH_MIN = 3
+/** Stricter rolling gate for mesh: require all frames true until buffer fills, then 5 of last 7. */
+const MESH_MATCH_SMOOTH_WINDOW = 7
+const MESH_MATCH_SMOOTH_MIN = 5
 
 export interface LandmarkPoint {
   x: number
   y: number
   z?: number
   visibility?: number
+}
+
+export interface FaceEnrollmentRecord {
+  signature: number[]
+  embeddingVersion: number
+}
+
+interface FaceStoreRow {
+  userId: string
+  signature: number[]
+  updatedAt: number
+  embeddingVersion?: number
 }
 
 export function buildFaceSignature(landmarks: LandmarkPoint[]): number[] | null {
@@ -56,9 +77,11 @@ export function buildFaceSignature(landmarks: LandmarkPoint[]): number[] | null 
   return out
 }
 
-function cosineSimilarity(a: number[], b: number[]): number {
+export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) return 0
-  let dot = 0, na = 0, nb = 0
+  let dot = 0,
+    na = 0,
+    nb = 0
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i]
     na += a[i] * a[i]
@@ -72,11 +95,22 @@ export function faceMatches(currentLandmarks: LandmarkPoint[], storedSignature: 
   if (!storedSignature?.length) return true
   const current = buildFaceSignature(currentLandmarks)
   if (!current) return false
-  return cosineSimilarity(current, storedSignature) >= MATCH_THRESHOLD
+  return cosineSimilarity(current, storedSignature) >= MATCH_THRESHOLD_POSE
 }
 
-/** Element-wise mean of N face signatures (same length). */
-export function averageFaceSignatures(signatures: number[][]): number[] | null {
+/** Compare two mesh (or averaged mesh) embeddings; both must be same length. */
+export function meshEmbeddingMatches(live: number[] | null, stored: number[] | null): boolean {
+  if (!stored?.length) return true
+  if (!live?.length) return false
+  if (live.length !== stored.length) return false
+  return cosineSimilarity(live, stored) >= MATCH_THRESHOLD_MESH
+}
+
+/** Element-wise mean of N face signatures (same length). Optional L2 normalize (mesh path). */
+export function averageFaceSignatures(
+  signatures: number[][],
+  opts?: { l2Normalize?: boolean }
+): number[] | null {
   if (!signatures.length) return null
   const len = signatures[0].length
   if (len === 0 || signatures.some((s) => s.length !== len)) return null
@@ -86,6 +120,12 @@ export function averageFaceSignatures(signatures: number[][]): number[] | null {
   }
   const n = signatures.length
   for (let i = 0; i < len; i++) out[i]! /= n
+  if (opts?.l2Normalize) {
+    let sum = 0
+    for (const v of out) sum += v * v
+    const norm = Math.sqrt(sum) || 1
+    return out.map((v) => v / norm)
+  }
   return out
 }
 
@@ -105,7 +145,22 @@ export function createFaceMatchSmoother() {
   }
 }
 
-/** CK-style filter: face must be clearly visible (enough landmarks) to count rep. */
+/** Rolling gate for mesh embeddings (live vector may be null if no face this frame). */
+export function createMeshFaceMatchSmoother(storedSignature: number[] | null) {
+  const buf: boolean[] = []
+  return (liveSignature: number[] | null): boolean => {
+    if (!storedSignature?.length) return true
+    const instant = meshEmbeddingMatches(liveSignature, storedSignature)
+    buf.push(instant)
+    if (buf.length > MESH_MATCH_SMOOTH_WINDOW) buf.shift()
+    if (buf.length < MESH_MATCH_SMOOTH_WINDOW) {
+      return buf.every(Boolean)
+    }
+    return buf.filter(Boolean).length >= MESH_MATCH_SMOOTH_MIN
+  }
+}
+
+/** CK-style filter: face must be clearly visible (enough landmarks) to count rep — pose path. */
 export function passesCKFaceFilter(landmarks: LandmarkPoint[]): boolean {
   if (!landmarks || landmarks.length < 11) return false
   let visible = 0
@@ -115,28 +170,49 @@ export function passesCKFaceFilter(landmarks: LandmarkPoint[]): boolean {
   return visible >= CK_MIN_VISIBLE
 }
 
-const dbPromise = typeof indexedDB !== "undefined"
-  ? new Promise<IDBDatabase | null>((resolve) => {
-      const r = indexedDB.open(FACE_DB, 1)
-      r.onsuccess = () => resolve(r.result)
-      r.onerror = () => resolve(null)
-      r.onupgradeneeded = (e) => {
-        const db = (e.target as IDBOpenDBRequest).result
-        if (!db.objectStoreNames.contains(FACE_STORE)) {
-          db.createObjectStore(FACE_STORE, { keyPath: "userId" })
+/**
+ * When enrolled with Face Mesh (v2), require a good mesh frame for rep gating.
+ * Falls back to pose CK when `hasMeshFrame` is false (e.g. model still loading).
+ */
+export function passesCKForEmbeddingVersion(
+  embeddingVersion: number,
+  landmarks: LandmarkPoint[],
+  hasMeshFrame: boolean
+): boolean {
+  if (embeddingVersion >= EMBEDDING_VERSION_FACE_MESH) {
+    return hasMeshFrame
+  }
+  return passesCKFaceFilter(landmarks)
+}
+
+const dbPromise =
+  typeof indexedDB !== "undefined"
+    ? new Promise<IDBDatabase | null>((resolve) => {
+        const r = indexedDB.open(FACE_DB, 1)
+        r.onsuccess = () => resolve(r.result)
+        r.onerror = () => resolve(null)
+        r.onupgradeneeded = (e) => {
+          const db = (e.target as IDBOpenDBRequest).result
+          if (!db.objectStoreNames.contains(FACE_STORE)) {
+            db.createObjectStore(FACE_STORE, { keyPath: "userId" })
+          }
         }
-      }
-    })
-  : Promise.resolve(null)
+      })
+    : Promise.resolve(null)
 
 /** Persists the face signature in IndexedDB for this origin only. @returns false if DB unavailable. */
-export async function saveFaceEnrollment(userId: string, signature: number[]): Promise<boolean> {
+export async function saveFaceEnrollment(
+  userId: string,
+  signature: number[],
+  embeddingVersion: number = EMBEDDING_VERSION_FACE_MESH
+): Promise<boolean> {
   const db = await dbPromise
   if (!db) return false
   try {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(FACE_STORE, "readwrite")
-      tx.objectStore(FACE_STORE).put({ userId, signature, updatedAt: Date.now() })
+      const row: FaceStoreRow = { userId, signature, updatedAt: Date.now(), embeddingVersion }
+      tx.objectStore(FACE_STORE).put(row)
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error)
     })
@@ -146,13 +222,22 @@ export async function saveFaceEnrollment(userId: string, signature: number[]): P
   }
 }
 
-export async function getFaceEnrollment(userId: string): Promise<number[] | null> {
+export async function getFaceEnrollment(userId: string): Promise<FaceEnrollmentRecord | null> {
   const db = await dbPromise
   if (!db) return null
   return new Promise((resolve) => {
     const tx = db.transaction(FACE_STORE, "readonly")
     const req = tx.objectStore(FACE_STORE).get(userId)
-    req.onsuccess = () => resolve(req.result?.signature ?? null)
+    req.onsuccess = () => {
+      const row = req.result as FaceStoreRow | undefined
+      if (!row?.signature?.length) resolve(null)
+      else
+        resolve({
+          signature: row.signature,
+          embeddingVersion:
+            typeof row.embeddingVersion === "number" ? row.embeddingVersion : EMBEDDING_VERSION_POSE,
+        })
+    }
     req.onerror = () => resolve(null)
   })
 }

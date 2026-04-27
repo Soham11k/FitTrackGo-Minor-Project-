@@ -137,8 +137,8 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
           setUserEmail(user.email)
         }
         setAuthUserId(user.id)
-        const faceSig = await getFaceEnrollment(user.id)
-        setFaceEnrolledStatus(!!faceSig?.length)
+        const faceRec = await getFaceEnrollment(user.id)
+        setFaceEnrolledStatus(!!faceRec?.signature?.length)
 
         const [p, s, w, r, wo, cs] = await Promise.all([
           getProfile(),
@@ -1267,9 +1267,9 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
             </DialogHeader>
             <div className="p-0">
               <FaceEnrollCapture
-                onEnrolled={async (signature) => {
+                onEnrolled={async (signature, embeddingVersion) => {
                   try {
-                    const ok = await saveFaceEnrollment(authUserId, signature)
+                    const ok = await saveFaceEnrollment(authUserId, signature, embeddingVersion)
                     if (!ok) {
                       toast.error(
                         "Could not save face enrollment. Check that this site is allowed to use storage (not private mode with storage blocked).",

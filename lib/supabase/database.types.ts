@@ -356,9 +356,49 @@ export interface Database {
         }
         Update: Partial<Database["public"]["Tables"]["program_adherence"]["Insert"]>
       }
+      form_duels: {
+        Row: {
+          id: string
+          code: string
+          exercise: string
+          challenger_user_id: string
+          opponent_user_id: string | null
+          challenger_name: string
+          opponent_name: string | null
+          challenger_score: number | null
+          opponent_score: number | null
+          settled: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          code: string
+          exercise: string
+          challenger_user_id: string
+          opponent_user_id?: string | null
+          challenger_name: string
+          opponent_name?: string | null
+          challenger_score?: number | null
+          opponent_score?: number | null
+          settled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Database["public"]["Tables"]["form_duels"]["Insert"]>
+      }
     }
     Views: Record<string, never>
-    Functions: Record<string, never>
+    Functions: {
+      join_form_duel: {
+        Args: { p_code: string; p_opponent_name: string }
+        Returns: Database["public"]["Tables"]["form_duels"]["Row"]
+      }
+      submit_form_duel_score: {
+        Args: { p_duel_id: string; p_composite_score: number }
+        Returns: Database["public"]["Tables"]["form_duels"]["Row"]
+      }
+    }
     Enums: {
       user_level: UserLevel
       wearable_provider: WearableProvider

@@ -33,6 +33,26 @@ export function pushConsecutiveEnrollmentFrame(
   return { buffer: [], signature: avg, progress: stableRequired }
 }
 
+/**
+ * Consecutive stable Face Landmarker embeddings (already L2-normalized per frame).
+ */
+export function pushConsecutiveMeshEnrollmentFrame(
+  buffer: number[][],
+  liveSig: number[] | null,
+  stableRequired: number = FACE_ENROLL_STABLE_FRAMES
+): { buffer: number[][]; signature: number[] | null; progress: number } {
+  if (!liveSig?.length) {
+    return { buffer: [], signature: null, progress: 0 }
+  }
+  const next = [...buffer, liveSig]
+  const progress = next.length
+  if (next.length < stableRequired) {
+    return { buffer: next, signature: null, progress }
+  }
+  const avg = averageFaceSignatures(next, { l2Normalize: true })
+  return { buffer: [], signature: avg, progress: stableRequired }
+}
+
 export function getUserMediaErrorMessage(err: unknown): string {
   if (err && typeof err === "object" && "name" in err) {
     const n = String((err as { name?: string }).name)

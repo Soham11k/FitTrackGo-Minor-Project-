@@ -4,7 +4,15 @@ import { useState, useEffect } from "react"
 import { Sparkles, Loader2, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import type { ExerciseId } from "@/lib/form-analysis"
+import type { ExerciseId, FormBreakdown } from "@/lib/form-analysis"
+
+type SessionDnaSummary = {
+  effectiveReps: number
+  verifiedMovement: boolean
+  faceVerifiedSession: boolean
+}
+
+type RepScoreStats = { min: number; max: number; avg: number }
 
 type Props = {
   exerciseId: ExerciseId
@@ -13,6 +21,10 @@ type Props = {
   score: number
   repScores: number[]
   feedback: string[]
+  breakdown: FormBreakdown[]
+  exerciseTips: string[]
+  sessionDnaSummary: SessionDnaSummary | null
+  repScoreStats: RepScoreStats | null
 }
 
 export function AICoachLlmPanel(props: Props) {
@@ -56,6 +68,16 @@ export function AICoachLlmPanel(props: Props) {
             score: props.score,
             repScores: props.repScores,
             feedback: props.feedback,
+            breakdown: props.breakdown.map((b) => ({
+              label: b.label,
+              value: b.value,
+              ok: b.ok,
+              detail: b.detail,
+              region: b.region,
+            })),
+            repScoreStats: props.repScoreStats ?? undefined,
+            sessionDna: props.sessionDnaSummary ?? undefined,
+            exerciseTips: props.exerciseTips.length ? props.exerciseTips : undefined,
           },
         }),
       })
@@ -82,7 +104,7 @@ export function AICoachLlmPanel(props: Props) {
       <p className="text-[11px] text-muted-foreground leading-snug">
         {aiEnabled === null && "Checking AI coach…"}
         {aiEnabled === true &&
-          "Uses your session summary and in-app tips (RAG). Pose and video stay on your device—only your question and session numbers are sent to the model."}
+          "Uses your session summary (scores, form breakdown, session DNA, exercise tips) plus retrieved in-app knowledge. Video stays on your device—only text/numbers are sent."}
         {aiEnabled === false && (
           <>
             To enable answers, set{" "}

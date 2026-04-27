@@ -431,6 +431,28 @@
 .animate-ring-pulse {
   animation: ring-pulse 1.5s ease-in-out infinite;
 }
+
+/* Coach: subtle face-verification scan (honors global prefers-reduced-motion rules below) */
+@keyframes coach-face-scan {
+  0% {
+    transform: translateY(-120%);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.55;
+  }
+  85% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateY(620%);
+    opacity: 0;
+  }
+}
+.coach-face-scan-line {
+  animation: coach-face-scan 2.6s ease-in-out infinite;
+}
+
 .animate-stagger-1 { animation-delay: 0.05s; }
 .animate-stagger-2 { animation-delay: 0.1s; }
 .animate-stagger-3 { animation-delay: 0.15s; }

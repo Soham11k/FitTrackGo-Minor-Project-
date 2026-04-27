@@ -66,12 +66,16 @@ export const metadata: Metadata = {
   },
 }
 
+const buildForAndroidStatic = process.env.BUILD_FOR_ANDROID === "1"
+
 export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const nonce = (await headers()).get('x-nonce') ?? undefined
+  const nonce = buildForAndroidStatic
+    ? undefined
+    : ((await headers()).get("x-nonce") ?? undefined)
   return (
     <html
       lang={DEFAULT_LOCALE}

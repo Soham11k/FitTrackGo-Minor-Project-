@@ -3,8 +3,13 @@ import {
   buildFaceSignature,
   faceMatches,
   passesCKFaceFilter,
+  passesCKForEmbeddingVersion,
   averageFaceSignatures,
+  meshEmbeddingMatches,
   createFaceMatchSmoother,
+  createMeshFaceMatchSmoother,
+  EMBEDDING_VERSION_FACE_MESH,
+  EMBEDDING_VERSION_POSE,
 } from "./face-verification"
 
 /** 33 landmarks: face points 0–10 have realistic spread (not degenerate) so scale and cosine are well-defined. */
@@ -78,6 +83,46 @@ describe("averageFaceSignatures", () => {
     const a = [1, 2, 3]
     const b = [3, 4, 5]
     expect(averageFaceSignatures([a, b])).toEqual([2, 3, 4])
+  })
+
+  it("optionally L2-normalizes mesh averages", () => {
+    const a = [3, 0, 0]
+    const b = [1, 0, 0]
+    const out = averageFaceSignatures([a, b], { l2Normalize: true })
+    expect(out).toEqual([1, 0, 0])
+  })
+})
+
+describe("meshEmbeddingMatches", () => {
+  it("matches identical normalized vectors", () => {
+    const v = [0.6, 0.8, 0]
+    const norm = Math.sqrt(0.36 + 0.64)
+    const n = v.map((x) => x / norm)
+    expect(meshEmbeddingMatches(n, n)).toBe(true)
+  })
+
+  it("rejects length mismatch", () => {
+    expect(meshEmbeddingMatches([1, 0], [1, 0, 0])).toBe(false)
+  })
+})
+
+describe("passesCKForEmbeddingVersion", () => {
+  it("uses mesh flag for v2", () => {
+    const lm = baseFace() as never
+    expect(passesCKForEmbeddingVersion(EMBEDDING_VERSION_FACE_MESH, lm, false)).toBe(false)
+    expect(passesCKForEmbeddingVersion(EMBEDDING_VERSION_FACE_MESH, lm, true)).toBe(true)
+  })
+
+  it("uses pose CK for v1", () => {
+    const lm = baseFace() as never
+    expect(passesCKForEmbeddingVersion(EMBEDDING_VERSION_POSE, lm, false)).toBe(passesCKFaceFilter(lm))
+  })
+})
+
+describe("createMeshFaceMatchSmoother", () => {
+  it("returns true when no enrollment", () => {
+    const s = createMeshFaceMatchSmoother(null)
+    expect(s(null)).toBe(true)
   })
 })
 
