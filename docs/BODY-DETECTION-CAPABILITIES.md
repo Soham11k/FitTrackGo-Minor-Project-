@@ -2,6 +2,16 @@
 
 FitTrackGo uses **MediaPipe Pose Landmarker** (browser-based, no server needed). Here’s what we have today and what’s possible.
 
+## How per-exercise detection works
+
+**Pose detection is the same for every exercise:** one MediaPipe graph produces **33 body landmarks** per frame ([`lib/pose-detection.ts`](lib/pose-detection.ts) — `detectPose`).
+
+**Per-exercise behavior is interpretation, not a separate model:** landmarks are passed to [`lib/form-analysis.ts`](lib/form-analysis.ts) with an [`ExerciseId`](lib/form-analysis.ts) so `analyzeForm` and `getRepPhase` apply the right angles, thresholds, and rep phases.
+
+- **AI Coach** ([`components/ai-coach.tsx`](components/ai-coach.tsx)): user selects an exercise; full form score + rep counting.
+- **Body check** on a program ([`components/exercise-body-preview.tsx`](components/exercise-body-preview.tsx)): same landmark stream + skeleton; when the program has a coach-mapped step, **`exerciseId`** is passed in so camera-angle hints ([`RECOMMENDED_CAMERA_ANGLE`](lib/pose-config.ts) via `assessEnvironment`) match that movement.
+- **Workout step names → coach ID:** [`lib/exercise-ai-map.ts`](lib/exercise-ai-map.ts) (`getAICoachIdForStep`) for “Practice with AI” and the default Body check context.
+
 ## What We Have Now
 
 - **33 body landmarks** in real time: face (nose, eyes, ears, mouth), shoulders, elbows, wrists, fingers (pinky, index, thumb), hips, knees, ankles, heels, foot tips.
@@ -14,11 +24,15 @@ FitTrackGo uses **MediaPipe Pose Landmarker** (browser-based, no server needed).
 
 ### With Current Stack (MediaPipe in the Browser)
 
-1. **More exercises**  
-   Add any exercise that can be expressed as joint angles and positions (e.g. deadlift, row, lateral raise, burpees). Each needs:
-   - Angle/position rules in `form-analysis.ts`
-   - Rep phase logic in `getRepPhase`
-   - Tips in `EXERCISE_TIPS`
+1. **More exercises** — For each new movement, extend the pipeline consistently:
+   - `ExerciseId` and `REQUIRED_LANDMARKS` / visibility tables in [`lib/form-analysis.ts`](lib/form-analysis.ts)
+   - `analyzeForm` and `getRepPhase` branches
+   - `EXERCISE_TIPS`
+   - Optional: [`RECOMMENDED_CAMERA_ANGLE`](lib/pose-config.ts) for Body check / coach hints
+   - Optional: [`lib/skeleton-animations.ts`](lib/skeleton-animations.ts) for phase coloring
+   - [`lib/exercise-ai-map.ts`](lib/exercise-ai-map.ts) if program step names should open the coach
+   - Coach UI list in [`components/ai-coach.tsx`](components/ai-coach.tsx) (`availableExercises`)
+   - Tests in [`lib/form-analysis.test.ts`](lib/form-analysis.test.ts)
 
 2. **Richer form cues**  
    - Use more landmarks (e.g. wrist vs shoulder for elbow flare).

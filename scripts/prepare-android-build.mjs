@@ -23,8 +23,11 @@ function swapRoute(parts) {
     console.error(`Missing ${path.relative(root, staticPath)}`)
     process.exit(1)
   }
+  /* If a previous Android prep left a backup, the real handler is in the backup file.
+     Never skip: leaving `route.ts` as `force-dynamic` breaks `output: export`. */
   if (fs.existsSync(backupPath)) {
-    console.warn(`Skip ${parts.join('/')}: backup already exists.`)
+    fs.copyFileSync(staticPath, routePath)
+    console.log(`Re-applied static stub for app/${parts.join('/')}/route.ts (backup unchanged).`)
     return
   }
   fs.copyFileSync(routePath, backupPath)

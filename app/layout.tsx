@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from 'next'
+import { appendFileSync, mkdirSync } from "node:fs"
+import { join } from "node:path"
 import { headers } from 'next/headers'
 import { Inter, Space_Grotesk } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
@@ -7,6 +9,7 @@ import { AccentProvider } from '@/components/accent-provider'
 import { LocaleProvider } from '@/components/locale-provider'
 import { Toaster } from '@/components/ui/sonner'
 import { ObservabilityInit } from '@/components/observability-init'
+import { MediapipeConsoleBootstrap } from '@/components/mediapipe-console-bootstrap'
 import { siteConfig } from '@/lib/data'
 import { DEFAULT_LOCALE } from '@/lib/i18n'
 import './globals.css'
@@ -68,6 +71,29 @@ export const metadata: Metadata = {
 
 const buildForAndroidStatic = process.env.BUILD_FOR_ANDROID === "1"
 
+// #region agent log (module init — avoids render-time side effects in RootLayout)
+if (process.env.NODE_ENV === "development" && !buildForAndroidStatic) {
+  try {
+    const dirPath = join(process.cwd(), ".cursor")
+    mkdirSync(dirPath, { recursive: true })
+    appendFileSync(
+      join(dirPath, "debug-35ceb6.log"),
+      `${JSON.stringify({
+        sessionId: "35ceb6",
+        hypothesisId: "H-PING",
+        runId: "layout-module-eval",
+        message: "layout.tsx module evaluated (Node)",
+        NODE_ENV: process.env.NODE_ENV,
+        ts: Date.now(),
+      })}\n`
+    )
+    console.warn("[fittrack-debug-35ceb6-ping] root-layout-module-eval")
+  } catch (err) {
+    console.warn("[fittrack-debug-35ceb6-ping-err]", err)
+  }
+}
+// #endregion
+
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -76,6 +102,7 @@ export default async function RootLayout({
   const nonce = buildForAndroidStatic
     ? undefined
     : ((await headers()).get("x-nonce") ?? undefined)
+
   return (
     <html
       lang={DEFAULT_LOCALE}
@@ -84,6 +111,14 @@ export default async function RootLayout({
     >
       {/* Fixed full-viewport UIs do not grow body; min-h-dvh keeps the document (and a11y tree) non-zero height. */}
       <body className="min-h-dvh font-sans antialiased overflow-x-hidden">
+        {/* Earliest inline hook: must stay aligned with lib/mediapipe-console-noise.ts `isIgnorableMediapipeBrowserNoise`. */}
+        <script
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{function T(a){return[].slice.call(a).map(function(x){return typeof x==="string"?x:(x&&x.message)||String(x)}).join(" ");}function ig(t){if(!t)return !1;if(t.indexOf("gl_context.cc")>=0&&t.indexOf("OpenGL error checking is disabled")>=0)return !0;if(t.indexOf("FaceBlendshapesGraph")>=0&&t.indexOf("xnnpack")>=0)return !0;if(t.indexOf("face_landmarker_graph")>=0)return !0;if(t.indexOf("vision_wasm_internal")>=0)return !0;if(t.indexOf("landmark_projection_calculator")>=0&&t.indexOf("NORM_RECT")>=0)return !0;if(t.indexOf("inference_feedback_manager")>=0&&t.indexOf("Disabling support for feedback tensors")>=0)return !0;if(t.indexOf("inference_feedback_manager")>=0&&t.indexOf("Feedback manager")>=0)return !0;var g=/\\bW\\d+\\s+[\\d:.]+\\s+\\d+\\s+\\S+\\.cc:\\d+\\]/.test(t)||(/\\.cc:\\d+\\]/.test(t)&&/\\bW\\d{4}\\s/.test(t));if(g&&(t.indexOf("tasks-vision")>=0||t.indexOf("vision_wasm_internal")>=0||t.indexOf("mediapipe-models")>=0||t.indexOf("wasm/vision")>=0))return !0;return !1;}function W(k){var o=console[k].bind(console);console[k]=function(){var s=T(arguments);if(ig(s))return;return o.apply(console,arguments);};}["warn","error","log","info","debug"].forEach(W);}catch(_){}})();`,
+          }}
+        />
         {/* Browsers strip the `nonce` attribute from the DOM after parsing
             (CSP nonce-hiding), so `element.nonce` reads back as "" during
             hydration. Suppress the mismatch — the nonce still works for CSP. */}
@@ -98,6 +133,7 @@ export default async function RootLayout({
           <AccentProvider>
           <LocaleProvider>
           <ObservabilityInit />
+          <MediapipeConsoleBootstrap />
           {children}
           <div id="supabase-setup-root" />
           <Toaster position="top-center" richColors closeButton />

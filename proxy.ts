@@ -64,6 +64,6 @@ function toBase64(bytes: Uint8Array): string {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|^/login|^/auth|api/health|api/wearables(?:/|$)|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|^/login|^/auth|^/__supabase-dev-proxy|api/debug-session-log|api/debug-terminal-snapshot|api/health|api/wearables(?:/|$)|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

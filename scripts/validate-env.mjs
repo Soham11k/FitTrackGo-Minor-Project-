@@ -19,8 +19,18 @@ envContent.split('\n').forEach((line) => {
 })
 
 const missing = required.filter((key) => {
-  const v = env[key]
-  return !v || v.includes('your-project') || v.includes('your-anon-key')
+  const v = env[key]?.trim() ?? ''
+  if (!v) return true
+  const lower = v.toLowerCase()
+  if (
+    lower.includes('your-project') ||
+    lower.includes('your-anon-key') ||
+    lower.includes('your_project_ref') ||
+    lower.includes('your_anon_key')
+  ) {
+    return true
+  }
+  return false
 })
 
 if (missing.length > 0) {

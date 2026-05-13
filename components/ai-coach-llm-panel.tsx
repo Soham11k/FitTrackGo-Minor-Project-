@@ -25,9 +25,14 @@ type Props = {
   exerciseTips: string[]
   sessionDnaSummary: SessionDnaSummary | null
   repScoreStats: RepScoreStats | null
+  /** Current live feedback line when session is in progress. */
+  liveCue?: string | null
+  /** live = mid-session; completed = post-session summary. */
+  sessionPhase?: "live" | "completed"
 }
 
 export function AICoachLlmPanel(props: Props) {
+  const sessionPhase = props.sessionPhase ?? "completed"
   const [q, setQ] = useState("")
   const [answer, setAnswer] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -78,6 +83,10 @@ export function AICoachLlmPanel(props: Props) {
             repScoreStats: props.repScoreStats ?? undefined,
             sessionDna: props.sessionDnaSummary ?? undefined,
             exerciseTips: props.exerciseTips.length ? props.exerciseTips : undefined,
+            sessionPhase,
+            ...(sessionPhase === "live" && props.liveCue?.trim()
+              ? { liveCue: props.liveCue.trim() }
+              : {}),
           },
         }),
       })
@@ -101,15 +110,17 @@ export function AICoachLlmPanel(props: Props) {
         <Sparkles className="h-4 w-4 text-primary" />
         <span className="text-sm font-semibold text-foreground">Ask the coach (AI)</span>
       </div>
-      <p className="text-[11px] text-muted-foreground leading-snug">
+      <p className="text-typo-caption text-muted-foreground leading-snug">
         {aiEnabled === null && "Checking AI coach…"}
         {aiEnabled === true &&
-          "Uses your session summary (scores, form breakdown, session DNA, exercise tips) plus retrieved in-app knowledge. Video stays on your device—only text/numbers are sent."}
+          (sessionPhase === "live"
+            ? "Uses your current live scores, form breakdown, and the cue under Live feedback—plus in-app knowledge. Metrics update as you move. Video stays on your device; only text and numbers are sent."
+            : "Uses your session summary (scores, form breakdown, session DNA, exercise tips) plus retrieved in-app knowledge. Video stays on your device—only text/numbers are sent.")}
         {aiEnabled === false && (
           <>
             To enable answers, set{" "}
-            <code className="text-[10px] bg-secondary px-1 rounded">OPENAI_API_KEY</code> on the server
-            (e.g. <code className="text-[10px] bg-secondary px-1 rounded">.env.local</code> and restart, or your host’s env
+            <code className="text-typo-eyebrow bg-secondary px-1 rounded">OPENAI_API_KEY</code> on the server
+            (e.g. <code className="text-typo-eyebrow bg-secondary px-1 rounded">.env.local</code> and restart, or your host’s env
             variables). RAG still uses the same in-app knowledge once enabled.
           </>
         )}
@@ -117,7 +128,11 @@ export function AICoachLlmPanel(props: Props) {
       <Textarea
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="e.g. Why was my score lower on later reps?"
+        placeholder={
+          sessionPhase === "live"
+            ? "e.g. What should I fix right now? Any cue for my next rep?"
+            : "e.g. Why was my score lower on later reps?"
+        }
         className="min-h-[72px] text-sm resize-none"
         maxLength={600}
         disabled={loading || aiEnabled === false}

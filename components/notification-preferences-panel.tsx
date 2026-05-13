@@ -218,7 +218,7 @@ export function NotificationPreferencesPanel() {
           />
 
           <div className="pt-2 space-y-2">
-            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            <div className="text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-muted-foreground">
               Quiet hours
             </div>
             <div className="flex items-center gap-2">
@@ -295,7 +295,7 @@ function TimeStepper({
         −
       </button>
       <div className="text-center">
-        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+        <div className="text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-muted-foreground">
           {label}
         </div>
         <div className="text-sm font-bold tabular-nums">{formatHour(value)}</div>

@@ -91,7 +91,7 @@ export function OnboardingWizard({
           </div>
           <div className="flex-1">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <p className="text-typo-eyebrow font-bold uppercase tracking-wider text-muted-foreground">
                 {steps[step].label} · {step + 1}/{steps.length}
               </p>
               <div className="flex items-center gap-1" aria-hidden>
@@ -153,21 +153,21 @@ export function OnboardingWizard({
                       className="text-3xl font-bold text-foreground"
                       style={{ fontFamily: "var(--font-heading)" }}
                     >
-                      Welcome!
+                      Train with proof
                     </h1>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      Let&apos;s take 30 seconds to personalize your fitness companion.
+                      Thirty seconds to tune FitTrack Go around your goals — runs, form checks, and fair Arena duels.
                     </p>
                   </div>
                   <ul className="space-y-2 text-sm text-muted-foreground">
                     <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary" /> Runs, workouts, and AI coach in one place
+                      <Check className="h-4 w-4 text-primary" /> Camera form checks on your device — pose never uploaded as video
                     </li>
                     <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary" /> Form scores and progress trends
+                      <Check className="h-4 w-4 text-primary" /> Arena duels use the same rep-level scores as Coach Assist
                     </li>
                     <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary" /> Private — your data stays yours
+                      <Check className="h-4 w-4 text-primary" /> GPS runs, library workouts, and optional wearables in one flow
                     </li>
                   </ul>
                 </>

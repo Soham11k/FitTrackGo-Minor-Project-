@@ -1,11 +1,25 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { Clock, Flame, ChevronRight, Play, Star, Filter, Dumbbell, Heart, Zap, RefreshCw } from "lucide-react"
+import { Clock, Flame, ChevronRight, Play, Star, Filter, Dumbbell, Heart, Zap, RefreshCw, Target } from "lucide-react"
 import { getFavorites, toggleFavorite, getWorkouts, formatErr } from "@/lib/store-supabase"
 import { getExercises, type ExerciseItem } from "@/lib/data"
+import { getAICoachIdForStep } from "@/lib/exercise-ai-map"
+import type { ExerciseId } from "@/lib/form-analysis"
 import { WorkoutPlayer } from "@/components/workout-player"
+import { ExerciseBodyPreview } from "@/components/exercise-body-preview"
 import { toast } from "sonner"
+import type { TabId } from "@/components/bottom-nav"
+import { Button } from "@/components/ui/button"
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty"
+import { Skeleton } from "@/components/ui/skeleton"
 
 type Category = "all" | "strength" | "cardio" | "yoga" | "hiit"
 type DurationFilter = "all" | "short" | "medium" | "long"
@@ -28,7 +42,7 @@ function DifficultyBadge({ level }: { level: string }) {
     Advanced: "bg-destructive/15 text-destructive",
   }
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${colors[level] || "bg-secondary text-muted-foreground"}`}>
+    <span className={`rounded-full px-2 py-0.5 text-typo-eyebrow font-semibold ${colors[level] || "bg-secondary text-muted-foreground"}`}>
       {level}
     </span>
   )
@@ -50,7 +64,13 @@ const categoryIcons: Record<Category, typeof Dumbbell> = {
   hiit: Zap,
 }
 
-export function ExerciseLibrary({ onOpenAICoach: _onOpenAICoach }: { onOpenAICoach?: () => void } = {}) {
+export function ExerciseLibrary({
+  onOpenAICoach,
+  onNavigate,
+}: {
+  onOpenAICoach?: (opts?: { exerciseId?: ExerciseId }) => void
+  onNavigate?: (tab: TabId) => void
+} = {}) {
   const [activeCategory, setActiveCategory] = useState<Category>("all")
   const [durationFilter, setDurationFilter] = useState<DurationFilter>("all")
   const [sortBy, setSortBy] = useState<SortBy>("default")
@@ -126,6 +146,7 @@ export function ExerciseLibrary({ onOpenAICoach: _onOpenAICoach }: { onOpenAICoa
           }
         }}
         lastDone={completedTitles.has(selectedExercise.title)}
+        onOpenAICoach={onOpenAICoach}
       />
     )
   }
@@ -144,20 +165,33 @@ export function ExerciseLibrary({ onOpenAICoach: _onOpenAICoach }: { onOpenAICoa
           </button>
         </div>
       )}
-      <header className="flex items-center justify-between">
-        <div>
+      <header className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
             Exercises
           </h1>
           <p className="text-sm text-muted-foreground">{filtered.length} workouts</p>
         </div>
-        <button
-          onClick={() => setShowFilters((v) => !v)}
-          className="flex h-10 w-10 items-center justify-center rounded-xl bg-card border border-border"
-          aria-label="Filters"
-        >
-          <Filter className="h-4 w-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {onOpenAICoach && (
+            <button
+              type="button"
+              onClick={() => onOpenAICoach()}
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-metric-coach/15 border border-metric-coach/25"
+              aria-label="Open AI Coach"
+            >
+              <Target className="h-4 w-4 text-metric-coach" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowFilters((v) => !v)}
+            className="flex h-10 w-10 items-center justify-center rounded-xl bg-card border border-border"
+            aria-label="Filters"
+          >
+            <Filter className="h-4 w-4 text-muted-foreground" />
+          </button>
+        </div>
       </header>
 
       {showFilters && (
@@ -207,28 +241,35 @@ export function ExerciseLibrary({ onOpenAICoach: _onOpenAICoach }: { onOpenAICoa
         ))}
       </div>
 
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => setSelectedExercise(featured)}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedExercise(featured) } }}
-        className="relative overflow-hidden rounded-2xl text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-      >
-        <div className={`h-48 w-full bg-gradient-to-br ${categoryGradients[featured.category]} flex items-center justify-center`}>
-          {(() => { const Icon = categoryIcons[featured.category]; return <Icon className="h-16 w-16 text-white/40" /> })()}
+      <article className="relative overflow-hidden rounded-2xl border border-border/60 text-left shadow-sm">
+        <button
+          type="button"
+          aria-label={`Open workout: ${featured.title}`}
+          className="absolute inset-0 z-[1] cursor-pointer rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          onClick={() => setSelectedExercise(featured)}
+        />
+        <div className={`relative z-0 pointer-events-none h-48 w-full bg-gradient-to-br ${categoryGradients[featured.category]} flex items-center justify-center`}>
+          {(() => {
+            const Icon = categoryIcons[featured.category]
+            return <Icon className="h-16 w-16 text-white/40" />
+          })()}
         </div>
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
-        <div className="absolute top-3 right-3">
+        <div className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
+        <div className="absolute top-3 right-3 z-20">
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); handleToggleFavorite(e, featured.id) }}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-background/80 backdrop-blur-sm"
-            aria-label={favorites.includes(featured.id) ? "Remove from favorites" : "Add to favorites"}
+            onClick={(e) => handleToggleFavorite(e, featured.id)}
+            className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full bg-background/80 backdrop-blur-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            aria-label={
+              favorites.includes(featured.id)
+                ? `Unfavorite ${featured.title}`
+                : `Favorite ${featured.title}`
+            }
           >
             <Star className={`h-4 w-4 ${favorites.includes(featured.id) ? "fill-chart-4 text-chart-4" : "text-muted-foreground"}`} />
           </button>
         </div>
-        <div className="absolute bottom-0 left-0 right-0 p-5">
+        <div className="pointer-events-none relative z-0 p-5 pb-14">
           <DifficultyBadge level={featured.difficulty} />
           <h3 className="mt-2 text-xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
             {featured.title}
@@ -241,7 +282,7 @@ export function ExerciseLibrary({ onOpenAICoach: _onOpenAICoach }: { onOpenAICoa
               >
                 {featured.durationMin}
               </span>
-              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              <span className="text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-muted-foreground">
                 min
               </span>
             </div>
@@ -252,7 +293,7 @@ export function ExerciseLibrary({ onOpenAICoach: _onOpenAICoach }: { onOpenAICoa
               >
                 {featured.calories}
               </span>
-              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              <span className="text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-muted-foreground">
                 kcal
               </span>
             </div>
@@ -262,96 +303,131 @@ export function ExerciseLibrary({ onOpenAICoach: _onOpenAICoach }: { onOpenAICoa
             </span>
           </div>
         </div>
-        <div className="absolute right-4 bottom-5 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
-          <Play className="h-4 w-4 ml-0.5" fill="currentColor" />
+        <div className="pointer-events-none absolute bottom-5 right-5 z-0 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <Play className="ml-0.5 h-4 w-4" fill="currentColor" />
         </div>
-      </div>
+      </article>
 
       <div className="flex flex-col gap-3">
         {initialLoading ? (
           <div className="space-y-3" aria-busy="true" aria-label="Loading exercises">
             {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className="flex items-center gap-4 rounded-2xl bg-card p-3 border border-border"
-              >
-                <div className="h-20 w-20 animate-pulse rounded-xl bg-muted" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3 w-20 animate-pulse rounded-full bg-muted" />
-                  <div className="h-4 w-40 animate-pulse rounded-md bg-muted" />
-                  <div className="h-3 w-32 animate-pulse rounded-full bg-muted/70" />
+              <div key={i} className="flex items-center gap-4 rounded-2xl border border-border bg-card p-3">
+                <Skeleton className="h-20 w-20 shrink-0 rounded-xl" />
+                <div className="flex flex-1 flex-col gap-2">
+                  <Skeleton className="h-3 w-20 rounded-full" />
+                  <Skeleton className="h-4 w-40 rounded-md" />
+                  <Skeleton className="h-3 w-32 rounded-full" />
                 </div>
-                <div className="h-6 w-10 animate-pulse rounded bg-muted/70" />
+                <Skeleton className="h-6 w-10 shrink-0 rounded" />
               </div>
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-2xl bg-card border border-border p-8 text-center">
-            <Dumbbell className="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" />
-            <p className="text-sm font-medium text-foreground">No exercises found</p>
-            <p className="text-xs text-muted-foreground mt-1">Try adjusting your filters</p>
-          </div>
+          <Empty className="rounded-3xl border border-dashed border-border/80 bg-card/40 py-10 text-primary shadow-[var(--shadow-card)]">
+            <EmptyHeader>
+              <EmptyMedia>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/illustrations/exercises-empty.svg"
+                  alt=""
+                  className="h-[7rem] w-[7rem] opacity-90"
+                />
+              </EmptyMedia>
+              <EmptyTitle className="text-foreground">No moves match yet</EmptyTitle>
+              <EmptyDescription>Loosen filters to see workouts, or open Coach for guided form drills.</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent className="max-w-none flex-row flex-wrap justify-center gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full"
+                onClick={() => {
+                  setActiveCategory("all")
+                  setDurationFilter("all")
+                  setSortBy("default")
+                  setShowFilters(false)
+                }}
+              >
+                Clear filters
+              </Button>
+              {onNavigate ? (
+                <Button type="button" className="rounded-full" onClick={() => onNavigate("ai-coach")}>
+                  Open Coach
+                </Button>
+              ) : (
+                <Button type="button" className="rounded-full" onClick={() => onOpenAICoach?.()}>
+                  Open Coach
+                </Button>
+              )}
+            </EmptyContent>
+          </Empty>
         ) : (
           filtered.map((exercise) => (
-          <div
-            key={exercise.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => setSelectedExercise(exercise)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault()
-                setSelectedExercise(exercise)
-              }
-            }}
-            className="flex items-center gap-4 rounded-2xl bg-card p-3 border border-border text-left transition-transform hover:border-primary/30 active:scale-[0.98] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            <div className={`h-20 w-20 rounded-xl bg-gradient-to-br flex items-center justify-center shrink-0 ${categoryGradients[exercise.category]}`}>
-              {(() => { const Icon = categoryIcons[exercise.category]; return <Icon className="h-8 w-8 text-white/50" /> })()}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <DifficultyBadge level={exercise.difficulty} />
-                {completedTitles.has(exercise.title) && (
-                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-metric-move/15 text-metric-move">Done</span>
-                )}
-              </div>
-              <h3 className="mt-1 text-sm font-semibold text-foreground truncate">{exercise.title}</h3>
-              <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
-                <Clock className="h-3 w-3" />
-                <span>{exercise.duration}</span>
-              </div>
-            </div>
-            <div className="shrink-0 text-right">
-              <div className="flex items-baseline justify-end gap-1">
-                <span
-                  className="text-lg font-bold tabular-nums leading-none text-foreground"
-                  style={{ fontFamily: "var(--font-heading)" }}
-                >
-                  {exercise.durationMin}
-                </span>
-                <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                  min
-                </span>
-              </div>
-              <div className="mt-1 flex items-baseline justify-end gap-1">
-                <span className="text-sm font-semibold tabular-nums leading-none text-metric-hr">
-                  {exercise.calories}
-                </span>
-                <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                  kcal
-                </span>
-              </div>
-            </div>
-            <button
-              onClick={(e) => handleToggleFavorite(e, exercise.id)}
-              className="p-2 shrink-0 rounded-full hover:bg-secondary"
-              aria-label="Toggle favorite"
+            <div
+              key={exercise.id}
+              className="flex items-stretch gap-0.5 rounded-2xl border border-border bg-card transition-colors hover:border-primary/30"
             >
-              <Star className={`h-4 w-4 ${favorites.includes(exercise.id) ? "fill-metric-streak text-metric-streak" : "text-muted-foreground"}`} />
-            </button>
-            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-          </div>
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center gap-4 rounded-2xl p-3 text-left transition-transform active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                onClick={() => setSelectedExercise(exercise)}
+              >
+                <div className={`h-20 w-20 shrink-0 rounded-xl bg-gradient-to-br flex items-center justify-center ${categoryGradients[exercise.category]}`}>
+                  {(() => {
+                    const Icon = categoryIcons[exercise.category]
+                    return <Icon className="h-8 w-8 text-white/50" />
+                  })()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <DifficultyBadge level={exercise.difficulty} />
+                    {completedTitles.has(exercise.title) && (
+                      <span className="rounded-full px-2 py-0.5 text-typo-eyebrow font-semibold bg-metric-move/15 text-metric-move">Done</span>
+                    )}
+                  </div>
+                  <h3 className="mt-1 truncate text-sm font-semibold text-foreground">{exercise.title}</h3>
+                  <div className="mt-0.5 flex items-center gap-1 text-typo-caption text-muted-foreground">
+                    <Clock className="h-3 w-3" />
+                    <span>{exercise.duration}</span>
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="flex items-baseline justify-end gap-1">
+                    <span
+                      className="text-lg font-bold tabular-nums leading-none text-foreground"
+                      style={{ fontFamily: "var(--font-heading)" }}
+                    >
+                      {exercise.durationMin}
+                    </span>
+                    <span className="text-typo-micro font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                      min
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-baseline justify-end gap-1">
+                    <span className="text-sm font-semibold tabular-nums leading-none text-metric-hr">
+                      {exercise.calories}
+                    </span>
+                    <span className="text-typo-micro font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                      kcal
+                    </span>
+                  </div>
+                </div>
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </button>
+              <button
+                type="button"
+                className="shrink-0 self-center rounded-full p-2 hover:bg-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                onClick={(e) => handleToggleFavorite(e, exercise.id)}
+                aria-label={
+                  favorites.includes(exercise.id)
+                    ? `Unfavorite ${exercise.title}`
+                    : `Favorite ${exercise.title}`
+                }
+              >
+                <Star className={`h-4 w-4 ${favorites.includes(exercise.id) ? "fill-metric-streak text-metric-streak" : "text-muted-foreground"}`} />
+              </button>
+            </div>
           ))
         )}
       </div>
@@ -366,22 +442,36 @@ function ExerciseDetail({
   isFavorite,
   onToggleFavorite,
   lastDone,
+  onOpenAICoach,
 }: {
   exercise: (typeof exercises)[0]
   onBack: () => void
   isFavorite: boolean
   onToggleFavorite: () => void
   lastDone: boolean
+  onOpenAICoach?: (opts?: { exerciseId?: ExerciseId }) => void
 }) {
   const [playing, setPlaying] = useState(false)
 
-  const exerciseSteps = exercise.steps && exercise.steps.length > 0
-    ? exercise.steps
-    : [
-        { name: "Warm up", duration: "3 min", reps: "Dynamic stretches" },
-        { name: exercise.title, duration: `${exercise.durationMin} min`, reps: "Steady pace" },
-        { name: "Cool down", duration: "3 min", reps: "Stretching" },
-      ]
+  const exerciseSteps = useMemo(
+    () =>
+      exercise.steps && exercise.steps.length > 0
+        ? exercise.steps
+        : [
+            { name: "Warm up", duration: "3 min", reps: "Dynamic stretches" },
+            { name: exercise.title, duration: `${exercise.durationMin} min`, reps: "Steady pace" },
+            { name: "Cool down", duration: "3 min", reps: "Stretching" },
+          ],
+    [exercise]
+  )
+
+  const firstCoachId = useMemo(() => {
+    for (const step of exerciseSteps) {
+      const id = getAICoachIdForStep(step.name)
+      if (id) return id
+    }
+    return null
+  }, [exerciseSteps])
 
   if (playing) {
     return (
@@ -415,7 +505,7 @@ function ExerciseDetail({
         <div className="absolute bottom-0 left-0 right-0 p-5">
           <div className="flex items-center gap-2">
             <DifficultyBadge level={exercise.difficulty} />
-            {lastDone && <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-primary/15 text-primary">Done before</span>}
+            {lastDone && <span className="rounded-full px-2 py-0.5 text-typo-eyebrow font-semibold bg-primary/15 text-primary">Done before</span>}
           </div>
           <h1 className="mt-2 text-2xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>{exercise.title}</h1>
           <div className="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
@@ -428,34 +518,65 @@ function ExerciseDetail({
       <div className="grid grid-cols-3 gap-3 px-4 pt-5">
         <div className="rounded-xl bg-card p-3 border border-border text-center">
           <span className="text-lg font-bold text-foreground">{exercise.exercises}</span>
-          <p className="text-[10px] text-muted-foreground uppercase">Exercises</p>
+          <p className="text-typo-eyebrow text-muted-foreground uppercase">Exercises</p>
         </div>
         <div className="rounded-xl bg-card p-3 border border-border text-center">
           <span className="text-lg font-bold text-foreground">{exercise.duration}</span>
-          <p className="text-[10px] text-muted-foreground uppercase">Duration</p>
+          <p className="text-typo-eyebrow text-muted-foreground uppercase">Duration</p>
         </div>
         <div className="rounded-xl bg-card p-3 border border-border text-center">
           <span className="text-lg font-bold text-foreground">{exercise.calories}</span>
-          <p className="text-[10px] text-muted-foreground uppercase">Calories</p>
+          <p className="text-typo-eyebrow text-muted-foreground uppercase">Calories</p>
         </div>
+      </div>
+      <div className="px-4 pt-5">
+        <ExerciseBodyPreview exerciseId={firstCoachId} />
       </div>
       <div className="px-4 pt-5">
         <h2 className="text-sm font-semibold text-foreground mb-3">Workout Plan</h2>
         <div className="flex flex-col gap-2">
-          {exerciseSteps.map((step, i) => (
-            <div key={step.name} className="flex items-center gap-3 rounded-xl bg-card p-3 border border-border">
+          {exerciseSteps.map((step, i) => {
+            const coachId = getAICoachIdForStep(step.name)
+            return (
+            <div key={`${i}-${step.name}`} className="flex items-center gap-3 rounded-xl bg-card p-3 border border-border">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-xs font-bold text-muted-foreground">{i + 1}</div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground">{step.name}</p>
                 <p className="text-xs text-muted-foreground">{step.reps}</p>
               </div>
-              <span className="text-xs text-muted-foreground">{step.duration}</span>
+              <div className="flex shrink-0 items-center gap-2">
+                {coachId && onOpenAICoach && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenAICoach({ exerciseId: coachId })}
+                    className="rounded-lg border border-metric-coach/30 bg-metric-coach/10 px-2.5 py-1 text-typo-eyebrow font-bold uppercase tracking-wide text-metric-coach hover:bg-metric-coach/20"
+                  >
+                    Practice with AI
+                  </button>
+                )}
+                <span className="text-xs text-muted-foreground tabular-nums">{step.duration}</span>
+              </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       </div>
-      <div className="px-4 pt-5">
-        <button onClick={handleStartWorkout} className="w-full rounded-xl bg-primary py-4 text-center font-semibold text-primary-foreground text-base transition-all hover:bg-primary/90 active:scale-[0.98]">
+      <div className="px-4 pt-5 flex flex-col gap-3">
+        {onOpenAICoach && (
+          <button
+            type="button"
+            onClick={() => onOpenAICoach(firstCoachId ? { exerciseId: firstCoachId } : undefined)}
+            className="w-full rounded-xl border border-metric-coach/35 bg-metric-coach/10 py-3.5 text-center font-semibold text-metric-coach text-base transition-all hover:bg-metric-coach/15 active:scale-[0.98] flex items-center justify-center gap-2"
+          >
+            <Target className="h-4 w-4 shrink-0" />
+            Open AI Coach
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={handleStartWorkout}
+          className="w-full rounded-xl bg-primary py-4 text-center font-semibold text-primary-foreground text-base transition-all hover:bg-primary/90 active:scale-[0.98]"
+        >
           Start Workout
         </button>
       </div>

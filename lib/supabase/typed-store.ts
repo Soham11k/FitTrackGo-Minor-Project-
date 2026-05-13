@@ -12,6 +12,7 @@
 import { createBrowserClient, createServerClient, type CookieOptions } from "@supabase/ssr"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { validateSupabaseEnv } from "@/lib/supabase/config"
+import { getSupabaseUrlForRuntime } from "@/lib/supabase/runtime-url"
 import type { Database } from "./database.types"
 
 export type TypedSupabaseClient = SupabaseClient<Database>
@@ -21,9 +22,9 @@ export type TypedSupabaseClient = SupabaseClient<Database>
  * render the "Supabase setup" state instead of throwing at module load.
  */
 export function createTypedBrowserClient(): TypedSupabaseClient | null {
-  const { isConfigured, url, key } = validateSupabaseEnv()
-  if (!isConfigured || !url || !key) return null
-  return createBrowserClient<Database>(url, key)
+  const { isConfigured, key } = validateSupabaseEnv()
+  if (!isConfigured || !key) return null
+  return createBrowserClient<Database>(getSupabaseUrlForRuntime(), key)
 }
 
 type CookieStore = {
@@ -38,9 +39,9 @@ type CookieStore = {
  * set/remove are no-ops (read-only contexts) or real writes.
  */
 export function createTypedServerClient(cookies: CookieStore): TypedSupabaseClient | null {
-  const { isConfigured, url, key } = validateSupabaseEnv()
-  if (!isConfigured || !url || !key) return null
-  return createServerClient<Database>(url, key, {
+  const { isConfigured, key } = validateSupabaseEnv()
+  if (!isConfigured || !key) return null
+  return createServerClient<Database>(getSupabaseUrlForRuntime(), key, {
     cookies: {
       get(name: string) {
         return cookies.get(name)?.value

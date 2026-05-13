@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test"
+import { isIgnorableBrowserConsoleNoise } from "./ignore-browser-console-noise"
 
 /**
  * Golden path: lands on the app, navigates the tab shell, opens Exercise
@@ -36,7 +37,9 @@ test("golden path: shell is healthy and nav transitions work", async ({ page }) 
     "ChunkLoadError",
     "favicon",
   ]
-  const fatal = errors.filter((e) => !ignorable.some((i) => e.includes(i)))
+  const fatal = errors.filter(
+    (e) => !ignorable.some((i) => e.includes(i)) && !isIgnorableBrowserConsoleNoise(e),
+  )
   expect(fatal, `Fatal JS errors on homepage:\n${fatal.join("\n")}`).toHaveLength(0)
 
   // When the main app shell is shown, bottom nav can switch to Profile (regression guard for tab shell).

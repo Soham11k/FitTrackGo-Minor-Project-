@@ -114,7 +114,7 @@ export function ProgramHub({ onStartSession }: ProgramHubProps) {
         <Card className="space-y-4 p-5 shadow-[var(--shadow-card)]">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Your plan</div>
+              <div className="text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-muted-foreground">Your plan</div>
               <h2 className="mt-0.5 text-xl font-semibold">{plan.program.title}</h2>
             </div>
             <Badge variant="secondary" className="bg-metric-streak/15 text-metric-streak">
@@ -123,7 +123,7 @@ export function ProgramHub({ onStartSession }: ProgramHubProps) {
           </div>
 
           <div>
-            <div className="flex justify-between text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            <div className="flex justify-between text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-muted-foreground">
               <span>Adherence</span>
               <span className="tabular-nums text-foreground">{progressPct}%</span>
             </div>
@@ -138,7 +138,7 @@ export function ProgramHub({ onStartSession }: ProgramHubProps) {
           {plan.today ? (
             <div className="space-y-3">
               <div className="rounded-xl bg-primary/5 p-3">
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
+                <div className="text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-primary">
                   Day {plan.enrollment.current_day}
                   {plan.blocks.length > 0 ? ` · ${plan.blocks.length} ${plan.blocks.length === 1 ? "block" : "blocks"}` : ""}
                 </div>
@@ -159,7 +159,7 @@ export function ProgramHub({ onStartSession }: ProgramHubProps) {
                         <div className="text-base font-bold tabular-nums text-foreground">
                           {b.sets} × {b.reps ?? `${b.duration_sec}s`}
                         </div>
-                        <div className="text-[11px] text-muted-foreground">
+                        <div className="text-typo-caption text-muted-foreground">
                           Rest {b.rest_sec}s · Exercise #{b.exercise_id}
                         </div>
                       </div>

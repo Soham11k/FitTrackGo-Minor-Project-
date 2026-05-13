@@ -22,6 +22,12 @@ import {
   Footprints,
   LayoutList,
   UserCheck,
+  Phone,
+  Crosshair,
+  User,
+  X,
+  Trophy,
+  Home,
 } from "lucide-react"
 import { initPoseDetection, detectPose, drawSkeleton, getBodyScanDetail, assessEnvironment, getDetectionQuality, type EnvironmentAssessment } from "@/lib/pose-detection"
 import {
@@ -38,7 +44,7 @@ import {
 import { detectFaults } from "@/lib/coach-vision/faults"
 import { renderFaults } from "@/lib/coach-vision/fault-overlay"
 import { skeletonAnim } from "@/lib/skeleton-animations"
-import { addCoachSession, formatErr } from "@/lib/store-supabase"
+import { addCoachSession, formatErr, getCoachSessions } from "@/lib/store-supabase"
 import { isNetworkError } from "@/lib/network-status"
 import { effectiveRepCount, isVerifiedMovement } from "@/lib/competition"
 import { recordCoachSessionMemory, getCoachMemoryTip } from "@/lib/coach-memory"
@@ -70,8 +76,11 @@ import { pushConsecutiveEnrollmentFrame, pushConsecutiveMeshEnrollmentFrame } fr
 import { isInCenter } from "@/lib/center-check"
 import { detectFall, resetFallDetection } from "@/lib/fall-detection"
 import { playFallAlarm, stopFallAlarm } from "@/lib/alarm-sound"
-import { Phone } from "lucide-react"
 import { AICoachLlmPanel } from "@/components/ai-coach-llm-panel"
+import { consumeAICoachIntent } from "@/lib/ai-coach-intent"
+import { topCuesFromBreakdown } from "@/lib/coach-session-cues"
+import { CoachRepTimeline } from "@/components/coach-rep-timeline"
+import type { TabId } from "@/components/bottom-nav"
 
 const POSTURE_PENALTY_THRESHOLD = 75
 const POSTURE_PENALTY_NO_ACCUM_THRESHOLD = 85
@@ -102,7 +111,15 @@ const availableExercises: { id: ExerciseId; name: string; description: string; i
   { id: "crunch", name: "Crunches", description: "Controlled curl, shoulders off floor", icon: LayoutList, gradient: "from-chart-2/30 to-primary/15" },
 ]
 
-export function AICoach() {
+export function AICoach({
+  focusMode = false,
+  onExitFocus,
+  onNavigate,
+}: {
+  focusMode?: boolean
+  onExitFocus?: () => void
+  onNavigate?: (tab: TabId) => void
+} = {}) {
   const { locale } = useLocale()
   const [state, setState] = useState<DetectionState>("select")
   const [selectedExercise, setSelectedExercise] = useState<ExerciseId | null>(null)
@@ -111,6 +128,8 @@ export function AICoach() {
   const [repScores, setRepScores] = useState<number[]>([])
   const [feedback, setFeedback] = useState<string[]>([])
   const [breakdown, setBreakdown] = useState<FormBreakdown[]>([])
+  const [recapBreakdown, setRecapBreakdown] = useState<FormBreakdown[]>([])
+  const [selectedRecapRep, setSelectedRecapRep] = useState<number | null>(null)
   const [liveFeedback, setLiveFeedback] = useState("Position yourself in frame to start.")
   const [isGoodForm, setIsGoodForm] = useState(true)
   const [poseReady, setPoseReady] = useState(false)
@@ -158,6 +177,15 @@ export function AICoach() {
 
   const exerciseName = selectedExercise ? (availableExercises.find((e) => e.id === selectedExercise)?.name ?? "") : ""
 
+  useEffect(() => {
+    const intent = consumeAICoachIntent()
+    if (!intent?.exerciseId) return
+    const known = availableExercises.some((e) => e.id === intent.exerciseId)
+    if (!known) return
+    setSelectedExercise(intent.exerciseId)
+    setState("setup")
+  }, [])
+
   const applyA11yPrefs = useCallback((patch: Partial<CoachA11yPrefs>) => {
     setCoachA11yPrefs(patch)
     setA11yPrefs(getCoachA11yPrefs())
@@ -174,6 +202,8 @@ export function AICoach() {
     setRepScores([])
     setFeedback([])
     setBreakdown([])
+    setRecapBreakdown([])
+    setSelectedRecapRep(null)
     repScoreStatsRef.current = { sum: 0, w: 0, min: null }
     lastPhaseRef.current = "idle"
     phaseBeforeTopStreakRef.current = null
@@ -200,9 +230,24 @@ export function AICoach() {
     resetFallDetection()
     setFallDetected(false)
     const finalFeedback = feedback.length > 0 ? feedback : ["Great effort! Keep practicing for even better form."]
+    setRecapBreakdown([...breakdown])
+    setSelectedRecapRep(repScores.length > 0 ? repScores.length - 1 : null)
     setFeedback(finalFeedback)
     setState("feedback")
     if (selectedExercise && (reps > 0 || score > 0)) {
+      let prevBestScore = 0
+      try {
+        const priorSessions = await getCoachSessions()
+        const key = exerciseName.trim().toLowerCase()
+        prevBestScore = Math.max(
+          0,
+          ...priorSessions
+            .filter((s) => s.exercise.trim().toLowerCase() === key)
+            .map((s) => s.score ?? 0),
+        )
+      } catch {
+        prevBestScore = 0
+      }
       const rounded = Math.round(score)
       const eff = effectiveRepCount(reps, repScores, rounded)
       const verified = isVerifiedMovement(repScores, rounded)
@@ -228,6 +273,16 @@ export function AICoach() {
         })
         recordCoachSessionMemory(exerciseName, repScores, rounded)
         toast.success(`Saved · ${eff.toFixed(1)} effective reps · ${rounded}% form${verified ? " · Verified" : ""}`)
+        if (rounded > prevBestScore && reps > 0) {
+          toast.success(`New personal best — ${exerciseName} at ${rounded}% form`, { duration: 4500 })
+          try {
+            if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+              navigator.vibrate(20)
+            }
+          } catch {
+            /* ignore */
+          }
+        }
       } catch (error) {
         console.error(error)
         if (isNetworkError(error)) {
@@ -248,7 +303,7 @@ export function AICoach() {
     } else {
       setSessionDna(null)
     }
-  }, [selectedExercise, exerciseName, reps, score, repScores, feedback])
+  }, [selectedExercise, exerciseName, reps, score, repScores, feedback, breakdown])
 
   const handleReset = useCallback(() => {
     if (streamRef.current) {
@@ -263,6 +318,8 @@ export function AICoach() {
     setRepScores([])
     setFeedback([])
     setBreakdown([])
+    setRecapBreakdown([])
+    setSelectedRecapRep(null)
     setSessionDna(null)
   }, [])
 
@@ -620,8 +677,17 @@ export function AICoach() {
             world: worldLm && worldLm.length >= 33 ? worldLm : undefined,
             trackingQuality: getDetectionQuality(),
           })
-          setScore(res.score)
-          setBreakdown(res.breakdown)
+          const displayRes: FormResult = exerciseBodyOk
+            ? res
+            : {
+                feedback: res.feedback,
+                isGoodForm: false,
+                score: 0,
+                breakdown: [],
+                trackingReliability: res.trackingReliability,
+              }
+          setScore(displayRes.score)
+          setBreakdown(displayRes.breakdown)
 
           if (!exerciseBodyOk) {
             setLiveFeedback("Get your full body in frame so the coach can see you.")
@@ -653,7 +719,7 @@ export function AICoach() {
             phaseBeforeTopStreakRef.current = null
           }
 
-          const showGoodForm = goodFormBadge(exercise, phase, res)
+          const showGoodForm = goodFormBadge(exercise, phase, displayRes)
           setIsGoodForm(showGoodForm)
           if (showGoodForm !== prevFormGoodRef.current) {
             prevFormGoodRef.current = showGoodForm
@@ -752,13 +818,13 @@ export function AICoach() {
             repScoreStatsRef.current = { sum: 0, w: 0, min: null }
           }
           lastPhaseRef.current = phase
-          if (res.isGoodForm && now - lastVoiceAtRef.current > 22000 && Math.random() < 0.35) {
+          if (displayRes.isGoodForm && now - lastVoiceAtRef.current > 22000 && Math.random() < 0.35) {
             lastVoiceAtRef.current = now
             speakGoodForm()
           }
           skeletonAnim.update(timestamp, result.landmarks, {
-            score: res.score,
-            isGoodForm: res.isGoodForm,
+            score: displayRes.score,
+            isGoodForm: displayRes.isGoodForm,
             phase,
             exercise,
           })
@@ -766,7 +832,7 @@ export function AICoach() {
           const { faults } = detectFaults(
             result.landmarks as unknown as Landmark[],
             exercise as ExerciseId,
-            res,
+            displayRes,
             worldLm && worldLm.length >= 33 ? worldLm : undefined
           )
           const faultSegmentPairs = faults.flatMap(f =>
@@ -775,13 +841,13 @@ export function AICoach() {
 
           ctx.clearRect(0, 0, cw, ch)
           skeletonAnim.drawScanSweep(ctx, cw, ch, result.landmarks)
-          drawSkeleton(ctx, result.landmarks, cw, ch, res.isGoodForm, {
+          drawSkeleton(ctx, result.landmarks, cw, ch, displayRes.isGoodForm, {
             left: result.leftHandLandmarks,
             right: result.rightHandLandmarks,
-          }, res.score, faultSegmentPairs)
+          }, displayRes.score, faultSegmentPairs)
           skeletonAnim.draw(ctx, cw, ch, result.landmarks)
 
-          if (faults.length) {
+          if (exerciseBodyOk && faults.length) {
             renderFaults(ctx, result.landmarks as unknown as Landmark[], faults, {
               width: cw,
               height: ch,
@@ -843,8 +909,24 @@ export function AICoach() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, selectedExercise, useCamera, poseReady])
 
+  const coachFocusBar =
+    focusMode && onExitFocus ? (
+      <div className="sticky top-0 z-40 -mx-4 mb-3 flex justify-center px-4 py-2 border-b border-border bg-background/95 backdrop-blur-md">
+        <button
+          type="button"
+          onClick={onExitFocus}
+          className="flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-xs font-semibold text-foreground shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <X className="h-3.5 w-3.5" aria-hidden />
+          Exit coach focus
+        </button>
+      </div>
+    ) : null
+
   if (state === "select") {
     return (
+      <>
+        {coachFocusBar}
       <div className="flex flex-col gap-5 px-4 pt-4 pb-28">
         <header>
           <h1 className="text-2xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
@@ -864,7 +946,7 @@ export function AICoach() {
               <div className={`flex h-10 w-10 items-center justify-center rounded-full ${f.color}`}>
                 <f.icon className="h-5 w-5" />
               </div>
-              <span className="text-[10px] text-muted-foreground text-center">{f.label}</span>
+              <span className="text-typo-eyebrow text-muted-foreground text-center">{f.label}</span>
             </div>
           ))}
         </div>
@@ -900,13 +982,14 @@ export function AICoach() {
                   >
                     {ex.name}
                   </h3>
-                  <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">{ex.description}</p>
+                  <p className="mt-1 line-clamp-2 text-typo-caption text-muted-foreground">{ex.description}</p>
                 </div>
               </button>
             )
           })}
         </div>
       </div>
+      </>
     )
   }
 
@@ -917,6 +1000,8 @@ export function AICoach() {
     const culturalExtras = selectedExercise ? getCulturalTipExtras(locale, selectedExercise) : []
     const SetupIcon = exercise?.icon ?? Camera
     return (
+      <>
+        {coachFocusBar}
       <div className="flex flex-col items-center gap-6 px-4 pt-8 pb-28">
         <button
           onClick={handleReset}
@@ -957,7 +1042,7 @@ export function AICoach() {
             <div className="flex items-start gap-3 rounded-xl bg-chart-2/10 p-3 border border-chart-2/25">
               <Zap className="h-4 w-4 text-chart-2 shrink-0 mt-0.5" />
               <div>
-                <span className="text-[10px] font-semibold uppercase text-chart-2">From your last sessions</span>
+                <span className="text-typo-eyebrow font-semibold uppercase text-chart-2">From your last sessions</span>
                 <p className="text-sm text-foreground mt-0.5">{memoryTip}</p>
               </div>
             </div>
@@ -1041,11 +1126,14 @@ export function AICoach() {
           Start Detection
         </button>
       </div>
+      </>
     )
   }
 
   if (state === "enrolling") {
     return (
+      <>
+        {coachFocusBar}
       <div className="flex flex-col min-h-[calc(100vh-80px)] pb-24">
         <div className="relative h-[78vh] min-h-[450px] max-h-[85vh] bg-secondary overflow-hidden rounded-3xl border-4 border-primary/40 mx-2 mt-2">
           <video
@@ -1072,17 +1160,20 @@ export function AICoach() {
           Cancel
         </button>
       </div>
+      </>
     )
   }
 
   if (state === "detecting") {
     return (
-      <div className="flex flex-col min-h-[calc(100vh-80px)] pb-24">
-        <div className="relative h-[78vh] min-h-[450px] max-h-[85vh] bg-secondary overflow-hidden rounded-3xl border-4 border-primary/40 shadow-[0_0_0_2px_var(--border)] ring-4 ring-primary/20 mx-2 mt-2">
+      <>
+        {coachFocusBar}
+      <div className="flex min-h-[calc(100vh-80px)] flex-col pb-24 lg:flex-row lg:items-start lg:gap-4 lg:px-3 lg:pt-2">
+        <div className="relative mx-2 mt-2 h-[78vh] min-h-[450px] max-h-[85vh] min-w-0 flex-1 overflow-hidden rounded-3xl border-4 border-primary/40 bg-secondary shadow-[0_0_0_2px_var(--border)] ring-4 ring-primary/20 lg:mx-0 lg:mt-0">
           {useCamera && (
             <video
               ref={videoRef}
-              className="absolute inset-0 w-full h-full object-cover mirror z-0"
+              className="absolute inset-0 z-0 h-full w-full object-cover mirror"
               playsInline
               muted
               style={{
@@ -1092,13 +1183,13 @@ export function AICoach() {
             />
           )}
           {!useCamera && (
-            <div className="absolute inset-0 bg-gradient-to-br from-secondary to-background flex items-center justify-center z-0">
+            <div className="absolute inset-0 z-0 flex items-center justify-center bg-gradient-to-br from-secondary to-background">
               <Camera className="h-20 w-20 text-muted-foreground/40" />
             </div>
           )}
           <canvas
             ref={canvasRef}
-            className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
             style={{ transform: "scaleX(-1)", zIndex: 10 }}
             aria-label="Skeleton overlay"
           />
@@ -1108,15 +1199,15 @@ export function AICoach() {
             </div>
           )}
           {fallDetected && (
-            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-black/85 backdrop-blur-sm p-6">
-              <div className="rounded-2xl bg-destructive/20 border-2 border-destructive p-6 text-center max-w-sm">
+            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-black/85 p-6 backdrop-blur-sm">
+              <div className="max-w-sm rounded-2xl border-2 border-destructive bg-destructive/20 p-6 text-center">
                 <p className="text-xl font-bold text-destructive">Possible fall detected</p>
-                <p className="text-sm text-white/90 mt-2">If you need help, call emergency services.</p>
+                <p className="mt-2 text-sm text-white/90">If you need help, call emergency services.</p>
               </div>
-              <div className="flex flex-col sm:flex-row gap-3 w-full max-w-xs">
+              <div className="flex w-full max-w-xs flex-col gap-3 sm:flex-row">
                 <a
                   href={`tel:${EMERGENCY_NUMBER}`}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-destructive py-4 px-6 font-semibold text-destructive-foreground hover:bg-destructive/90"
+                  className="flex items-center justify-center gap-2 rounded-xl bg-destructive px-6 py-4 font-semibold text-destructive-foreground hover:bg-destructive/90"
                 >
                   <Phone className="h-5 w-5" />
                   Call {EMERGENCY_NUMBER}
@@ -1128,46 +1219,161 @@ export function AICoach() {
                     stopFallAlarm()
                     fallDismissedAtRef.current = Date.now()
                   }}
-                  className="rounded-xl bg-primary py-4 px-6 font-semibold text-primary-foreground hover:bg-primary/90"
+                  className="rounded-xl bg-primary px-6 py-4 font-semibold text-primary-foreground hover:bg-primary/90"
                 >
                   I&apos;m OK
                 </button>
               </div>
             </div>
           )}
-          {useCamera && (
-            <div className="absolute inset-x-4 bottom-4 z-30 rounded-xl bg-black/75 backdrop-blur-md px-4 py-3 border border-white/10 shadow-lg">
-              <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/20">
-                  <Camera className="h-4 w-4 text-amber-400" />
+          <div
+            className={`absolute top-3 right-3 z-20 flex items-center gap-2 rounded-2xl border px-3 py-2 shadow-lg backdrop-blur-md transition-all duration-300 ${
+              isGoodForm
+                ? "border-emerald-400/35 bg-emerald-950/80 text-emerald-50"
+                : "border-amber-400/40 bg-amber-950/85 text-amber-50"
+            }`}
+          >
+            {isGoodForm ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-300" /> : <AlertCircle className="h-4 w-4 shrink-0 text-amber-200" />}
+            <span className="text-xs font-semibold tracking-wide">{isGoodForm ? "Good form" : "Adjust form"}</span>
+          </div>
+          <div className="absolute top-3 left-3 z-20 w-[min(calc(100%-7rem),15.5rem)]">
+            <div
+              className={`overflow-hidden rounded-2xl border border-white/25 bg-black/50 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-md ${
+                repBounce && !a11yPrefs.reduceMotion ? "motion-safe:animate-rep-bounce" : ""
+              }`}
+            >
+              <div className="px-3 py-2.5 sm:px-3.5">
+                <p className="text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-white/50">
+                  {targetReps > 0 ? "Reps · goal" : "Reps"}
+                </p>
+                {targetReps > 0 ? (
+                  <div className="mt-1 flex items-center gap-3">
+                    <RingGauge
+                      value={reps}
+                      max={targetReps}
+                      size={76}
+                      thickness={6}
+                      spring
+                      progressClassName="stroke-white"
+                      trackClassName="stroke-white/15"
+                    >
+                      <span
+                        className="text-2xl font-bold tabular-nums leading-none text-white"
+                        style={{ fontFamily: "var(--font-heading)" }}
+                      >
+                        {reps}
+                      </span>
+                      <span className="text-typo-micro font-semibold uppercase tracking-wider text-white/45">/ {targetReps}</span>
+                    </RingGauge>
+                    {reps >= targetReps && (
+                      <span className="text-typo-caption font-semibold text-emerald-300">Goal reached</span>
+                    )}
+                  </div>
+                ) : (
+                  <p
+                    className="mt-0.5 text-4xl font-bold tabular-nums leading-none text-white"
+                    style={{ fontFamily: "var(--font-heading)" }}
+                  >
+                    {reps}
+                  </p>
+                )}
+              </div>
+              {useCamera && (
+                <div className="flex flex-wrap gap-1.5 border-t border-white/10 bg-black/25 px-2.5 py-2 sm:px-3">
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-typo-eyebrow font-semibold ${
+                      userCentered ? "bg-emerald-500/20 text-emerald-100" : "bg-amber-500/25 text-amber-100"
+                    }`}
+                    title={userCentered ? "You're in the center zone" : "Move into the dashed box"}
+                  >
+                    <Crosshair className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
+                    {userCentered ? "Centered" : "Recenter"}
+                  </span>
+                  {faceEnrolled && (
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-typo-eyebrow font-semibold motion-reduce:animate-none ${
+                        faceMatch ? "bg-emerald-500/20 text-emerald-100" : "bg-red-500/25 text-red-100 motion-safe:animate-pulse"
+                      }`}
+                      title={faceMatch ? "Your face — reps count" : "Checking face — hold steady if this is you"}
+                    >
+                      <User className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
+                      {faceMatch ? "Verified" : "Face check"}
+                    </span>
+                  )}
+                  <span
+                    className="inline-flex items-center gap-1 rounded-lg bg-sky-500/20 px-2 py-1 text-typo-eyebrow font-semibold text-sky-100"
+                    title="Alarm and emergency call if a fall is detected"
+                  >
+                    <Shield className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
+                    Fall guard
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0">
+              )}
+            </div>
+          </div>
+          {!useCamera && (
+            <div className="absolute bottom-4 left-4 right-4 z-[600] rounded-xl bg-chart-4/90 backdrop-blur-sm px-4 py-2.5 border border-chart-4/50">
+              <p className="text-xs font-medium text-foreground">
+                Simulated mode — camera denied or unavailable. Rep counting and form feedback still work.
+              </p>
+            </div>
+          )}
+        </div>
+        <div className="flex w-full flex-col space-y-4 px-4 pt-4 lg:max-h-[min(85vh,calc(100vh-7rem))] lg:w-[min(100%,340px)] lg:shrink-0 lg:overflow-y-auto lg:py-2 lg:pl-2 lg:pr-4 lg:pt-2">
+          {useCamera && (
+            <div className="rounded-2xl border border-amber-500/20 bg-card p-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/15">
+                  <Camera className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div className="min-w-0 flex-1">
                   {envAssessment?.suggestion ? (
-                    <p className="text-sm font-medium text-amber-200">{envAssessment.suggestion}</p>
+                    <p className="text-sm font-medium text-foreground">{envAssessment.suggestion}</p>
                   ) : (
-                    <p className="text-sm font-medium text-white">
-                      For best detection, keep <strong className="text-amber-300">3–4 feet</strong> between you and the camera.
+                    <p className="text-sm font-medium text-foreground">
+                      For best detection, keep <strong className="text-amber-600 dark:text-amber-400">3–4 feet</strong> between you and the camera.
                     </p>
                   )}
-                  <p className="text-xs text-white/70 mt-0.5">
-                    Stay in the <strong>center</strong> (dashed box) for rep counting. Full body in frame = better detection.
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Stay in the <strong className="text-foreground">center</strong> (dashed box) for rep counting. Full body in frame = better detection.
                   </p>
-                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    {useCamera && (
+                      <span
+                        className={`text-typo-caption font-semibold ${
+                          poseReady ? "text-emerald-600 dark:text-emerald-400/80" : "text-amber-600 dark:text-amber-400/80"
+                        }`}
+                      >
+                        Pose: {poseReady ? "tracking" : "searching"}
+                      </span>
+                    )}
                     {bodyScanSummary && (
-                      <span className="text-[11px] text-emerald-400/90">
+                      <span className="text-typo-caption text-emerald-600 dark:text-emerald-400">
                         Body: {bodyScanSummary}
                       </span>
                     )}
                     {envAssessment && (
                       <>
-                        <span className={`text-[11px] ${envAssessment.fpsLow ? "text-red-400" : "text-emerald-400/70"}`}>
+                        <span className={`text-typo-caption ${envAssessment.fpsLow ? "text-destructive" : "text-emerald-600 dark:text-emerald-400/80"}`}>
                           {envAssessment.fps} fps
                         </span>
-                        <span className={`text-[11px] ${envAssessment.quality > 0.6 ? "text-emerald-400/70" : envAssessment.quality > 0.3 ? "text-amber-400/70" : "text-red-400/70"}`}>
+                        <span
+                          className={`text-typo-caption ${
+                            envAssessment.quality > 0.6
+                              ? "text-emerald-600 dark:text-emerald-400/80"
+                              : envAssessment.quality > 0.3
+                                ? "text-amber-600 dark:text-amber-400/80"
+                                : "text-destructive/90"
+                          }`}
+                        >
                           Quality: {Math.round(envAssessment.quality * 100)}%
                         </span>
                         {envAssessment.cameraAngle !== "unknown" && (
-                          <span className={`text-[11px] ${envAssessment.angleRecommended ? "text-emerald-400/70" : "text-amber-400/70"}`}>
+                          <span
+                            className={`text-typo-caption ${
+                              envAssessment.angleRecommended ? "text-emerald-600 dark:text-emerald-400/80" : "text-amber-600 dark:text-amber-400/80"
+                            }`}
+                          >
                             {envAssessment.cameraAngle} view{envAssessment.angleRecommended ? "" : " (try another angle)"}
                           </span>
                         )}
@@ -1178,129 +1384,51 @@ export function AICoach() {
               </div>
             </div>
           )}
-          <div
-            className={`absolute top-4 right-4 z-20 flex items-center gap-2 rounded-full px-3 py-1.5 backdrop-blur-sm transition-all duration-300 ${
-              isGoodForm ? "bg-primary/20 text-primary" : "bg-destructive/20 text-destructive"
-            }`}
-          >
-            {isGoodForm ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-            <span className="text-xs font-semibold">{isGoodForm ? "Good Form" : "Adjust Form"}</span>
-          </div>
-          <div className="absolute top-4 left-4 flex flex-col gap-1.5">
-            <div
-              className={`rounded-xl bg-background/80 backdrop-blur-sm px-4 py-2 transition-transform duration-300 ${
-                repBounce && !a11yPrefs.reduceMotion ? "animate-rep-bounce" : ""
-              }`}
-            >
-              <span className="text-xs text-muted-foreground block">{targetReps > 0 ? "Reps (goal)" : "Reps"}</span>
-              {targetReps > 0 ? (
-                <div className="mt-1.5 flex flex-col items-start gap-1">
-                  <RingGauge
-                    value={reps}
-                    max={targetReps}
-                    size={84}
-                    thickness={7}
-                    spring
-                    progressClassName="stroke-primary"
-                  >
-                    <span
-                      className="text-2xl font-bold tabular-nums leading-none text-foreground"
-                      style={{ fontFamily: "var(--font-heading)" }}
-                    >
-                      {reps}
-                    </span>
-                    <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">of {targetReps}</span>
-                  </RingGauge>
-                  {reps >= targetReps && (
-                    <span className="text-[10px] font-semibold text-primary">Goal reached!</span>
-                  )}
-                </div>
-              ) : (
-                <span
-                  className="text-3xl font-bold text-foreground tabular-nums block mt-0.5"
-                  style={{ fontFamily: "var(--font-heading)" }}
-                >
-                  {reps}
-                </span>
-              )}
-            </div>
-            {useCamera && (
-              <div className="flex flex-wrap gap-1.5">
-                <span
-                  className={`rounded-full px-2.5 py-1 text-[10px] font-semibold backdrop-blur-sm ${
-                    userCentered ? "bg-emerald-500/25 text-emerald-300" : "bg-amber-500/25 text-amber-300"
-                  }`}
-                  title={userCentered ? "You're in the center zone" : "Move into the dashed box"}
-                >
-                  {userCentered ? "Center ✓" : "Center"}
-                </span>
-                {faceEnrolled && (
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-[10px] font-semibold backdrop-blur-sm motion-reduce:animate-none ${
-                      faceMatch
-                        ? "bg-emerald-500/25 text-emerald-300"
-                        : "bg-destructive/25 text-destructive motion-safe:animate-pulse"
-                    }`}
-                    title={faceMatch ? "Your face — reps count" : "Checking face — hold steady if this is you"}
-                  >
-                    {faceMatch ? "You ✓" : "Other"}
-                  </span>
-                )}
-                <span
-                  className="rounded-full px-2.5 py-1 text-[10px] font-semibold backdrop-blur-sm bg-blue-500/25 text-blue-300"
-                  title="Alarm and emergency call if a fall is detected"
-                >
-                  Fall detection: on
-                </span>
-              </div>
-            )}
-          </div>
-          {!useCamera && (
-            <div className="absolute bottom-4 left-4 right-4 z-[600] rounded-xl bg-chart-4/90 backdrop-blur-sm px-4 py-2.5 border border-chart-4/50">
-              <p className="text-xs font-medium text-foreground">
-                Simulated mode — camera denied or unavailable. Rep counting and form feedback still work.
-              </p>
-            </div>
-          )}
-        </div>
-        <div className="flex-1 px-4 pt-4 space-y-4">
-          <div className="flex items-center gap-4 rounded-2xl border border-border bg-card p-3">
+          <div className="flex items-stretch gap-4 rounded-2xl border border-border bg-gradient-to-br from-card to-card/80 p-4 shadow-sm">
             <RingGauge
               value={score}
               max={100}
-              size={80}
+              size={88}
               thickness={7}
               spring
               progressClassName="stroke-metric-coach"
+              trackClassName="stroke-muted/40"
             >
               <span
-                className="text-2xl font-bold tabular-nums leading-none text-foreground animate-score-roll"
+                className="text-[26px] font-bold tabular-nums leading-none text-foreground animate-score-roll"
                 style={{ fontFamily: "var(--font-heading)" }}
               >
                 {score}
               </span>
-              <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-metric-coach">
+              <span className="text-typo-micro font-bold uppercase tracking-[0.22em] text-metric-coach/90">
                 Form
               </span>
             </RingGauge>
-            <div className="min-w-0 flex-1 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                  Live score
-                </span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums ${isGoodForm ? "bg-metric-move/15 text-metric-move" : "bg-destructive/15 text-destructive"}`}>
+            <div className="min-w-0 flex-1 flex flex-col justify-center space-y-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-muted-foreground">Live score</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">From your live form cues</p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full border px-2.5 py-1 text-typo-eyebrow font-bold tabular-nums ${
+                    isGoodForm
+                      ? "border-metric-move/30 bg-metric-move/10 text-metric-move"
+                      : "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                  }`}
+                >
                   {isGoodForm ? "On target" : "Adjust"}
                 </span>
               </div>
-              <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+              <div className="h-2 rounded-full bg-secondary overflow-hidden ring-1 ring-border/60">
                 <div
-                  className="h-full rounded-full bg-metric-coach transition-all duration-500 ease-out"
+                  className="h-full rounded-full bg-gradient-to-r from-metric-coach/90 to-metric-coach transition-[width] duration-500 ease-out"
                   style={{ width: `${score}%` }}
                 />
               </div>
               {envAssessment && (
-                <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                  <svg width="24" height="14" viewBox="0 0 24 14" className="shrink-0">
+                <div className="flex items-center gap-2 text-typo-eyebrow text-muted-foreground">
+                  <svg width="24" height="14" viewBox="0 0 24 14" className="shrink-0 opacity-80">
                     <path
                       d="M 2 12 A 10 10 0 0 1 22 12"
                       fill="none"
@@ -1318,7 +1446,7 @@ export function AICoach() {
                       style={{ transition: "stroke-dasharray 0.5s ease-out" }}
                     />
                   </svg>
-                  Detection
+                  Detection quality
                 </div>
               )}
             </div>
@@ -1330,7 +1458,7 @@ export function AICoach() {
                 {breakdown.map((b, i) => (
                   <div
                     key={i}
-                    className={`rounded-lg px-2.5 py-1.5 text-[10px] font-medium transition-colors duration-300 ${b.ok ? "bg-primary/15 text-primary" : "bg-destructive/15 text-destructive"}`}
+                    className={`rounded-lg px-2.5 py-1.5 text-typo-eyebrow font-medium transition-colors duration-300 ${b.ok ? "bg-primary/15 text-primary" : "bg-destructive/15 text-destructive"}`}
                     title={b.detail}
                   >
                     {b.label}: {b.value}
@@ -1339,22 +1467,48 @@ export function AICoach() {
               </div>
             </div>
           )}
-          <div className="rounded-xl bg-card p-4 border border-border overflow-hidden">
-            <div className="flex items-center gap-2 mb-2">
-              <Zap className="h-4 w-4 text-primary" />
-              <span id="coach-live-label" className="text-sm font-semibold text-foreground">Live feedback</span>
+          <div
+            className="overflow-hidden rounded-xl border border-border bg-card p-4"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            aria-labelledby="coach-live-overlay-label"
+          >
+            <span id="coach-live-overlay-label" className="sr-only">
+              Live feedback
+            </span>
+            <div className="mb-2 flex items-center gap-2">
+              <Zap className="h-4 w-4 text-primary" aria-hidden />
+              <span className="text-sm font-semibold text-foreground">Live feedback</span>
             </div>
-            <p
-              key={feedbackKey}
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-              aria-labelledby="coach-live-label"
-              className="text-xs text-muted-foreground animate-feedback-slide"
-            >
+            <p key={feedbackKey} className="animate-feedback-slide text-sm text-muted-foreground">
               {liveFeedback}
             </p>
           </div>
+          {selectedExercise && (
+            <AICoachLlmPanel
+              exerciseId={selectedExercise}
+              exerciseName={exerciseName}
+              reps={reps}
+              score={Math.round(score)}
+              repScores={repScores}
+              feedback={feedback}
+              breakdown={breakdown}
+              exerciseTips={EXERCISE_TIPS[selectedExercise]}
+              sessionDnaSummary={null}
+              repScoreStats={
+                repScores.length
+                  ? {
+                      min: Math.min(...repScores),
+                      max: Math.max(...repScores),
+                      avg: Math.round(repScores.reduce((a, b) => a + b, 0) / repScores.length),
+                    }
+                  : null
+              }
+              liveCue={liveFeedback}
+              sessionPhase="live"
+            />
+          )}
           <button
             onClick={handleFinish}
             className="w-full rounded-xl bg-primary py-4 text-center font-semibold text-primary-foreground text-base transition-all hover:bg-primary/90 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -1363,6 +1517,7 @@ export function AICoach() {
           </button>
         </div>
       </div>
+      </>
     )
   }
 
@@ -1371,30 +1526,11 @@ export function AICoach() {
     sessionDna != null
       ? `${sessionDna.effectiveReps.toFixed(1)} effective reps${sessionDna.verifiedMovement ? " · Verified" : ""}`
       : null
+  const recapCues = topCuesFromBreakdown(recapBreakdown.length ? recapBreakdown : breakdown, feedback, 4)
   return (
+    <>
+      {coachFocusBar}
     <div className="flex flex-col items-center gap-6 px-4 pt-8 pb-28">
-      <div className="relative flex h-36 w-36 items-center justify-center">
-        <svg className="absolute inset-0" viewBox="0 0 144 144">
-          <circle cx="72" cy="72" r="64" fill="none" stroke="var(--secondary)" strokeWidth="8" />
-          <circle
-            cx="72"
-            cy="72"
-            r="64"
-            fill="none"
-            stroke="var(--primary)"
-            strokeWidth="8"
-            strokeLinecap="round"
-            strokeDasharray={`${(score / 100) * 402} 402`}
-            transform="rotate(-90 72 72)"
-          />
-        </svg>
-        <div className="text-center">
-          <span className="text-3xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
-            {score}%
-          </span>
-          <span className="block text-xs text-muted-foreground">Form Score</span>
-        </div>
-      </div>
       <div className="text-center">
         <h2 className="text-xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
           Workout Complete
@@ -1404,57 +1540,64 @@ export function AICoach() {
           {effLine ? ` · ${effLine}` : ""}
         </p>
       </div>
+      {sessionDna != null ? (
+        <SessionDnaCard {...sessionDna} ringSize={120} className="w-full max-w-sm border-primary/25 shadow-lg" />
+      ) : (
+        <div className="relative flex h-36 w-36 items-center justify-center">
+          <svg className="absolute inset-0" viewBox="0 0 144 144" aria-hidden>
+            <circle cx="72" cy="72" r="64" fill="none" stroke="var(--secondary)" strokeWidth="8" />
+            <circle
+              cx="72"
+              cy="72"
+              r="64"
+              fill="none"
+              stroke="var(--primary)"
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray={`${(score / 100) * 402} 402`}
+              transform="rotate(-90 72 72)"
+            />
+          </svg>
+          <div className="text-center">
+            <span className="text-3xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
+              {score}%
+            </span>
+            <span className="block text-xs text-muted-foreground">Form Score</span>
+          </div>
+        </div>
+      )}
+      {repScores.length > 0 && (
+        <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
+          <CoachRepTimeline
+            repScores={repScores}
+            selectedRep={selectedRecapRep}
+            onRepSelect={(i) => setSelectedRecapRep(i)}
+            label="Set recap · tap a rep"
+          />
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
         <div className="rounded-xl bg-card p-4 border border-border text-center">
           <span className="text-2xl font-bold text-foreground">{reps}</span>
-          <p className="text-[10px] text-muted-foreground uppercase">Total Reps</p>
+          <p className="text-typo-eyebrow text-muted-foreground uppercase">Total Reps</p>
         </div>
         <div className="rounded-xl bg-card p-4 border border-border text-center">
           <span className="text-2xl font-bold text-primary">{avgRepScore}%</span>
-          <p className="text-[10px] text-muted-foreground uppercase">Avg rep quality</p>
+          <p className="text-typo-eyebrow text-muted-foreground uppercase">Avg rep quality</p>
         </div>
         {repScores.length > 0 && (
           <>
             <div className="rounded-xl bg-card p-4 border border-border text-center">
               <span className="text-2xl font-bold text-chart-4">{Math.max(...repScores)}%</span>
-              <p className="text-[10px] text-muted-foreground uppercase">Best rep</p>
+              <p className="text-typo-eyebrow text-muted-foreground uppercase">Best rep</p>
             </div>
             <div className="rounded-xl bg-card p-4 border border-border text-center">
               <span className="text-2xl font-bold text-chart-2">{repScores.filter((s) => s >= 80).length}</span>
-              <p className="text-[10px] text-muted-foreground uppercase">High-form reps</p>
+              <p className="text-typo-eyebrow text-muted-foreground uppercase">High-form reps</p>
             </div>
           </>
         )}
-        {sessionDna != null && (
-          <div className="rounded-xl bg-card p-4 border border-border text-center col-span-2">
-            <span className="text-2xl font-bold text-chart-2">{sessionDna.effectiveReps.toFixed(1)}</span>
-            <p className="text-[10px] text-muted-foreground uppercase">Effective reps (form-weighted)</p>
-          </div>
-        )}
       </div>
-      {sessionDna != null && (
-        <div className="w-full max-w-sm">
-          <SessionDnaCard {...sessionDna} />
-        </div>
-      )}
-      {repScores.length > 0 && (
-        <div className="w-full max-w-sm">
-          <h3 className="text-sm font-semibold text-foreground mb-2">Rep-by-rep quality</h3>
-          <div className="flex flex-wrap gap-2">
-            {repScores.map((s, i) => (
-              <span
-                key={i}
-                className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold ${
-                  s >= 80 ? "bg-primary/20 text-primary" : s >= 60 ? "bg-chart-4/20 text-chart-4" : "bg-destructive/20 text-destructive"
-                }`}
-                title={`Rep ${i + 1}: ${s}%`}
-              >
-                {s}%
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
       <div className="w-full max-w-sm space-y-2">
         <h3 className="text-sm font-semibold text-foreground">Coach feedback</h3>
         {feedback.map((item, i) => (
@@ -1464,6 +1607,22 @@ export function AICoach() {
           </div>
         ))}
       </div>
+      {recapCues.length > 0 && (
+        <div className="w-full max-w-sm rounded-2xl border border-primary/25 bg-primary/5 p-4">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-primary mb-2">Focus next set</h3>
+          <ul className="space-y-2">
+            {recapCues.slice(0, 3).map((cue, idx) => (
+              <li key={idx} className="flex gap-2 text-sm text-foreground">
+                <Target className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+                <span>{cue}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-typo-caption text-muted-foreground">
+            Tap into the assistant below with a follow-up—the recap sends the same session DNA plus these cues as context.
+          </p>
+        </div>
+      )}
       {selectedExercise && (
         <AICoachLlmPanel
           exerciseId={selectedExercise}
@@ -1472,7 +1631,7 @@ export function AICoach() {
           score={Math.round(score)}
           repScores={repScores}
           feedback={feedback}
-          breakdown={breakdown}
+          breakdown={recapBreakdown.length ? recapBreakdown : breakdown}
           exerciseTips={EXERCISE_TIPS[selectedExercise]}
           sessionDnaSummary={
             sessionDna
@@ -1492,7 +1651,34 @@ export function AICoach() {
                 }
               : null
           }
+          sessionPhase="completed"
         />
+      )}
+      {onNavigate && (
+        <div className="w-full max-w-sm space-y-2">
+          <h3 className="text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-muted-foreground">What&apos;s next</h3>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => onNavigate("arena")}
+              className="flex items-center justify-center gap-2 rounded-xl border border-metric-streak/35 bg-metric-streak/10 py-3 px-3 text-sm font-semibold text-foreground transition-colors hover:bg-metric-streak/15"
+            >
+              <Trophy className="h-4 w-4 text-metric-streak shrink-0" />
+              Arena duel
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate("home")}
+              className="flex items-center justify-center gap-2 rounded-xl border border-border bg-secondary/50 py-3 px-3 text-sm font-medium text-foreground transition-colors hover:bg-secondary/70"
+            >
+              <Home className="h-4 w-4 shrink-0" />
+              Home &amp; wearables
+            </button>
+          </div>
+          <p className="text-typo-caption text-muted-foreground text-center">
+            Arena uses the same composite score as this session. Home shows recovery hints when Fitbit or BLE HR is connected.
+          </p>
+        </div>
       )}
       <div className="flex gap-3 w-full max-w-sm">
         <button
@@ -1502,6 +1688,9 @@ export function AICoach() {
             setReps(0)
             setRepScores([])
             setFeedback([])
+            setBreakdown([])
+            setRecapBreakdown([])
+            setSelectedRecapRep(null)
             setScore(100)
           }}
           className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-secondary py-3 text-sm font-medium text-secondary-foreground transition-all hover:bg-secondary/80"
@@ -1514,5 +1703,6 @@ export function AICoach() {
         </button>
       </div>
     </div>
+    </>
   )
 }

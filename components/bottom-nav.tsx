@@ -11,7 +11,7 @@ const navItems = [
   { icon: Dumbbell, labelKey: "nav.exercises", id: "exercises", tint: "metric-move" },
   { icon: ScanLine, labelKey: "nav.coach", id: "ai-coach", tint: "metric-coach" },
   { icon: Trophy, labelKey: "nav.arena", id: "arena", tint: "metric-streak" },
-  { icon: User, labelKey: "nav.profile", id: "profile", tint: "metric-spo2" },
+  { icon: User, labelKey: "nav.profile", id: "profile", tint: "metric-profile" },
 ] as const
 
 export type TabId = (typeof navItems)[number]["id"]
@@ -27,7 +27,7 @@ const tintClasses = {
   "metric-move": { bg: "bg-metric-move/25", text: "text-metric-move" },
   "metric-coach": { bg: "bg-metric-coach/25", text: "text-metric-coach" },
   "metric-streak": { bg: "bg-metric-streak/25", text: "text-metric-streak" },
-  "metric-spo2": { bg: "bg-metric-spo2/25", text: "text-metric-spo2" },
+  "metric-profile": { bg: "bg-metric-profile/25", text: "text-metric-profile" },
 } as const
 
 export function BottomNav({
@@ -71,7 +71,16 @@ export function BottomNav({
                   key={item.id}
                   type="button"
                   data-testid={`nav-tab-${item.id}`}
-                  onClick={() => onTabChange(item.id)}
+                  onClick={() => {
+                    try {
+                      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+                        navigator.vibrate(6)
+                      }
+                    } catch {
+                      /* ignore */
+                    }
+                    onTabChange(item.id)
+                  }}
                   className={`relative z-[1] flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-full py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                     isActive ? activeText : "text-muted-foreground"
                   }`}
@@ -84,11 +93,13 @@ export function BottomNav({
                     }`}
                     strokeWidth={isActive ? 2.5 : 2}
                   />
-                  {isActive && (
-                    <span className="text-[9px] font-bold uppercase tracking-[0.08em] leading-none">
-                      {label}
-                    </span>
-                  )}
+                  <span
+                    className={`text-typo-micro max-w-[4.5rem] truncate font-bold uppercase tracking-[0.08em] leading-none ${
+                      isActive ? activeText : "text-muted-foreground opacity-60"
+                    }`}
+                  >
+                    {label}
+                  </span>
                 </button>
               )
             })}

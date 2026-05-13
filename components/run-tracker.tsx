@@ -7,6 +7,7 @@ import { addRun } from "@/lib/store-supabase"
 import { isNetworkError } from "@/lib/network-status"
 import { isSecureContext } from "@/lib/secure-context"
 import { toast } from "sonner"
+import { RunFinishRecap, type RunFinishLap } from "@/components/run-finish-recap"
 
 const RunMap = dynamic(() => import("./run-map").then((m) => m.RunMap), { ssr: false })
 
@@ -46,6 +47,15 @@ export function RunTracker() {
   const [showSplits, setShowSplits] = useState(false)
   const [mapReady, setMapReady] = useState(false)
   const [savingRun, setSavingRun] = useState(false)
+  const [recapOpen, setRecapOpen] = useState(false)
+  const [recapPayload, setRecapPayload] = useState<{
+    distanceKm: number
+    durationSec: number
+    pace: string
+    path: [number, number][]
+    splits: RunFinishLap[]
+    calories: number
+  } | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const watchIdRef = useRef<number | null>(null)
   const runStateRef = useRef<RunState>("idle")
@@ -181,6 +191,14 @@ export function RunTracker() {
   const handleResume = () => setRunState("running")
   const handleStop = async () => {
     if (seconds > 0 || distance > 0) {
+      const snapshot = {
+        distanceKm: distance,
+        durationSec: seconds,
+        pace,
+        path: [...path] as [number, number][],
+        splits: [...splits] as RunFinishLap[],
+        calories: Math.round(calories),
+      }
       setSavingRun(true)
       try {
         await addRun({
@@ -191,9 +209,13 @@ export function RunTracker() {
           path,
         })
         toast.success(`Run saved! ${distance.toFixed(2)} km in ${formatTime(seconds)}`)
+        setRecapPayload(snapshot)
+        setRecapOpen(true)
       } catch (error) {
         if (isNetworkError(error)) {
           toast.info("Run queued — will sync when back online")
+          setRecapPayload(snapshot)
+          setRecapOpen(true)
         } else {
           toast.error("Failed to save run")
           console.error(error)
@@ -215,6 +237,21 @@ export function RunTracker() {
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-80px)] pb-24 animate-fade-in-up">
+      {recapPayload ? (
+        <RunFinishRecap
+          open={recapOpen}
+          onOpenChange={(o) => {
+            setRecapOpen(o)
+            if (!o) setRecapPayload(null)
+          }}
+          distanceKm={recapPayload.distanceKm}
+          durationSec={recapPayload.durationSec}
+          pacePerKm={recapPayload.pace}
+          path={recapPayload.path}
+          splits={recapPayload.splits}
+          calories={recapPayload.calories}
+        />
+      ) : null}
       {/* Real map (OpenStreetMap / like Google Maps) */}
       <div className="relative h-[45vh] min-h-[300px] overflow-hidden bg-secondary rounded-b-2xl">
         {mapReady && (
@@ -238,7 +275,7 @@ export function RunTracker() {
             </span>
           </div>
           {typeof window !== "undefined" && !window.isSecureContext && runState !== "idle" && (
-            <span className="text-[10px] text-muted-foreground bg-background/80 backdrop-blur-sm px-2 py-1 rounded-lg">
+            <span className="text-typo-eyebrow text-muted-foreground bg-background/80 backdrop-blur-sm px-2 py-1 rounded-lg">
               Use HTTPS for real GPS
             </span>
           )}
@@ -252,11 +289,11 @@ export function RunTracker() {
             <p className="text-xs text-muted-foreground mt-1 text-center px-4">
               Tap Start — your route will appear on the map
             </p>
-            <p className="text-[11px] text-muted-foreground/80 mt-2 text-center px-4 max-w-[280px]">
+            <p className="text-typo-caption text-muted-foreground/80 mt-2 text-center px-4 max-w-[280px]">
               Your runs will show here after you finish one.
             </p>
             {typeof window !== "undefined" && !window.isSecureContext && (
-              <p className="text-[10px] text-chart-4 mt-2 text-center px-4 max-w-[260px]">
+              <p className="text-typo-eyebrow text-chart-4 mt-2 text-center px-4 max-w-[260px]">
                 For real GPS, use HTTPS or localhost. Some browsers block location on plain HTTP.
               </p>
             )}
@@ -308,7 +345,7 @@ export function RunTracker() {
         </section>
       )}
 
-      <div className="flex items-center justify-center gap-6 px-6 py-6 mt-auto">
+      <div className="flex items-center justify-center gap-6 px-6 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] mt-auto">
         {runState === "idle" && (
           <button
             onClick={handleStart}
@@ -321,9 +358,9 @@ export function RunTracker() {
         {runState === "running" && (
           <>
             <button onClick={handleStop} disabled={savingRun} className="flex h-14 w-14 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-all duration-200 hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-70 disabled:pointer-events-none" aria-label="Stop run">
-              {savingRun ? <span className="text-[10px] font-medium">Saving…</span> : <Square className="h-5 w-5" fill="currentColor" />}
+              {savingRun ? <span className="text-typo-eyebrow font-medium">Saving…</span> : <Square className="h-5 w-5" fill="currentColor" />}
             </button>
-            <button onClick={handlePause} className="flex h-20 w-20 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-200 hover:scale-105 active:scale-95 animate-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background" aria-label="Pause run">
+            <button onClick={handlePause} className="flex h-20 w-20 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-200 hover:scale-105 active:scale-95 animate-glow-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background" aria-label="Pause run">
               <Pause className="h-8 w-8" fill="currentColor" />
             </button>
             <div className="w-14" />
@@ -332,7 +369,7 @@ export function RunTracker() {
         {runState === "paused" && (
           <>
             <button onClick={handleStop} disabled={savingRun} className="flex h-14 w-14 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-all duration-200 hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-70 disabled:pointer-events-none" aria-label="Stop run">
-              {savingRun ? <span className="text-[10px] font-medium">Saving…</span> : <Square className="h-5 w-5" fill="currentColor" />}
+              {savingRun ? <span className="text-typo-eyebrow font-medium">Saving…</span> : <Square className="h-5 w-5" fill="currentColor" />}
             </button>
             <button onClick={handleResume} className="flex h-20 w-20 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-200 hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background" aria-label="Resume run">
               <Play className="h-8 w-8 ml-1" fill="currentColor" />

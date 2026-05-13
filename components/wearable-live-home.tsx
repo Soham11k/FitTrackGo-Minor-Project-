@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Bluetooth, Heart, Droplets, Watch, ChevronRight } from "lucide-react"
+import { Bluetooth, Heart, Droplets, Watch } from "lucide-react"
 import { useBleHeartRate } from "@/hooks/use-ble-heart-rate"
 import { useChartEnterOnce } from "@/hooks/use-chart-enter-once"
 import type { TabId } from "@/components/bottom-nav"
@@ -9,6 +9,15 @@ import { RingGauge } from "@/components/ring-gauge"
 import { MetricTrendMini } from "@/components/metric-trend-mini"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty"
 
 type LivePayload = {
   ok?: boolean
@@ -84,7 +93,7 @@ function BleHeartRatePanel({
         className
       )}
     >
-      <p className="text-[10px] leading-snug text-muted-foreground">
+      <p className="text-typo-eyebrow leading-snug text-muted-foreground">
         <Bluetooth className="mr-1 inline h-3.5 w-3.5 align-text-bottom text-primary" aria-hidden />
         Live HR from this phone over <strong className="text-foreground">Bluetooth</strong> (standard BLE chest straps and
         sensors). Fitbit watches normally sync through the Fitbit app and{" "}
@@ -93,14 +102,14 @@ function BleHeartRatePanel({
       {ble.status === "connected" ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <span className="text-sm font-bold tabular-nums text-foreground">{ble.bpm ?? "—"}</span>
-          <span className="text-[10px] text-muted-foreground">bpm</span>
+          <span className="text-typo-eyebrow text-muted-foreground">bpm</span>
           {ble.deviceLabel && (
-            <span className="max-w-[12rem] truncate text-[10px] text-muted-foreground">{ble.deviceLabel}</span>
+            <span className="max-w-[12rem] truncate text-typo-eyebrow text-muted-foreground">{ble.deviceLabel}</span>
           )}
           <button
             type="button"
             onClick={() => void ble.disconnect()}
-            className="ml-auto rounded-lg border border-border px-2 py-1 text-[10px] font-semibold text-foreground hover:bg-muted"
+            className="ml-auto rounded-lg border border-border px-2 py-1 text-typo-eyebrow font-semibold text-foreground hover:bg-muted"
           >
             Disconnect
           </button>
@@ -110,13 +119,13 @@ function BleHeartRatePanel({
           type="button"
           onClick={() => void ble.connect()}
           disabled={ble.status === "connecting"}
-          className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-primary/90 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-primary-foreground disabled:opacity-60"
+          className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-primary/90 px-3 py-2 text-typo-eyebrow font-bold uppercase tracking-wide text-primary-foreground disabled:opacity-60"
         >
           <Bluetooth className="h-3.5 w-3.5" aria-hidden />
           {ble.status === "connecting" ? "Pairing…" : "Pair Bluetooth HR"}
         </button>
       )}
-      {ble.error && <p className="mt-1.5 text-[10px] text-destructive">{ble.error}</p>}
+      {ble.error && <p className="mt-1.5 text-typo-eyebrow text-destructive">{ble.error}</p>}
     </div>
   )
 }
@@ -262,7 +271,7 @@ export function WearableLiveHome({
     if (!ble.supported) return null
     return (
       <section className="rounded-3xl border border-border/80 bg-card/50 p-4 backdrop-blur-xl shadow-[var(--shadow-card)] animate-fade-in-up animate-stagger-2 dark:border-white/10">
-        <h2 className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+        <h2 className="mb-2 flex items-center gap-2 text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-muted-foreground">
           <Bluetooth className="h-4 w-4 text-primary" />
           Live HR (Bluetooth)
         </h2>
@@ -285,22 +294,27 @@ export function WearableLiveHome({
   if (!data.connected) {
     return (
       <div className="space-y-2 animate-fade-in-up animate-stagger-2">
-        <button
-          type="button"
-          onClick={() => onNavigate("profile")}
-          className="flex w-full items-center justify-between gap-3 rounded-3xl border border-border/80 bg-card/50 p-4 text-left backdrop-blur-xl shadow-[var(--shadow-card)] transition-shadow hover:shadow-md dark:border-white/10"
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/20 ring-2 ring-primary/30">
-              <Watch className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.15em] text-foreground">Fitbit</p>
-              <p className="text-[10px] text-muted-foreground">Profile → connect</p>
-            </div>
-          </div>
-          <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
-        </button>
+        <Empty className="w-full rounded-3xl border border-border/80 bg-card/50 px-4 py-8 text-primary shadow-[var(--shadow-card)] backdrop-blur-xl dark:border-white/10">
+          <EmptyHeader>
+            <EmptyMedia>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/illustrations/wearables-disconnected.svg"
+                alt=""
+                className="h-24 w-24 opacity-90"
+              />
+            </EmptyMedia>
+            <EmptyTitle className="text-foreground">Vitals need a link</EmptyTitle>
+            <EmptyDescription>
+              Connect Fitbit in Profile to pull resting heart rate and nightly SpO₂ summaries into Home.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button type="button" className="w-full max-w-xs rounded-2xl" onClick={() => onNavigate("profile")}>
+              Go to Profile
+            </Button>
+          </EmptyContent>
+        </Empty>
         <BleHeartRatePanel ble={ble} />
       </div>
     )
@@ -354,7 +368,7 @@ export function WearableLiveHome({
     <>
       <section className="rounded-3xl border border-border/80 bg-card/50 p-4 space-y-3 backdrop-blur-xl shadow-[var(--shadow-card)] animate-fade-in-up animate-stagger-2 transition-shadow hover:shadow-md dark:border-white/10">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+          <h2 className="flex items-center gap-2 text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-muted-foreground">
             <Watch className="h-4 w-4 text-primary" />
             Vitals
             <span
@@ -366,7 +380,7 @@ export function WearableLiveHome({
               <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
             </span>
           </h2>
-          <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/80">Tap · graph</span>
+          <span className="text-typo-micro font-semibold uppercase tracking-wider text-muted-foreground/80">Tap · graph</span>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <button
@@ -380,7 +394,7 @@ export function WearableLiveHome({
             aria-label={`${heartLabelResolved}, open past history`}
             title={heartLabelResolved}
           >
-            <div className="mb-1 flex w-full items-center justify-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+            <div className="mb-1 flex w-full items-center justify-center gap-1.5 text-typo-micro font-bold uppercase tracking-wider text-muted-foreground">
               <Heart className="h-3.5 w-3.5 text-metric-hr" />
               HR
             </div>
@@ -401,21 +415,21 @@ export function WearableLiveHome({
                 {displayHeartBpm != null ? displayHeartBpm : "—"}
               </span>
               {displayHeartBpm != null && (
-                <span className="text-[9px] font-medium text-muted-foreground">bpm</span>
+                <span className="text-typo-micro font-medium text-muted-foreground">bpm</span>
               )}
             </RingGauge>
             {ble.bpm != null && ble.deviceLabel && (
-              <p className="mt-1 line-clamp-2 text-center text-[10px] text-muted-foreground">{ble.deviceLabel}</p>
+              <p className="mt-1 line-clamp-2 text-center text-typo-eyebrow text-muted-foreground">{ble.deviceLabel}</p>
             )}
             {ble.bpm == null && data.heartAsOf && data.heartSource === "intraday_1min" && (
-              <p className="mt-1 text-center text-[10px] text-muted-foreground">~{formatAsOf(data.heartAsOf)}</p>
+              <p className="mt-1 text-center text-typo-eyebrow text-muted-foreground">~{formatAsOf(data.heartAsOf)}</p>
             )}
             {ble.bpm == null &&
               data.heartAsOf &&
               (data.heartSource === "resting_daily" ||
                 data.heartSource === "resting_series" ||
                 data.heartSource === "cached") && (
-                <p className="mt-1 text-center text-[10px] text-muted-foreground">{data.heartAsOf}</p>
+                <p className="mt-1 text-center text-typo-eyebrow text-muted-foreground">{data.heartAsOf}</p>
               )}
           </button>
 
@@ -430,7 +444,7 @@ export function WearableLiveHome({
             aria-label="SpO₂, open past history"
             title="Blood oxygen (SpO₂)"
           >
-            <div className="mb-1 flex w-full items-center justify-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+            <div className="mb-1 flex w-full items-center justify-center gap-1.5 text-typo-micro font-bold uppercase tracking-wider text-muted-foreground">
               <Droplets className="h-3.5 w-3.5 text-metric-spo2" />
               O₂
             </div>
@@ -451,11 +465,11 @@ export function WearableLiveHome({
                 {data.spo2AvgPct != null ? Number(data.spo2AvgPct).toFixed(1) : "—"}
               </span>
               {data.spo2AvgPct != null && (
-                <span className="text-[9px] font-medium text-muted-foreground">%</span>
+                <span className="text-typo-micro font-medium text-muted-foreground">%</span>
               )}
             </RingGauge>
             {data.spo2Date && (
-              <p className="mt-1 text-center text-[10px] text-muted-foreground">
+              <p className="mt-1 text-center text-typo-eyebrow text-muted-foreground">
                 {data.spo2Date}
                 {data.spo2Source === "cached" ? " · cached" : ""}
               </p>
@@ -464,7 +478,7 @@ export function WearableLiveHome({
         </div>
         {data.connected && data.heartBpm == null && data.spo2AvgPct == null && ble.bpm == null && (
           <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-center">
-            <p className="text-[10px] leading-snug text-muted-foreground">
+            <p className="text-typo-eyebrow leading-snug text-muted-foreground">
               Your watch syncs to Fitbit through the <strong className="text-foreground">Fitbit phone app</strong>. FitTrack
               Go loads summaries from <strong className="text-foreground">Fitbit&apos;s cloud</strong>—not your phone&apos;s
               Bluetooth to the band. Sync in the Fitbit app, wait a minute, then tap{" "}
@@ -482,7 +496,7 @@ export function WearableLiveHome({
         )}
         <BleHeartRatePanel ble={ble} />
         {data.note && (
-          <p className="text-[10px] leading-snug text-muted-foreground motion-reduce:opacity-100">{data.note}</p>
+          <p className="text-typo-eyebrow leading-snug text-muted-foreground motion-reduce:opacity-100">{data.note}</p>
         )}
       </section>
 

@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { agentDebugLog } from '@/lib/debug-agent-log'
 import type { UserProfile, WorkoutRecord, RunRecord, CoachRecord } from './store'
 import { isNetworkError, offlineQueue } from './network-status'
 
@@ -109,7 +110,26 @@ async function retryWithBackoff<T>(
 export async function getProfile(): Promise<UserProfile> {
   return retryWithBackoff(async () => {
     const { data: { user }, error: authError } = await getCachedAuthUser()
-    if (authError) throw new Error(`Authentication error: ${authError.message}`)
+    if (authError) {
+      // #region agent log
+      {
+        const m = authError.message ?? ''
+        agentDebugLog({
+          sessionId: 'ada955',
+          runId: 'pre-fix',
+          hypothesisId: 'H_PROFILE_AUTH',
+          location: 'lib/store-supabase.ts:getProfile',
+          message: 'getProfile_auth_error',
+          data: {
+            msgPrefix: String(m).slice(0, 120),
+            looksLikeMockClient: String(m).includes('not configured correctly'),
+          },
+          timestamp: Date.now(),
+        })
+      }
+      // #endregion
+      throw new Error(`Authentication error: ${authError.message}`)
+    }
     if (!user) throw new Error('Not authenticated')
 
   const { data, error } = await supabase
@@ -118,39 +138,52 @@ export async function getProfile(): Promise<UserProfile> {
     .eq('id', user.id)
     .single()
 
-  // If profile doesn't exist (PGRST116), create it
+  // No row returned (.single() → PGRST116). Common cases: truly missing row, or a race with
+  // `handle_new_user` (migration trigger) that already inserted — plain INSERT then 23505.
   if (error && error.code === 'PGRST116') {
-    // Profile doesn't exist, create it
-    const defaultName = user.user_metadata?.name || 
-                       user.user_metadata?.full_name ||
-                       user.user_metadata?.display_name ||
-                       user.email?.split('@')[0] ||
-                       'Athlete'
-    
-    const { error: insertError } = await supabase
-      .from('profiles')
-      .insert({
+    const defaultName =
+      user.user_metadata?.name ||
+      user.user_metadata?.full_name ||
+      user.user_metadata?.display_name ||
+      user.email?.split('@')[0] ||
+      'Athlete'
+
+    const { error: upsertError } = await supabase.from('profiles').upsert(
+      {
         id: user.id,
         name: defaultName,
         level: 'beginner',
         goals: [],
         join_date: new Date().toISOString().split('T')[0],
         onboarded: false,
-      })
+      },
+      { onConflict: 'id', ignoreDuplicates: true }
+    )
 
-    if (insertError) {
-      const errMsg = formatErr(insertError)
-      console.error('Failed to create profile:', errMsg)
+    if (upsertError) {
+      const errMsg = formatErr(upsertError)
+      console.error('Failed to ensure profile:', errMsg)
       throw new Error(`Failed to create profile: ${errMsg}`)
     }
 
-    // Return the newly created profile
+    const { data: row, error: again } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single()
+
+    if (again || !row) {
+      const errMsg = again ? formatErr(again) : 'empty profile after upsert'
+      console.error('Failed to load profile after ensure:', errMsg)
+      throw new Error(`Failed to load profile: ${errMsg}`)
+    }
+
     return {
-      name: defaultName,
-      level: 'beginner',
-      goals: [],
-      joinDate: new Date().toISOString().split('T')[0],
-      onboarded: false,
+      name: row.name || '',
+      level: (row.level as UserProfile['level']) || 'beginner',
+      goals: row.goals || [],
+      joinDate: row.join_date || new Date().toISOString().split('T')[0],
+      onboarded: row.onboarded || false,
     }
   }
 

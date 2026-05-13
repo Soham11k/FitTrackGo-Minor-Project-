@@ -25,7 +25,7 @@ function StatCell({ icon: Icon, label, valueNode, sub, iconClass, iconBg }: Stat
       )}
     >
       <div className="flex items-center justify-between gap-1">
-        <span className="line-clamp-2 text-left text-[11px] font-medium leading-tight text-muted-foreground">{label}</span>
+        <span className="line-clamp-2 text-left text-typo-caption font-medium leading-tight text-muted-foreground">{label}</span>
         <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full", iconBg)}>
           <Icon className={cn("h-4 w-4", iconClass)} strokeWidth={2.25} />
         </div>
@@ -36,7 +36,7 @@ function StatCell({ icon: Icon, label, valueNode, sub, iconClass, iconBg }: Stat
       >
         {valueNode}
       </div>
-      {sub ? <p className="text-[10px] font-medium tabular-nums text-teal-600/90 dark:text-teal-400/90">{sub}</p> : null}
+      {sub ? <p className="text-typo-eyebrow font-medium tabular-nums text-teal-600/90 dark:text-teal-400/90">{sub}</p> : null}
     </div>
   )
 }

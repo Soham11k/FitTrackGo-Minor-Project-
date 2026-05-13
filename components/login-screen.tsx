@@ -18,26 +18,28 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
   const [animateIn] = useState(true)
+  const [fieldError, setFieldError] = useState<{ email?: string; password?: string; name?: string }>({})
   const [loading, setLoading] = useState(false)
   const router = useRouter()
   const supabase = createClient()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setFieldError({})
     const trimmedEmail = email.trim()
     const trimmedPassword = password.trim()
     const trimmedName = name.trim()
 
     if (!trimmedEmail) {
-      toast.error("Please enter your email address.")
+      setFieldError((e) => ({ ...e, email: "Enter your email address." }))
       return
     }
     if (!trimmedPassword || trimmedPassword.length < 6) {
-      toast.error("Please enter a password (at least 6 characters).")
+      setFieldError((e) => ({ ...e, password: "Use at least 6 characters." }))
       return
     }
     if (isSignUp && !trimmedName) {
-      toast.error("Please enter your name to sign up.")
+      setFieldError((e) => ({ ...e, name: "Enter your name to sign up." }))
       return
     }
 
@@ -179,15 +181,15 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
             {siteConfig.tagline}
           </p>
           <div className="mt-3 flex items-center gap-1.5">
-            <span className="inline-flex items-center gap-1 rounded-full bg-metric-move/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-metric-move">
+            <span className="inline-flex items-center gap-1 rounded-full bg-metric-move/15 px-2.5 py-1 text-typo-eyebrow font-bold uppercase tracking-[0.12em] text-metric-move">
               Goals
             </span>
             <span className="text-muted-foreground/40" aria-hidden>·</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-metric-run/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-metric-run">
+            <span className="inline-flex items-center gap-1 rounded-full bg-metric-run/15 px-2.5 py-1 text-typo-eyebrow font-bold uppercase tracking-[0.12em] text-metric-run">
               Runs
             </span>
             <span className="text-muted-foreground/40" aria-hidden>·</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-metric-coach/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-metric-coach">
+            <span className="inline-flex items-center gap-1 rounded-full bg-metric-coach/15 px-2.5 py-1 text-typo-eyebrow font-bold uppercase tracking-[0.12em] text-metric-coach">
               Coach
             </span>
           </div>
@@ -209,7 +211,10 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
             aria-selected={!isSignUp}
             aria-controls="auth-panel"
             tabIndex={!isSignUp ? 0 : -1}
-            onClick={() => setIsSignUp(false)}
+            onClick={() => {
+              setIsSignUp(false)
+              setFieldError({})
+            }}
             className={`flex-1 rounded-md py-2.5 text-sm font-medium transition-all duration-300 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
               !isSignUp
                 ? "bg-primary text-primary-foreground scale-[1.02]"
@@ -225,7 +230,10 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
             aria-selected={isSignUp}
             aria-controls="auth-panel"
             tabIndex={isSignUp ? 0 : -1}
-            onClick={() => setIsSignUp(true)}
+            onClick={() => {
+              setIsSignUp(true)
+              setFieldError({})
+            }}
             className={`flex-1 rounded-md py-2.5 text-sm font-medium transition-all duration-300 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
               isSignUp
                 ? "bg-primary text-primary-foreground scale-[1.02]"
@@ -246,7 +254,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
           {/* Name field (sign up only) */}
           <div
             className={`overflow-hidden transition-all duration-300 ${
-              isSignUp ? "max-h-16 opacity-100" : "max-h-0 opacity-0"
+              isSignUp ? "max-h-36 opacity-100" : "max-h-0 opacity-0"
             }`}
           >
             <div className="relative">
@@ -255,10 +263,20 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
                 type="text"
                 placeholder="Full Name"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value)
+                  setFieldError((err) => ({ ...err, name: undefined }))
+                }}
                 className="h-12 rounded-xl border-border bg-secondary pl-10 text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary"
+                aria-invalid={!!fieldError.name}
+                aria-describedby={fieldError.name ? "auth-name-error" : undefined}
               />
             </div>
+            {fieldError.name ? (
+              <p id="auth-name-error" className="mt-1 text-xs text-destructive" role="alert">
+                {fieldError.name}
+              </p>
+            ) : null}
           </div>
 
           {/* Email field */}
@@ -268,29 +286,51 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
               type="email"
               placeholder="Email Address"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value)
+                setFieldError((err) => ({ ...err, email: undefined }))
+              }}
               className="h-12 rounded-xl border-border bg-secondary pl-10 text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary"
+              aria-invalid={!!fieldError.email}
+              aria-describedby={fieldError.email ? "auth-email-error" : undefined}
             />
           </div>
+          {fieldError.email ? (
+            <p id="auth-email-error" className="-mt-2 text-xs text-destructive pl-1" role="alert">
+              {fieldError.email}
+            </p>
+          ) : null}
 
           {/* Password field */}
           <div className="relative">
-            <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
             <Input
               type={showPassword ? "text" : "password"}
               placeholder="Password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                setFieldError((err) => ({ ...err, password: undefined }))
+              }}
               className="h-12 rounded-xl border-border bg-secondary pl-10 pr-10 text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary"
+              aria-invalid={!!fieldError.password}
+              aria-describedby={fieldError.password ? "auth-password-error" : undefined}
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-pressed={showPassword}
             >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showPassword ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
             </button>
           </div>
+          {fieldError.password ? (
+            <p id="auth-password-error" className="-mt-2 text-xs text-destructive pl-1" role="alert">
+              {fieldError.password}
+            </p>
+          ) : null}
 
           {/* Forgot password */}
           {!isSignUp && (

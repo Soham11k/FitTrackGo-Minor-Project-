@@ -1,10 +1,12 @@
 "use client"
 
 import { AlertCircle, ExternalLink, Copy, Check } from "lucide-react"
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import { validateSupabaseEnv } from "@/lib/supabase/config"
 
 export function SupabaseSetupGuide() {
   const [copied, setCopied] = useState(false)
+  const validation = useMemo(() => validateSupabaseEnv(), [])
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
@@ -27,6 +29,23 @@ export function SupabaseSetupGuide() {
           </div>
         </div>
 
+        {!validation.isConfigured && validation.reason ? (
+          <div
+            role="alert"
+            className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-foreground space-y-2"
+          >
+            <p className="font-medium text-destructive">Why this screen is showing</p>
+            <p className="text-muted-foreground leading-relaxed">{validation.reason}</p>
+            <p className="text-xs text-muted-foreground pt-1">
+              Tip: Project URL must be exactly{" "}
+              <code className="rounded bg-background px-1 py-0.5 text-typo-caption">https://&lt;ref&gt;.supabase.co</code>{" "}
+              (no <code className="rounded bg-background px-1 py-0.5 text-typo-caption">/rest/v1/</code>). URL host must match the anon key&apos;s project.
+              Variables belong in <code className="rounded bg-background px-1 py-0.5 text-typo-caption">.env.local</code>, then restart{" "}
+              <code className="rounded bg-background px-1 py-0.5 text-typo-caption">npm run dev</code>.
+            </p>
+          </div>
+        ) : null}
+
         <div className="space-y-3">
           <div className="rounded-lg bg-secondary/50 p-4 space-y-2">
             <h3 className="text-sm font-semibold text-foreground">Step 1: Get Your Supabase Credentials</h3>
@@ -47,7 +66,11 @@ export function SupabaseSetupGuide() {
 
           <div className="rounded-lg bg-secondary/50 p-4 space-y-2">
             <h3 className="text-sm font-semibold text-foreground">Step 2: Create .env.local File</h3>
-            <p className="text-sm text-muted-foreground mb-2">Create a file named <code className="px-1.5 py-0.5 rounded bg-background text-xs">.env.local</code> in your project root:</p>
+            <p className="text-sm text-muted-foreground mb-2">
+              Create <code className="px-1.5 py-0.5 rounded bg-background text-xs">.env.local</code> in the{" "}
+              <strong className="text-foreground">project root</strong> (same folder as <code className="px-1.5 py-0.5 rounded bg-background text-xs">package.json</code>),
+              not only <code className="px-1.5 py-0.5 rounded bg-background text-xs">.env.local.example</code>:
+            </p>
             <div className="relative">
               <pre className="text-xs bg-background p-3 rounded-lg border border-border overflow-x-auto">
 {`NEXT_PUBLIC_SUPABASE_URL=your-project-url-here

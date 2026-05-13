@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { resolveCanonicalSupabaseOriginFromEnv } from '@/lib/supabase/runtime-url'
 
 function isPlaceholderServiceRoleKey(key: string): boolean {
   const t = key.trim().toLowerCase()
@@ -10,7 +11,7 @@ function isPlaceholderServiceRoleKey(key: string): boolean {
 
 /** Server-only admin client. Returns null if URL/key missing or still set to example text. */
 export function createServiceRoleClient(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+  const url = resolveCanonicalSupabaseOriginFromEnv()
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
   if (!url || !key || isPlaceholderServiceRoleKey(key)) return null
   return createClient(url, key, {

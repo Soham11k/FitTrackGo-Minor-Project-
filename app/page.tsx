@@ -40,6 +40,8 @@ import { getAuthErrorMessage } from "@/lib/supabase/config"
 import { getProfile } from "@/lib/store-supabase"
 import { isSecureContext } from "@/lib/secure-context"
 import { siteConfig } from "@/lib/data"
+import { setAICoachIntent } from "@/lib/ai-coach-intent"
+import type { ExerciseId } from "@/lib/form-analysis"
 
 type AppState = "splash" | "login" | "app"
 type View = "main" | "history"
@@ -53,6 +55,7 @@ export default function Page() {
   const [insecureContext, setInsecureContext] = useState(false)
   const [insecureBannerDismissed, setInsecureBannerDismissed] = useState(false)
   const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null)
+  const [coachFocusMode, setCoachFocusMode] = useState(false)
   const [initialName, setInitialName] = useState<string>("")
   const supabase = createClient()
 
@@ -149,6 +152,11 @@ export default function Page() {
     setActiveTab(tab)
   }, [])
 
+  const handleOpenAICoachFromExercises = useCallback((opts?: { exerciseId?: ExerciseId }) => {
+    if (opts?.exerciseId) setAICoachIntent({ exerciseId: opts.exerciseId })
+    handleTabChange("ai-coach")
+  }, [handleTabChange])
+
   const dismissInsecureBanner = useCallback(() => {
     setInsecureBannerDismissed(true)
     try {
@@ -219,7 +227,7 @@ export default function Page() {
         <div className="sticky top-[57px] z-10 flex items-start gap-3 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-amber-200">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-500" />
           <p className="text-xs flex-1">
-            Use <strong>localhost</strong> or <strong>HTTPS</strong> for camera and GPS (<code className="text-[10px] bg-amber-500/20 px-1 rounded">npm run dev:https</code> for LAN).
+            Use <strong>localhost</strong> or <strong>HTTPS</strong> for camera and GPS (<code className="text-typo-eyebrow bg-amber-500/20 px-1 rounded">npm run dev:https</code> for LAN).
           </p>
           <button
             type="button"
@@ -235,26 +243,44 @@ export default function Page() {
       {/* Page content */}
       <main>
         {view === "history" ? (
-          <WorkoutHistory onBack={() => setView("main")} />
+          <WorkoutHistory
+            onBack={() => setView("main")}
+            onNavigate={(tab) => {
+              setView("main")
+              handleTabChange(tab)
+            }}
+          />
         ) : (
           <>
             {activeTab === "home" && (
               <Dashboard
                 onNavigate={handleTabChange}
                 onViewAll={() => setView("history")}
+                onEnterCoachFocus={() => {
+                  setCoachFocusMode(true)
+                  setActiveTab("ai-coach")
+                }}
               />
             )}
             {activeTab === "run" && <RunTracker />}
-            {activeTab === "exercises" && <ExerciseLibrary onOpenAICoach={() => handleTabChange("ai-coach")} />}
-            {activeTab === "ai-coach" && <AICoach />}
-            {activeTab === "arena" && <ArenaHub />}
+            {activeTab === "exercises" && (
+              <ExerciseLibrary onOpenAICoach={handleOpenAICoachFromExercises} onNavigate={handleTabChange} />
+            )}
+            {activeTab === "ai-coach" && (
+              <AICoach
+                focusMode={coachFocusMode}
+                onExitFocus={() => setCoachFocusMode(false)}
+                onNavigate={handleTabChange}
+              />
+            )}
+            {activeTab === "arena" && <ArenaHub onNavigate={handleTabChange} />}
             {activeTab === "profile" && <ProfileScreen onLogout={handleLogout} />}
           </>
         )}
       </main>
 
       {/* Bottom navigation - hide when viewing history */}
-      {view === "main" && (
+      {view === "main" && !(coachFocusMode && activeTab === "ai-coach") && (
         <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />
       )}
 

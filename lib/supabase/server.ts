@@ -1,10 +1,11 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { validateSupabaseEnv } from '@/lib/supabase/config'
+import { getSupabaseUrlForRuntime } from '@/lib/supabase/runtime-url'
 
 export async function createClient() {
   const cookieStore = await cookies()
-  const { isConfigured, url, key, reason } = validateSupabaseEnv()
+  const { isConfigured, key, reason } = validateSupabaseEnv()
 
   if (!isConfigured) {
     const message = `Supabase server client unavailable: ${reason ?? 'invalid configuration'}`
@@ -20,7 +21,7 @@ export async function createClient() {
   }
 
   return createServerClient(
-    url!,
+    getSupabaseUrlForRuntime(),
     key!,
     {
       cookies: {

@@ -1,8 +1,24 @@
+import { canonicalSupabasePublicUrl, resolveCanonicalSupabaseOriginFromEnv } from '@/lib/supabase/runtime-url'
+import { legacyJwtProjectRef, normalizeSupabaseProjectRef } from '@/lib/supabase/jwt-project-ref'
+
 type SupabaseValidationResult = {
   isConfigured: boolean
   url?: string
   key?: string
   reason?: string
+}
+
+/** Trim, strip BOM, strip wrapping quotes (common .env paste mistakes). */
+export function normalizePublicEnvScalar(value: string | undefined): string {
+  if (!value) return ''
+  let s = value.trim().replace(/^\ufeff/, '')
+  if (
+    (s.startsWith('"') && s.endsWith('"')) ||
+    (s.startsWith("'") && s.endsWith("'"))
+  ) {
+    s = s.slice(1, -1).trim()
+  }
+  return s
 }
 
 function isPlaceholderValue(value: string): boolean {
@@ -11,34 +27,94 @@ function isPlaceholderValue(value: string): boolean {
     normalized.includes("your-project-url") ||
     normalized.includes("your-anon-key") ||
     normalized.includes("your-project-url-here") ||
-    normalized.includes("your-anon-key-here")
+    normalized.includes("your-anon-key-here") ||
+    normalized.includes("your_project_ref") ||
+    normalized === "your_anon_key_here" ||
+    normalized.includes("your_anon_key")
   )
+}
+
+/** Project ref from Supabase URL host (`xxxx.supabase.co`). With no args, uses env resolved the same way as API clients (dev JWT/URL reconciliation). */
+export function getSupabaseProjectRefFromPublicUrl(explicitUrl?: string): string | null {
+  const trimmed =
+    explicitUrl !== undefined && explicitUrl.trim().length > 0
+      ? normalizePublicEnvScalar(explicitUrl)
+      : resolveCanonicalSupabaseOriginFromEnv()
+  if (!trimmed) return null
+  const canon = canonicalSupabasePublicUrl(trimmed)
+  try {
+    const host = new URL(canon).hostname.toLowerCase()
+    const m = host.match(/^([a-z0-9]+)\.supabase\.co$/)
+    return normalizeSupabaseProjectRef(m?.[1] ?? null)
+  } catch {
+    return null
+  }
+}
+
+export function getSupabaseSqlEditorUrl(): string {
+  const ref = getSupabaseProjectRefFromPublicUrl()
+  return ref
+    ? `https://app.supabase.com/project/${ref}/sql/new`
+    : "https://app.supabase.com"
+}
+
+export function collectNetworkErrnoCodes(error: unknown): string[] {
+  const codes: string[] = []
+  let current: unknown = error
+  for (let d = 0; d < 6 && current != null; d++) {
+    if (typeof current === "object" && current !== null) {
+      const code = (current as { code?: unknown }).code
+      if (typeof code === "string" && code.length > 0 && code.length <= 64 && !/\s/.test(code)) {
+        codes.push(code)
+      }
+    }
+    if (current instanceof Error && current.cause != null) {
+      current = current.cause
+    } else {
+      break
+    }
+  }
+  return [...new Set(codes)]
 }
 
 export function validateSupabaseEnv(
   url = process.env.NEXT_PUBLIC_SUPABASE_URL,
   key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 ): SupabaseValidationResult {
-  if (!url || !key) {
+  const urlNorm = normalizePublicEnvScalar(url)
+  const keyNorm = normalizePublicEnvScalar(key)
+
+  if (!urlNorm || !keyNorm) {
     return {
       isConfigured: false,
-      reason: "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+      reason:
+        "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY. Use a file named .env.local at the project root (not .env.local.example), then restart npm run dev.",
     }
   }
 
-  if (isPlaceholderValue(url) || isPlaceholderValue(key)) {
+  if (isPlaceholderValue(urlNorm) || isPlaceholderValue(keyNorm)) {
     return {
       isConfigured: false,
       reason: "Supabase env values are placeholders and must be replaced.",
     }
   }
 
+  const urlCanon = canonicalSupabasePublicUrl(urlNorm)
+
   try {
-    const parsedUrl = new URL(url)
+    const parsedUrl = new URL(urlCanon)
     if (parsedUrl.protocol !== "https:") {
       return {
         isConfigured: false,
         reason: "NEXT_PUBLIC_SUPABASE_URL must start with https://",
+      }
+    }
+    const host = parsedUrl.hostname.toLowerCase()
+    if (!/^([a-z0-9]+)\.supabase\.co$/.test(host)) {
+      return {
+        isConfigured: false,
+        reason:
+          "NEXT_PUBLIC_SUPABASE_URL must be https://<project-ref>.supabase.co (copy Project URL from Supabase → Settings → API; no other hostname).",
       }
     }
   } catch {
@@ -48,39 +124,78 @@ export function validateSupabaseEnv(
     }
   }
 
-  if (!(key.startsWith("eyJ") || key.startsWith("sb_publishable_"))) {
+  if (!(keyNorm.startsWith("eyJ") || keyNorm.startsWith("sb_publishable_"))) {
     return {
       isConfigured: false,
       reason: "NEXT_PUBLIC_SUPABASE_ANON_KEY format looks invalid.",
     }
   }
 
+  let jwtRef: string | null = null
+  if (keyNorm.startsWith("eyJ")) {
+    jwtRef = legacyJwtProjectRef(keyNorm)
+    if (!jwtRef) {
+      return {
+        isConfigured: false,
+        reason:
+          "NEXT_PUBLIC_SUPABASE_ANON_KEY looks like a JWT but its project ref could not be read. Paste the anon key again from Supabase → Settings → API.",
+      }
+    }
+  }
+
+  const urlRef = getSupabaseProjectRefFromPublicUrl(urlCanon)
+  if (jwtRef && urlRef && jwtRef !== urlRef) {
+    if (process.env.NODE_ENV === "development") {
+      const corrected = `https://${jwtRef}.supabase.co`
+      return {
+        isConfigured: true,
+        url: corrected,
+        key: keyNorm,
+      }
+    }
+    return {
+      isConfigured: false,
+      reason:
+        `Supabase URL host (${urlRef}) and anon JWT ref (${jwtRef}) differ — they always come in pairs from one project. ` +
+        `Fix one side: set NEXT_PUBLIC_SUPABASE_URL=https://${jwtRef}.supabase.co to match your current anon key, OR keep your URL and replace NEXT_PUBLIC_SUPABASE_ANON_KEY (and usually SUPABASE_SERVICE_ROLE_KEY) from Supabase → Settings → API for that URL’s project. Restart npm run dev.`,
+    }
+  }
+
   return {
     isConfigured: true,
-    url,
-    key,
+    url: urlCanon,
+    key: keyNorm,
   }
 }
 
 export function isSupabaseFetchError(error: unknown): boolean {
+  const msg = (error instanceof Error ? error.message : String(error ?? "")).toLowerCase()
+  const codes = collectNetworkErrnoCodes(error).map((c) => c.toLowerCase())
+  const causeCode = codes[0] ?? ""
+
+  if (
+    codes.some((c) =>
+      ["enotfound", "econnrefused", "etimedout", "econnreset", "cert_has_expired"].includes(c)
+    )
+  ) {
+    return true
+  }
+
   if (!(error instanceof Error)) {
-    return false
+    return (
+      msg.includes("failed to fetch") ||
+      msg.includes("fetch failed") ||
+      msg.includes("networkerror") ||
+      msg.includes("load failed")
+    )
   }
 
   const message = error.message.toLowerCase()
-  const cause = error.cause
-  const causeCode =
-    typeof cause === "object" &&
-    cause !== null &&
-    "code" in cause &&
-    typeof (cause as { code?: unknown }).code === "string"
-      ? ((cause as { code: string }).code || "").toLowerCase()
-      : ""
-
   return (
     message.includes("fetch failed") ||
     message.includes("network") ||
     message.includes("failed to fetch") ||
+    message.includes("load failed") ||
     causeCode === "enotfound" ||
     causeCode === "econnrefused" ||
     causeCode === "etimedout"
@@ -101,7 +216,21 @@ function isSupabaseEmailRateLimitError(error: unknown): boolean {
 
 export function getAuthErrorMessage(error: unknown, fallback: string): string {
   if (isSupabaseFetchError(error)) {
-    return "Cannot reach Supabase right now. Check your internet and NEXT_PUBLIC_SUPABASE_URL in .env.local."
+    const codes = collectNetworkErrnoCodes(error)
+    let safeHost = ""
+    try {
+      safeHost = new URL(resolveCanonicalSupabaseOriginFromEnv()).hostname
+    } catch {
+      safeHost = ""
+    }
+    const codeHint = codes.length ? ` (${codes.join(" · ")})` : ""
+    const hostHint = safeHost ? `Host: ${safeHost}. ` : ""
+    return (
+      `Cannot reach Supabase${codeHint}. ${hostHint}` +
+      "Confirm the project is active at app.supabase.com (paused projects return no DNS). " +
+      "If the hostname matches your dashboard but you still see ENOTFOUND, your DNS/VPN/ad-block may block *.supabase.co — try another resolver (e.g. 1.1.1.1). " +
+      "Set NEXT_PUBLIC_SUPABASE_URL to Settings → API → Project URL (https://….supabase.co), restart the dev server, delete `.next`, and rebuild native apps after changing env."
+    )
   }
 
   if (isSupabaseEmailRateLimitError(error)) {

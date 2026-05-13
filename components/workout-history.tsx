@@ -24,7 +24,19 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { downloadBlob, runToGpx } from "@/lib/export"
 import { siteConfig } from "@/lib/data"
 import { toast } from "sonner"
-import type { RunRecord } from "@/lib/store"
+import type { RunRecord, CoachRecord } from "@/lib/store"
+import { CoachRepTimeline } from "@/components/coach-rep-timeline"
+import type { TabId } from "@/components/bottom-nav"
+import { Button } from "@/components/ui/button"
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty"
+import { Skeleton } from "@/components/ui/skeleton"
 
 type HistoryItem = {
   type: "workout" | "run" | "coach"
@@ -37,6 +49,7 @@ type HistoryItem = {
   time: string
   icon: typeof Dumbbell
   run?: RunRecord
+  coach?: CoachRecord
 }
 
 /** Per-type visual identity for history rows. */
@@ -55,11 +68,23 @@ function formatDuration(totalSeconds: number): string {
   return `${m}:${sec.toString().padStart(2, "0")}`
 }
 
-export function WorkoutHistory({ onBack }: { onBack: () => void }) {
+export function WorkoutHistory({
+  onBack,
+  onNavigate,
+}: {
+  onBack: () => void
+  /** Optional tab switch after returning from this deep link (closes history view). */
+  onNavigate?: (tab: TabId) => void
+}) {
   const [items, setItems] = useState<HistoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [detailRun, setDetailRun] = useState<RunRecord | null>(null)
+  const [detailCoach, setDetailCoach] = useState<CoachRecord | null>(null)
+  const [detailCompare, setDetailCompare] = useState<CoachRecord | null>(null)
+  const [coachRepPick, setCoachRepPick] = useState<number | null>(null)
+  const [compareRepPick, setCompareRepPick] = useState<number | null>(null)
+  const [coachRows, setCoachRows] = useState<CoachRecord[]>([])
   const reduceMotion = useReducedMotion() ?? false
 
   const load = useCallback(async () => {
@@ -102,11 +127,13 @@ export function WorkoutHistory({ onBack }: { onBack: () => void }) {
         primaryLabel: "% form",
         time: c.completedAt,
         icon: Target,
+        coach: c,
       }))
       const all = [...workoutItems, ...runItems, ...coachItems].sort(
         (a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()
       )
       setItems(all)
+      setCoachRows(coach)
     } catch (err) {
       setError(getAuthErrorMessage(err, "Could not load activity history."))
     } finally {
@@ -136,13 +163,13 @@ export function WorkoutHistory({ onBack }: { onBack: () => void }) {
         {loading ? (
           <div className="space-y-3" aria-busy="true" aria-label="Loading activity history">
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 rounded-2xl bg-card p-4 border border-border">
-                <div className="h-10 w-10 rounded-xl bg-muted animate-pulse" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3.5 w-28 rounded bg-muted animate-pulse" />
-                  <div className="h-3 w-48 rounded bg-muted animate-pulse opacity-70" />
+              <div key={i} className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4">
+                <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
+                  <Skeleton className="h-3.5 w-28 rounded-md" />
+                  <Skeleton className="h-3 w-48 max-w-full rounded-md" />
                 </div>
-                <div className="h-3 w-10 rounded bg-muted animate-pulse opacity-70" />
+                <Skeleton className="h-3 w-10 shrink-0 rounded" />
               </div>
             ))}
             <p className="sr-only">
@@ -166,11 +193,45 @@ export function WorkoutHistory({ onBack }: { onBack: () => void }) {
             </button>
           </div>
         ) : items.length === 0 ? (
-          <div className="rounded-2xl bg-card border border-border p-8 text-center">
-            <Flame className="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" aria-hidden="true" />
-            <p className="text-sm font-medium text-foreground">No activity yet</p>
-            <p className="text-xs text-muted-foreground mt-1">Runs, workouts, and Coach Assist sessions will appear here.</p>
-          </div>
+          <Empty className="rounded-3xl border border-dashed border-border/80 bg-card/40 py-10 text-primary shadow-[var(--shadow-card)]">
+            <EmptyHeader>
+              <EmptyMedia>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/illustrations/history-empty.svg"
+                  alt=""
+                  className="h-[7rem] w-[7rem] opacity-90"
+                />
+              </EmptyMedia>
+              <EmptyTitle className="text-foreground">No activity logged yet</EmptyTitle>
+              <EmptyDescription>
+                Your runs, workouts, and Coach Assist sets will timeline here automatically after you finish.
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent className="max-w-none flex-row flex-wrap justify-center gap-2 pt-2">
+              <Button
+                type="button"
+                className="rounded-full"
+                onClick={() => {
+                  onNavigate?.("run")
+                  onBack()
+                }}
+              >
+                Track a run
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full border-primary/35 bg-background/80"
+                onClick={() => {
+                  onNavigate?.("exercises")
+                  onBack()
+                }}
+              >
+                Browse workouts
+              </Button>
+            </EmptyContent>
+          </Empty>
         ) : (
           items.map((item, i) => {
             const style = TYPE_STYLE[item.type]
@@ -181,7 +242,7 @@ export function WorkoutHistory({ onBack }: { onBack: () => void }) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="truncate text-sm font-semibold text-foreground">{item.title}</p>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground truncate">{item.detail}</p>
+                  <p className="mt-0.5 text-typo-caption text-muted-foreground truncate">{item.detail}</p>
                 </div>
                 <div className="shrink-0 text-right">
                   <p
@@ -190,10 +251,10 @@ export function WorkoutHistory({ onBack }: { onBack: () => void }) {
                   >
                     {item.primary}
                   </p>
-                  <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
+                  <p className="mt-1 text-typo-micro font-bold uppercase tracking-[0.15em] text-muted-foreground">
                     {item.primaryLabel}
                   </p>
-                  <p className="mt-0.5 text-[10px] font-medium text-muted-foreground/80 whitespace-nowrap">
+                  <p className="mt-0.5 text-typo-eyebrow font-medium text-muted-foreground/80 whitespace-nowrap">
                     {formatDistanceToNow(new Date(item.time), { addSuffix: true })}
                   </p>
                 </div>
@@ -219,6 +280,26 @@ export function WorkoutHistory({ onBack }: { onBack: () => void }) {
                   onClick={() => setDetailRun(runForClick)}
                   aria-label={`View run on ${format(new Date(item.time), "PPP")}`}
                   className={`${baseRowClasses} text-left motion-card-interactive transition-transform hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-metric-run`}
+                  {...motionProps}
+                >
+                  {innerContent}
+                </motion.button>
+              )
+            }
+            if (item.type === "coach" && item.coach) {
+              const c = item.coach
+              return (
+                <motion.button
+                  key={`${item.type}-${item.id}`}
+                  type="button"
+                  onClick={() => {
+                    setDetailCoach(c)
+                    setDetailCompare(null)
+                    setCoachRepPick(c.repScores?.length ? c.repScores.length - 1 : null)
+                    setCompareRepPick(null)
+                  }}
+                  aria-label={`View coach session ${c.exercise}`}
+                  className={`${baseRowClasses} text-left motion-card-interactive transition-transform hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-metric-coach`}
                   {...motionProps}
                 >
                   {innerContent}
@@ -255,28 +336,28 @@ export function WorkoutHistory({ onBack }: { onBack: () => void }) {
                     <p className="mt-1 text-xl font-bold tabular-nums text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
                       {detailRun.distance.toFixed(2)}
                     </p>
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">km</p>
+                    <p className="text-typo-micro font-bold uppercase tracking-wider text-muted-foreground">km</p>
                   </div>
                   <div className="rounded-2xl border border-border bg-card p-3 text-center shadow-[var(--shadow-card)]">
                     <Timer className="mx-auto h-4 w-4 text-metric-move" />
                     <p className="mt-1 text-xl font-bold tabular-nums text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
                       {formatDuration(detailRun.duration)}
                     </p>
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">time</p>
+                    <p className="text-typo-micro font-bold uppercase tracking-wider text-muted-foreground">time</p>
                   </div>
                   <div className="rounded-2xl border border-border bg-card p-3 text-center shadow-[var(--shadow-card)]">
                     <Gauge className="mx-auto h-4 w-4 text-metric-streak" />
                     <p className="mt-1 text-xl font-bold tabular-nums text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
                       {detailRun.pace || "—"}
                     </p>
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">/km</p>
+                    <p className="text-typo-micro font-bold uppercase tracking-wider text-muted-foreground">/km</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="rounded-2xl border border-border bg-card p-3 shadow-[var(--shadow-card)]">
                     <div className="flex items-center gap-2">
                       <Flame className="h-4 w-4 text-metric-hr" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Calories</span>
+                      <span className="text-typo-eyebrow font-bold uppercase tracking-wider text-muted-foreground">Calories</span>
                     </div>
                     <p className="mt-1 text-xl font-bold tabular-nums text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
                       {Math.round(detailRun.calories)}
@@ -285,7 +366,7 @@ export function WorkoutHistory({ onBack }: { onBack: () => void }) {
                   <div className="rounded-2xl border border-border bg-card p-3 shadow-[var(--shadow-card)]">
                     <div className="flex items-center gap-2">
                       <Calendar className="h-4 w-4 text-metric-spo2" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Samples</span>
+                      <span className="text-typo-eyebrow font-bold uppercase tracking-wider text-muted-foreground">Samples</span>
                     </div>
                     <p className="mt-1 text-xl font-bold tabular-nums text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
                       {detailRun.path?.length ?? 0}
@@ -313,6 +394,131 @@ export function WorkoutHistory({ onBack }: { onBack: () => void }) {
                     No GPS samples recorded for this run.
                   </p>
                 )}
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      <Sheet
+        open={detailCoach != null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setDetailCoach(null)
+            setDetailCompare(null)
+            setCoachRepPick(null)
+            setCompareRepPick(null)
+          }
+        }}
+      >
+        <SheetContent side="bottom" className="max-h-[88vh] rounded-t-3xl border-t border-border">
+          {detailCoach && (
+            <>
+              <SheetHeader className="border-b border-border/60 pb-3 text-left">
+                <SheetTitle style={{ fontFamily: "var(--font-heading)" }}>Coach session</SheetTitle>
+                <SheetDescription className="text-xs">
+                  {detailCoach.exercise} · {format(new Date(detailCoach.completedAt), "EEEE, MMM d · p")}
+                </SheetDescription>
+              </SheetHeader>
+              <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-8 pt-3">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-2xl border border-border bg-card p-3 text-center shadow-[var(--shadow-card)]">
+                    <Target className="mx-auto h-4 w-4 text-metric-coach" />
+                    <p className="mt-1 text-xl font-bold tabular-nums text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
+                      {detailCoach.reps}
+                    </p>
+                    <p className="text-typo-micro font-bold uppercase tracking-wider text-muted-foreground">reps</p>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-card p-3 text-center shadow-[var(--shadow-card)]">
+                    <Gauge className="mx-auto h-4 w-4 text-metric-streak" />
+                    <p className="mt-1 text-xl font-bold tabular-nums text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
+                      {detailCoach.score}
+                    </p>
+                    <p className="text-typo-micro font-bold uppercase tracking-wider text-muted-foreground">% form</p>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-card p-3 text-center shadow-[var(--shadow-card)]">
+                    <Timer className="mx-auto h-4 w-4 text-metric-move" />
+                    <p className="mt-1 text-xl font-bold tabular-nums text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
+                      {detailCoach.repScores?.length
+                        ? Math.round(detailCoach.repScores.reduce((a, b) => a + b, 0) / detailCoach.repScores.length)
+                        : "—"}
+                    </p>
+                    <p className="text-typo-micro font-bold uppercase tracking-wider text-muted-foreground">avg rep</p>
+                  </div>
+                </div>
+                {(() => {
+                  const prev = coachRows
+                    .filter(
+                      (r) =>
+                        r.exercise === detailCoach.exercise &&
+                        r.id !== detailCoach.id &&
+                        new Date(r.completedAt).getTime() < new Date(detailCoach.completedAt).getTime()
+                    )
+                    .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())[0]
+                  const canCompare = prev != null && !detailCompare
+                  return (
+                    <div className="flex flex-wrap gap-2">
+                      {canCompare && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDetailCompare(prev)
+                            setCompareRepPick(prev.repScores?.length ? prev.repScores.length - 1 : null)
+                          }}
+                          className="rounded-xl bg-primary px-4 py-2.5 text-xs font-semibold text-primary-foreground active:scale-[0.98]"
+                        >
+                          Compare with previous ({format(new Date(prev.completedAt), "MMM d")})
+                        </button>
+                      )}
+                      {detailCompare && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDetailCompare(null)
+                            setCompareRepPick(null)
+                          }}
+                          className="rounded-xl border border-border bg-card px-4 py-2.5 text-xs font-semibold text-foreground"
+                        >
+                          Show this session only
+                        </button>
+                      )}
+                    </div>
+                  )
+                })()}
+                {detailCoach.repScores && detailCoach.repScores.length > 0 ? (
+                  <div className="rounded-2xl border border-border bg-card p-4">
+                    <p className="mb-2 text-typo-eyebrow font-bold uppercase tracking-wider text-muted-foreground">This session</p>
+                    <CoachRepTimeline
+                      repScores={detailCoach.repScores}
+                      selectedRep={coachRepPick}
+                      onRepSelect={(i) => setCoachRepPick(i)}
+                      label="Rep playback"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-center text-xs text-muted-foreground">No per-rep scores stored for this session.</p>
+                )}
+                {detailCompare && detailCompare.repScores && detailCompare.repScores.length > 0 ? (
+                  <div className="rounded-2xl border border-border bg-muted/30 p-4">
+                    <p className="mb-2 text-typo-eyebrow font-bold uppercase tracking-wider text-muted-foreground">
+                      Previous · {format(new Date(detailCompare.completedAt), "MMM d · p")}
+                    </p>
+                    <CoachRepTimeline
+                      repScores={detailCompare.repScores}
+                      selectedRep={compareRepPick}
+                      onRepSelect={(i) => setCompareRepPick(i)}
+                      label="Rep playback"
+                    />
+                    <p className="mt-3 text-xs text-muted-foreground text-center">
+                      Form score Δ{" "}
+                      <span className="font-bold tabular-nums text-foreground">
+                        {detailCoach.score >= detailCompare.score ? "+" : ""}
+                        {detailCoach.score - detailCompare.score}
+                      </span>{" "}
+                      pts vs previous
+                    </p>
+                  </div>
+                ) : null}
               </div>
             </>
           )}

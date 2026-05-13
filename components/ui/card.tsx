@@ -42,9 +42,15 @@ function CardHeader({ className, ...props }: React.ComponentProps<'div'>) {
   )
 }
 
-function CardTitle({ className, ...props }: React.ComponentProps<'div'>) {
+type CardTitleProps = React.HTMLAttributes<HTMLElement> & {
+  /** Default h3 for document outline; use `div` when nested inside an existing heading. */
+  as?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'div'
+}
+
+function CardTitle({ className, as = 'h3', ...props }: CardTitleProps) {
+  const Comp = as
   return (
-    <div
+    <Comp
       data-slot="card-title"
       className={cn('leading-none font-semibold', className)}
       {...props}

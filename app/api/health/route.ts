@@ -1,16 +1,16 @@
-/**
- * Stub for static export (Android / Capacitor). Real health check runs on your deployed server.
- * Swapped in by scripts/prepare-android-build.mjs before build:android.
- */
 import { NextResponse } from 'next/server'
+import { getEnvStatus } from '@/lib/env'
 
-export const dynamic = 'force-static'
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 export async function GET() {
-  return NextResponse.json({
-    status: 'ok',
+  const env = getEnvStatus()
+  const payload = {
+    status: env.ok ? 'ok' : 'degraded',
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version ?? 'unknown',
-    note: 'export-stub',
-  })
+    env: env.ok ? undefined : { missing: env.missing },
+  }
+  return NextResponse.json(payload, { status: env.ok ? 200 : 503 })
 }

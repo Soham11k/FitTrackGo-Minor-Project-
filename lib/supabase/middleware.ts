@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { isSupabaseFetchError, validateSupabaseEnv } from '@/lib/supabase/config'
+import { getSupabaseUrlForRuntime } from '@/lib/supabase/runtime-url'
 
 export async function updateSession(request: NextRequest, _requestId?: string) {
   // Skip processing /login route - it doesn't exist and is handled client-side
@@ -12,14 +13,14 @@ export async function updateSession(request: NextRequest, _requestId?: string) {
     request,
   })
 
-  const { isConfigured, url, key, reason } = validateSupabaseEnv()
+  const { isConfigured, key, reason } = validateSupabaseEnv()
   if (!isConfigured) {
     console.warn(`[supabase] Skipping proxy auth refresh: ${reason ?? 'invalid configuration'}`)
     return supabaseResponse
   }
 
   const supabase = createServerClient(
-    url!,
+    getSupabaseUrlForRuntime(),
     key!,
     {
       cookies: {

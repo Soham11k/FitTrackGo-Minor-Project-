@@ -28,6 +28,8 @@ This guide will help you set up real user authentication and cloud database usin
 
 ## Step 3: Set Up Environment Variables
 
+For a **brand-new Supabase project** (new URL and keys), follow **[docs/CONNECT-NEW-SUPABASE.md](docs/CONNECT-NEW-SUPABASE.md)** for keys, migrations in order, and auth URLs.
+
 1. Copy `.env.local.example` to `.env.local`:
    ```bash
    cp .env.local.example .env.local
@@ -162,6 +164,14 @@ When deploying (Vercel, Netlify, etc.):
 - Check **Authentication** → **Settings** → **SMTP Settings**
 - Supabase free tier has email limits
 - Consider using custom SMTP for production
+
+### MediaPipe console warnings (AI Coach / camera)
+
+With **MediaPipe Tasks Vision** (`@mediapipe/tasks-vision` **0.10.34**), the browser may print startup messages such as **FaceBlendshapesGraph acceleration to xnnpack**, **OpenGL error checking is disabled**, lines from **landmark_projection_calculator** / **inference_feedback_manager**, or stack frames mentioning `face_landmarker_graph`, `gl_context`, or `vision_wasm_internal.js`. **These are normal** WASM/runtime diagnostics from Google’s build, not bugs in this app — **safe to ignore** if pose detection, face enrollment, and rep counting behave correctly.
+
+After a successful landmarker init, the app installs a **narrow client-side filter** on `console.warn` / `console.error` for those known patterns only (see [`lib/mediapipe-console-noise.ts`](lib/mediapipe-console-noise.ts)) so the first `detectForVideo` frames don't flood the dev terminal.
+
+Playwright treats matching console output as ignorable noise so CI is not tripped; see [`e2e/ignore-browser-console-noise.ts`](e2e/ignore-browser-console-noise.ts).
 
 ## Next Steps
 

@@ -118,7 +118,7 @@ export function IntegrationsPage() {
                 <div className="flex items-center gap-2">
                   <h3 className="font-semibold truncate">{meta.label}</h3>
                   {isConnected ? (
-                    <Badge variant="secondary" className="bg-metric-move/15 text-metric-move text-[10px] font-bold uppercase tracking-[0.12em]">
+                    <Badge variant="secondary" className="bg-metric-move/15 text-metric-move text-typo-eyebrow font-bold uppercase tracking-[0.12em]">
                       Connected
                     </Badge>
                   ) : null}
@@ -131,7 +131,7 @@ export function IntegrationsPage() {
                   <p className="mt-0.5 text-xs text-muted-foreground">{meta.subtitle}</p>
                 )}
                 {conn?.last_sync_at ? (
-                  <p className="text-[11px] text-muted-foreground">{meta.subtitle}</p>
+                  <p className="text-typo-caption text-muted-foreground">{meta.subtitle}</p>
                 ) : null}
               </div>
               {isConnected ? (

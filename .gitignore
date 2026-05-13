@@ -17,6 +17,9 @@ playwright-report/
 coverage/
 *.tsbuildinfo
 supabase/.temp/
+supabase/_run_in_sql_editor.sql
 # Editor / local
 .cursor/worktrees.json
+.cursor/debug-*.log
 **/*.backup
+.vercel

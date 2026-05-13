@@ -28,6 +28,19 @@ export function isFitbitConfigured(): boolean {
   return Boolean(id && secret && !placeholderKey(id) && !placeholderKey(secret))
 }
 
+/** Non-secret flags for `/api/wearables/status` (must match `isFitbitConfigured` logic). */
+export function fitbitEnvKeyPresenceForUi(): {
+  serverHasClientId: boolean
+  serverHasClientSecret: boolean
+} {
+  const id = process.env.FITBIT_CLIENT_ID?.trim()
+  const secret = process.env.FITBIT_CLIENT_SECRET?.trim()
+  return {
+    serverHasClientId: Boolean(id && !placeholderKey(id)),
+    serverHasClientSecret: Boolean(secret && !placeholderKey(secret)),
+  }
+}
+
 export function getFitbitCallbackUrl(): string {
   const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "")
   if (base) return `${base}/api/wearables/fitbit/callback`

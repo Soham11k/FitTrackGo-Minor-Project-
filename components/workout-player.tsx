@@ -6,6 +6,7 @@ import { ChevronLeft, Play, Pause, SkipForward, Check, Flame, Timer, Trophy } fr
 import type { ExerciseItem, ExerciseStep } from "@/lib/data"
 import { addWorkout } from "@/lib/store-supabase"
 import { RingGauge } from "@/components/ring-gauge"
+import { WorkoutStepCamera } from "@/components/workout-step-camera"
 import { MotionCelebrate } from "@/components/motion-celebrate"
 import { DURATION, EASE, SPRING } from "@/lib/motion"
 import { toast } from "sonner"
@@ -65,6 +66,17 @@ export function WorkoutPlayer({
   const [finalDurationSec, setFinalDurationSec] = useState<number | null>(null)
   const savedRef = useRef(false)
   const reduceMotion = useReducedMotion() ?? false
+
+  useEffect(() => {
+    if (phase !== "done") return
+    try {
+      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+        navigator.vibrate(15)
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [phase])
 
   const currentStep = steps[index]
   const totalSteps = steps.length
@@ -184,7 +196,7 @@ export function WorkoutPlayer({
         </span>
       </header>
 
-      <main className="flex flex-1 flex-col items-center justify-center gap-6 px-6 text-center">
+      <main className="flex flex-1 min-h-0 flex-col items-center justify-center gap-5 overflow-y-auto px-6 py-4 text-center">
         {phase === "done" ? (
           <MotionCelebrate
             className="flex w-full max-w-xs flex-col items-center gap-4 rounded-3xl border border-border/80 bg-card/80 p-6 shadow-[var(--shadow-card)] backdrop-blur-xl dark:border-white/10"
@@ -200,7 +212,7 @@ export function WorkoutPlayer({
               <Trophy className="h-8 w-8" strokeWidth={2.5} />
             </motion.div>
             <div className="space-y-1">
-              <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-primary">Complete</p>
+              <p className="text-typo-eyebrow font-bold uppercase tracking-[0.25em] text-primary">Complete</p>
               <h2
                 className="text-2xl font-bold text-foreground"
                 style={{ fontFamily: "var(--font-heading)" }}
@@ -217,7 +229,7 @@ export function WorkoutPlayer({
                 >
                   {Math.max(1, Math.round((finalDurationSec ?? 0) / 60))}
                 </span>
-                <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">min</span>
+                <span className="text-typo-micro font-bold uppercase tracking-[0.18em] text-muted-foreground">min</span>
               </div>
               <div className="flex flex-col items-center gap-1 rounded-2xl bg-metric-hr/10 py-3">
                 <Flame className="h-4 w-4 text-metric-hr" />
@@ -227,14 +239,21 @@ export function WorkoutPlayer({
                 >
                   {exercise.calories}
                 </span>
-                <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">kcal</span>
+                <span className="text-typo-micro font-bold uppercase tracking-[0.18em] text-muted-foreground">kcal</span>
               </div>
             </div>
             <p className="text-xs text-muted-foreground">Saving to your history…</p>
           </MotionCelebrate>
         ) : (
           <>
-            <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-muted-foreground">
+            {phase === "active" && (
+              <WorkoutStepCamera
+                stepName={currentStep.name}
+                isActive
+                paused={paused}
+              />
+            )}
+            <p className="text-typo-caption font-bold uppercase tracking-[0.25em] text-muted-foreground">
               {isRest ? "Rest" : `Step ${index + 1}`}
             </p>
             <h2
@@ -247,11 +266,11 @@ export function WorkoutPlayer({
             {!isRest && (
               <p className="text-sm text-muted-foreground">{currentStep.reps}</p>
             )}
-            <div role="timer" aria-live="polite">
+            <div role="timer" aria-live="polite" className="shrink-0">
               <RingGauge
                 value={timerProgressRemaining}
                 max={1}
-                size={224}
+                size={196}
                 thickness={12}
                 progressClassName={
                   isRest ? "stroke-metric-spo2" : "stroke-metric-move"

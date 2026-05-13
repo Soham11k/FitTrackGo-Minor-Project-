@@ -45,12 +45,20 @@
   --metric-run: oklch(0.6 0.14 195);
   --metric-streak: oklch(0.6 0.17 75);
   --metric-coach: oklch(0.58 0.18 295);
+  /* Profile / settings nav tint — neutral, not SpO₂ semantic */
+  --metric-profile: oklch(0.5 0.02 250);
   --shadow-card: 0 4px 14px -6px oklch(0 0 0 / 0.12), 0 1px 2px oklch(0 0 0 / 0.06);
   --shadow-nav: 0 8px 28px -8px oklch(0 0 0 / 0.18);
   /* Card / surface motion (used with .motion-card; prefers-reduced-motion still applies globally) */
   --motion-card-duration: 320ms;
   --motion-card-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --motion-press-scale: 0.98;
+  /* Typography rhythm (UI micro labels ↔ hero stats); use .text-typo-* helpers */
+  --text-micro: 0.5625rem; /* 9px tabular-ish labels */
+  --text-eyebrow: 0.625rem; /* 10px uppercase eyebrows */
+  --text-caption: 0.6875rem; /* 11px secondary lines */
+  --text-stat: 1.875rem;
+  --text-stat-lg: 3rem;
 }
 
 /* Dark theme (when <html class="dark">) */
@@ -94,11 +102,17 @@
   --metric-run: oklch(0.76 0.14 195);
   --metric-streak: oklch(0.82 0.17 75);
   --metric-coach: oklch(0.74 0.18 295);
+  --metric-profile: oklch(0.72 0.02 250);
   --shadow-card: 0 4px 14px -6px oklch(0 0 0 / 0.5), 0 1px 2px oklch(0 0 0 / 0.25);
   --shadow-nav: 0 8px 28px -8px oklch(0 0 0 / 0.6);
   --motion-card-duration: 320ms;
   --motion-card-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --motion-press-scale: 0.98;
+  --text-micro: 0.5625rem;
+  --text-eyebrow: 0.625rem;
+  --text-caption: 0.6875rem;
+  --text-stat: 1.875rem;
+  --text-stat-lg: 3rem;
 }
 
 /* Accent colors (light) – override primary/accent/ring/chart-1 when data-accent is set on html */
@@ -204,6 +218,7 @@
   --color-metric-run: var(--metric-run);
   --color-metric-streak: var(--metric-streak);
   --color-metric-coach: var(--metric-coach);
+  --color-metric-profile: var(--metric-profile);
   --shadow-card: var(--shadow-card);
   --shadow-nav: var(--shadow-nav);
   --radius-sm: calc(var(--radius) - 4px);
@@ -489,6 +504,37 @@
     opacity: 1 !important;
     transform: none !important;
     animation: none !important;
+  }
+}
+
+/* Typography helpers (paired with rhythm tokens above) */
+@layer utilities {
+  .text-typo-micro {
+    font-size: var(--text-micro);
+  }
+  .text-typo-eyebrow {
+    font-size: var(--text-eyebrow);
+  }
+  .text-typo-caption {
+    font-size: var(--text-caption);
+  }
+  .text-typo-stat {
+    font-size: var(--text-stat);
+  }
+  .text-typo-stat-lg {
+    font-size: var(--text-stat-lg);
+  }
+  /* Premium primary buttons: subtle lift on hover */
+  .btn-lift {
+    transition: transform 120ms var(--motion-card-ease);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .btn-lift {
+      transition: none;
+    }
+  }
+  .btn-lift:hover:not(:disabled) {
+    transform: translateY(-1px);
   }
 }
 

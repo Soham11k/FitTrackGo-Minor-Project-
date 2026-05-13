@@ -32,6 +32,7 @@ import { useAccent } from "@/components/accent-provider"
 import { ACCENT_OPTIONS, type AccentId } from "@/lib/accent"
 import type { UserProfile, RunRecord, WorkoutRecord, CoachRecord } from "@/lib/store"
 import { getProfile, saveProfile, getTotalStats, getWeeklyActivity, getRuns, getWorkouts, getCoachSessions, formatErr } from "@/lib/store-supabase"
+import { getSupabaseSqlEditorUrl } from "@/lib/supabase/config"
 import { getFaq, getAchievements, siteConfig } from "@/lib/data"
 import { ContactForm } from "@/components/contact-form"
 import { MetricTrendMini } from "@/components/metric-trend-mini"
@@ -181,25 +182,20 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
         
         // Check for database schema errors
         if (errorMessage.includes("Could not find the table") || errorMessage.includes("does not exist")) {
-          toast.error("Database tables not set up. Please run the SQL schema.", {
-            duration: 8000,
-            action: {
-              label: "View Instructions",
-              onClick: () => {
-                const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-                let sqlUrl = "https://app.supabase.com"
-                try {
-                  if (baseUrl) {
-                    const host = new URL(baseUrl).host
-                    const ref = host.split(".")[0]
-                    if (ref) sqlUrl = `https://app.supabase.com/project/${ref}/sql/new`
-                  }
-                } catch {}
-                window.open(sqlUrl, "_blank")
-                toast.info("1. Copy contents of supabase/schema.sql\n2. Paste in SQL Editor\n3. Click Run", { duration: 10000 })
-              }
-            }
-          })
+          if (process.env.NODE_ENV === "development") {
+            toast.error("Database tables not set up. Please run the SQL schema.", {
+              duration: 8000,
+              action: {
+                label: "View Instructions",
+                onClick: () => {
+                  window.open(getSupabaseSqlEditorUrl(), "_blank")
+                  toast.info("1. Copy contents of supabase/schema.sql\n2. Paste in SQL Editor\n3. Click Run", { duration: 10000 })
+                },
+              },
+            })
+          } else {
+            toast.error("We couldn't load your fitness profile. Please try again soon or contact support.")
+          }
         } else if (errorMessage.includes("Not authenticated") || errorMessage.includes("Authentication error")) {
           toast.error(errorMessage)
           setTimeout(() => {
@@ -514,7 +510,8 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
         <div className="rounded-2xl bg-destructive/10 border border-destructive/30 p-6 space-y-4">
           <h2 className="text-lg font-bold text-destructive">Couldn&apos;t load profile</h2>
           <p className="text-sm text-muted-foreground">{loadError}</p>
-          {(loadError.includes("fetch") || loadError.includes("Failed to fetch")) && (
+          {process.env.NODE_ENV === "development" &&
+            (loadError.includes("fetch") || loadError.includes("Failed to fetch")) && (
             <p className="text-xs text-muted-foreground">
               Check <code className="bg-muted px-1 rounded">.env.local</code> (NEXT_PUBLIC_SUPABASE_URL and anon key), then restart the dev server. See <code className="bg-muted px-1 rounded">FAILED-TO-FETCH-FIX.md</code> for steps.
             </p>
@@ -533,6 +530,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
 
   // Show database setup message if profile is null and we're not loading
   if (!profile && !loading) {
+    const isDev = process.env.NODE_ENV === "development"
     return (
       <div className="flex flex-col gap-5 px-4 pt-4 pb-28">
         <div className="rounded-2xl bg-card border border-border p-6 space-y-4">
@@ -541,42 +539,61 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
               <Settings className="h-6 w-6 text-destructive" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-foreground">Database Setup Required</h2>
-              <p className="text-sm text-muted-foreground">Your database tables need to be created</p>
+              <h2 className="text-lg font-bold text-foreground">
+                {isDev ? "Database setup required" : "Profile not available"}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {isDev
+                  ? "Your database tables need to be created"
+                  : "We couldn't finish loading your profile. Try refreshing, or sign out and sign in again."}
+              </p>
             </div>
           </div>
-          
-          <div className="space-y-3 text-sm">
-            <p className="text-foreground">To fix this, run the database schema in Supabase:</p>
-            <ol className="list-decimal list-inside space-y-2 text-muted-foreground ml-2">
-              <li>Go to <a href="https://app.supabase.com/project/extblftryftjjitcetvq/sql/new" target="_blank" rel="noopener noreferrer" className="text-primary underline">Supabase SQL Editor</a></li>
-              <li>Open <code className="bg-secondary px-1.5 py-0.5 rounded text-xs">supabase/schema.sql</code> in your project</li>
-              <li>Copy the entire contents</li>
-              <li>Paste into SQL Editor and click <strong>Run</strong></li>
-              <li>Refresh this page</li>
-            </ol>
-          </div>
-          
-          <div className="flex gap-2">
-            <a
-              href="https://app.supabase.com/project/extblftryftjjitcetvq/sql/new"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground text-center hover:bg-primary/90 transition-colors"
-            >
-              Open SQL Editor
-            </a>
+
+          {isDev ? (
+            <>
+              <div className="space-y-3 text-sm">
+                <p className="text-foreground">To fix this, run the database schema in Supabase:</p>
+                <ol className="list-decimal list-inside space-y-2 text-muted-foreground ml-2">
+                  <li>Go to <a href={getSupabaseSqlEditorUrl()} target="_blank" rel="noopener noreferrer" className="text-primary underline">Supabase SQL Editor</a></li>
+                  <li>Open <code className="bg-secondary px-1.5 py-0.5 rounded text-xs">supabase/schema.sql</code> in your project</li>
+                  <li>Copy the entire contents</li>
+                  <li>Paste into SQL Editor and click <strong>Run</strong></li>
+                  <li>Refresh this page</li>
+                </ol>
+              </div>
+
+              <div className="flex gap-2">
+                <a
+                  href={getSupabaseSqlEditorUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground text-center hover:bg-primary/90 transition-colors"
+                >
+                  Open SQL Editor
+                </a>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="rounded-xl bg-secondary px-4 py-3 text-sm font-medium text-foreground hover:bg-secondary/80 transition-colors"
+                >
+                  Refresh
+                </button>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                See <code className="bg-secondary px-1.5 py-0.5 rounded">DATABASE-SETUP.md</code> for detailed instructions
+              </p>
+            </>
+          ) : (
             <button
+              type="button"
               onClick={() => window.location.reload()}
-              className="rounded-xl bg-secondary px-4 py-3 text-sm font-medium text-foreground hover:bg-secondary/80 transition-colors"
+              className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
             >
               Refresh
             </button>
-          </div>
-          
-          <p className="text-xs text-muted-foreground">
-            See <code className="bg-secondary px-1.5 py-0.5 rounded">DATABASE-SETUP.md</code> for detailed instructions
-          </p>
+          )}
         </div>
       </div>
     )
@@ -727,7 +744,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
             </div>
             <div>
               <h2 className="text-sm font-semibold text-foreground">Wearables</h2>
-              <p className="text-[11px] text-muted-foreground leading-snug">Fitbit: resting heart rate and SpO2 summaries (not medical advice).</p>
+              <p className="text-typo-caption text-muted-foreground leading-snug">Fitbit: resting heart rate and SpO2 summaries (not medical advice).</p>
             </div>
           </div>
         </div>
@@ -737,53 +754,59 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
           <p className="text-xs text-muted-foreground">Could not load wearable status.</p>
         ) : wearableStatus && !wearableStatus.configured ? (
           <div className="text-xs text-muted-foreground space-y-2">
-            <p className="font-medium text-foreground">Fitbit is off until the server has OAuth credentials</p>
-            <p>
-              Create an app at{" "}
-              <a href="https://dev.fitbit.com/apps" target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                dev.fitbit.com/apps
-              </a>
-              , then put <code className="text-[10px] bg-muted px-1 rounded">FITBIT_CLIENT_ID</code> and{" "}
-              <code className="text-[10px] bg-muted px-1 rounded">FITBIT_CLIENT_SECRET</code> in{" "}
-              <code className="text-[10px] bg-muted px-1 rounded">.env.local</code> and restart{" "}
-              <code className="text-[10px] bg-muted px-1 rounded">npm run dev</code> so Next.js reloads env.
-            </p>
-            {wearableStatus.setup?.oauthCallbackUrl ? (
-              <p>
-                In the Fitbit app, set <strong>Callback URL</strong> to exactly:{" "}
-                <code className="text-[10px] bg-muted px-1 rounded break-all">{wearableStatus.setup.oauthCallbackUrl}</code>
-              </p>
-            ) : (
-              <p>
-                Set <code className="text-[10px] bg-muted px-1 rounded">NEXT_PUBLIC_APP_URL</code> in{" "}
-                <code className="text-[10px] bg-muted px-1 rounded">.env.local</code> (e.g.{" "}
-                <code className="text-[10px] bg-muted px-1 rounded">http://localhost:3000</code>) so the callback URL can be built.
-              </p>
-            )}
-            <p className="text-[11px] opacity-90">
-              Database tables for wearables are separate; if you already ran the migration, you only need the Fitbit keys above.
-            </p>
-            {(wearableStatus.setup?.serverHasClientId === false ||
-              wearableStatus.setup?.serverHasClientSecret === false) && (
-              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
-                <p className="font-medium text-amber-100 mb-1">Server still does not see Fitbit OAuth env</p>
-                <ul className="list-disc pl-4 space-y-0.5">
-                  {wearableStatus.setup?.serverHasClientId === false && (
-                    <li>
-                      <code className="text-[10px] bg-black/20 px-1 rounded">FITBIT_CLIENT_ID</code> is missing or empty — paste the value from dev.fitbit.com after the <code className="text-[10px]">=</code> with no spaces.
-                    </li>
-                  )}
-                  {wearableStatus.setup?.serverHasClientSecret === false && (
-                    <li>
-                      <code className="text-[10px] bg-black/20 px-1 rounded">FITBIT_CLIENT_SECRET</code> is missing or empty — same as above.
-                    </li>
-                  )}
-                </ul>
-                <p className="mt-2 text-amber-100/90">
-                  Save <code className="text-[10px] bg-black/20 px-1 rounded">.env.local</code> in the project root, then stop and start{" "}
-                  <code className="text-[10px] bg-black/20 px-1 rounded">npm run dev</code> (reload is not enough).
+            <p className="font-medium text-foreground">Fitbit isn&apos;t connected yet</p>
+            {process.env.NODE_ENV === "development" ? (
+              <>
+                <p>
+                  Create an app at{" "}
+                  <a href="https://dev.fitbit.com/apps" target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                    dev.fitbit.com/apps
+                  </a>
+                  , then put <code className="text-typo-eyebrow bg-muted px-1 rounded">FITBIT_CLIENT_ID</code> and{" "}
+                  <code className="text-typo-eyebrow bg-muted px-1 rounded">FITBIT_CLIENT_SECRET</code> in{" "}
+                  <code className="text-typo-eyebrow bg-muted px-1 rounded">.env.local</code> and restart{" "}
+                  <code className="text-typo-eyebrow bg-muted px-1 rounded">npm run dev</code> so Next.js reloads env.
                 </p>
-              </div>
+                {wearableStatus.setup?.oauthCallbackUrl ? (
+                  <p>
+                    In the Fitbit app, set <strong>Callback URL</strong> to exactly:{" "}
+                    <code className="text-typo-eyebrow bg-muted px-1 rounded break-all">{wearableStatus.setup.oauthCallbackUrl}</code>
+                  </p>
+                ) : (
+                  <p>
+                    Set <code className="text-typo-eyebrow bg-muted px-1 rounded">NEXT_PUBLIC_APP_URL</code> in{" "}
+                    <code className="text-typo-eyebrow bg-muted px-1 rounded">.env.local</code> (e.g.{" "}
+                    <code className="text-typo-eyebrow bg-muted px-1 rounded">http://localhost:3000</code>) so the callback URL can be built.
+                  </p>
+                )}
+                <p className="text-typo-caption opacity-90">
+                  Database tables for wearables are separate; if you already ran the migration, you only need the Fitbit keys above.
+                </p>
+                {(wearableStatus.setup?.serverHasClientId === false ||
+                  wearableStatus.setup?.serverHasClientSecret === false) && (
+                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-typo-caption text-amber-800 dark:text-amber-100">
+                    <p className="font-medium text-amber-900 dark:text-amber-50 mb-1">Server still does not see Fitbit OAuth env</p>
+                    <ul className="list-disc pl-4 space-y-0.5">
+                      {wearableStatus.setup?.serverHasClientId === false && (
+                        <li>
+                          <code className="text-typo-eyebrow bg-black/10 dark:bg-black/30 px-1 rounded">FITBIT_CLIENT_ID</code> is missing or empty — paste the value from dev.fitbit.com after the <code className="text-typo-eyebrow">=</code> with no spaces.
+                        </li>
+                      )}
+                      {wearableStatus.setup?.serverHasClientSecret === false && (
+                        <li>
+                          <code className="text-typo-eyebrow bg-black/10 dark:bg-black/30 px-1 rounded">FITBIT_CLIENT_SECRET</code> is missing or empty — same as above.
+                        </li>
+                      )}
+                    </ul>
+                    <p className="mt-2 text-amber-900/90 dark:text-amber-100/90">
+                      Save <code className="text-typo-eyebrow bg-black/10 dark:bg-black/30 px-1 rounded">.env.local</code> in the project root, then stop and start{" "}
+                      <code className="text-typo-eyebrow bg-black/10 dark:bg-black/30 px-1 rounded">npm run dev</code> (reload is not enough).
+                    </p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p>Your organizer can enable Fitbit in a future update.</p>
             )}
           </div>
         ) : (
@@ -791,6 +814,12 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
             {wearableStatus?.setupError && (
               <p className="text-xs text-amber-600 dark:text-amber-400">{wearableStatus.setupError}</p>
             )}
+            {!wearableStatus?.connected && wearableStatus?.configured ? (
+              <div className="flex justify-center py-1 text-primary" aria-hidden>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/illustrations/wearables-disconnected.svg" alt="" className="h-16 w-16 opacity-90" />
+              </div>
+            ) : null}
             <div className="flex flex-wrap gap-2">
               {!wearableStatus?.connected ? (
                 <button
@@ -829,7 +858,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
               (wearableStatus.latest ? (
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <div className="rounded-xl border border-border bg-background/50 p-3">
-                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase tracking-wide mb-1">
+                    <div className="flex items-center gap-1.5 text-typo-eyebrow text-muted-foreground uppercase tracking-wide mb-1">
                       <Heart className="h-3 w-3" />
                       Resting HR
                     </div>
@@ -837,18 +866,18 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
                       {wearableStatus.latest.restingHeartRate != null ? `${wearableStatus.latest.restingHeartRate} bpm` : "—"}
                     </p>
                     {wearableStatus.latest.heartRateDate && (
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{wearableStatus.latest.heartRateDate}</p>
+                      <p className="text-typo-eyebrow text-muted-foreground mt-0.5">{wearableStatus.latest.heartRateDate}</p>
                     )}
                   </div>
                   <div className="rounded-xl border border-border bg-background/50 p-3">
-                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase tracking-wide mb-1">
+                    <div className="flex items-center gap-1.5 text-typo-eyebrow text-muted-foreground uppercase tracking-wide mb-1">
                       SpO₂ avg
                     </div>
                     <p className="text-lg font-semibold text-foreground">
                       {wearableStatus.latest.spo2AvgPct != null ? `${Number(wearableStatus.latest.spo2AvgPct).toFixed(1)}%` : "—"}
                     </p>
                     {wearableStatus.latest.spo2Date && (
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{wearableStatus.latest.spo2Date}</p>
+                      <p className="text-typo-eyebrow text-muted-foreground mt-0.5">{wearableStatus.latest.spo2Date}</p>
                     )}
                   </div>
                 </div>
@@ -856,7 +885,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
                 <p className="text-xs text-muted-foreground pt-1">No metrics loaded yet. Tap Sync now.</p>
               ))}
             {wearableStatus?.connected && wearableStatus.lastSyncAt && (
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-typo-eyebrow text-muted-foreground">
                 Last sync: {new Date(wearableStatus.lastSyncAt).toLocaleString()}
               </p>
             )}
@@ -875,7 +904,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
           >
             {stats.totalRuns}
           </span>
-          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.14em] text-center leading-tight">Runs</span>
+          <span className="text-typo-micro font-bold text-muted-foreground uppercase tracking-[0.14em] text-center leading-tight">Runs</span>
         </div>
         <div className="flex flex-col items-center gap-1.5 rounded-2xl bg-card p-3 border border-border" title="Workouts + AI sessions">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-metric-move/15">
@@ -887,7 +916,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
           >
             {stats.totalWorkouts}
           </span>
-          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.14em] text-center leading-tight">Workouts</span>
+          <span className="text-typo-micro font-bold text-muted-foreground uppercase tracking-[0.14em] text-center leading-tight">Workouts</span>
         </div>
         <div className="flex flex-col items-center gap-1.5 rounded-2xl bg-card p-3 border border-border" title="Current streak">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-metric-streak/15">
@@ -899,7 +928,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
           >
             {stats.streak}d
           </span>
-          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.14em] text-center leading-tight">Streak</span>
+          <span className="text-typo-micro font-bold text-muted-foreground uppercase tracking-[0.14em] text-center leading-tight">Streak</span>
         </div>
         <div className="flex flex-col items-center gap-1.5 rounded-2xl bg-card p-3 border border-border" title="Earned achievements">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-metric-coach/15">
@@ -911,7 +940,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
           >
             {achievements.filter((a) => a.earned).length}
           </span>
-          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.14em] text-center leading-tight">Badges</span>
+          <span className="text-typo-micro font-bold text-muted-foreground uppercase tracking-[0.14em] text-center leading-tight">Badges</span>
         </div>
       </div>
 
@@ -953,7 +982,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
                           aria-label={`${day.day}: ${day.count} sessions`}
                         />
                       </div>
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <span className="text-typo-eyebrow font-semibold uppercase tracking-wider text-muted-foreground">
                         {day.day}
                       </span>
                     </div>
@@ -991,7 +1020,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
               <div className={`flex h-10 w-10 items-center justify-center rounded-full ${ach.earned ? "bg-primary/15" : "bg-secondary"}`}>
                 <Award className={`h-5 w-5 ${ach.earned ? "text-primary" : "text-muted-foreground"}`} />
               </div>
-              <span className="text-[10px] font-semibold text-foreground leading-tight">{ach.title}</span>
+              <span className="text-typo-eyebrow font-semibold text-foreground leading-tight">{ach.title}</span>
               {!ach.earned && ach.progress > 0 && (
                 <div className="w-full h-1 rounded-full bg-secondary overflow-hidden mt-1">
                   <div className="h-full rounded-full bg-primary" style={{ width: `${ach.progress}%` }} />

@@ -11,6 +11,11 @@ import {
   faceMeshQualityOk,
   type MeshPoint,
 } from "@/lib/face-mesh-signature"
+import {
+  withSuppressedMediapipeWasmWarn,
+  ensureMediapipeWarnFilterInstalled,
+  isMediapipeBrowserFilterInstalled,
+} from "@/lib/mediapipe-console-noise"
 
 const WASM_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm"
 const FACE_MODEL =
@@ -35,7 +40,7 @@ function withSuppressedTfLiteConsoleError<T>(fn: () => T): T {
   try {
     return fn()
   } finally {
-    console.error = orig
+    if (!isMediapipeBrowserFilterInstalled()) console.error = orig
   }
 }
 
@@ -48,7 +53,7 @@ async function withSuppressedTfLiteConsoleErrorAsync<T>(fn: () => Promise<T>): P
   try {
     return await fn()
   } finally {
-    console.error = orig
+    if (!isMediapipeBrowserFilterInstalled()) console.error = orig
   }
 }
 
@@ -59,42 +64,49 @@ export function isFaceLandmarkerReady(): boolean {
 }
 
 export async function initFaceLandmarker(): Promise<boolean> {
-  if (faceLandmarker) return true
-  try {
-    const vision = await FilesetResolver.forVisionTasks(WASM_BASE)
-    const options = (delegate: "GPU" | "CPU") =>
-      ({
-        baseOptions: {
-          modelAssetPath: FACE_MODEL,
-          delegate,
-        },
-        // IMAGE + per-frame detect() avoids VIDEO timestamp / tracking path that can abort WASM on some Chrome/Mac setups.
-        runningMode: "IMAGE" as const,
-        numFaces: 1,
-        minFaceDetectionConfidence: 0.5,
-        minFacePresenceConfidence: 0.5,
-        minTrackingConfidence: 0.5,
-        outputFaceBlendshapes: false,
-        outputFacialTransformationMatrixes: false,
-      }) satisfies Parameters<typeof FaceLandmarker.createFromOptions>[1]
-
-    // CPU first: Face Landmarker + GPU delegate often crashes (WASM/TFLite) on some Mac/Chrome setups.
-    try {
-      faceLandmarker = await withSuppressedTfLiteConsoleErrorAsync(() =>
-        FaceLandmarker.createFromOptions(vision, options("CPU")),
-      )
-    } catch {
-      console.warn("Face Landmarker CPU failed, trying GPU")
-      faceLandmarker = await withSuppressedTfLiteConsoleErrorAsync(() =>
-        FaceLandmarker.createFromOptions(vision, options("GPU")),
-      )
-    }
+  if (faceLandmarker) {
+    ensureMediapipeWarnFilterInstalled()
     return true
-  } catch (e) {
-    console.warn("Face Landmarker init failed:", e)
-    faceLandmarker = null
-    return false
   }
+  const ok = await withSuppressedMediapipeWasmWarn(async () => {
+    try {
+      const vision = await FilesetResolver.forVisionTasks(WASM_BASE)
+      const options = (delegate: "GPU" | "CPU") =>
+        ({
+          baseOptions: {
+            modelAssetPath: FACE_MODEL,
+            delegate,
+          },
+          // IMAGE + per-frame detect() avoids VIDEO timestamp / tracking path that can abort WASM on some Chrome/Mac setups.
+          runningMode: "IMAGE" as const,
+          numFaces: 1,
+          minFaceDetectionConfidence: 0.5,
+          minFacePresenceConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+          outputFaceBlendshapes: false,
+          outputFacialTransformationMatrixes: false,
+        }) satisfies Parameters<typeof FaceLandmarker.createFromOptions>[1]
+
+      // CPU first: Face Landmarker + GPU delegate often crashes (WASM/TFLite) on some Mac/Chrome setups.
+      try {
+        faceLandmarker = await withSuppressedTfLiteConsoleErrorAsync(() =>
+          FaceLandmarker.createFromOptions(vision, options("CPU")),
+        )
+      } catch {
+        console.warn("Face Landmarker CPU failed, trying GPU")
+        faceLandmarker = await withSuppressedTfLiteConsoleErrorAsync(() =>
+          FaceLandmarker.createFromOptions(vision, options("GPU")),
+        )
+      }
+      return true
+    } catch (e) {
+      console.warn("Face Landmarker init failed:", e)
+      faceLandmarker = null
+      return false
+    }
+  })
+  if (ok) ensureMediapipeWarnFilterInstalled()
+  return ok
 }
 
 function asMeshPoints(lm: NormalizedLandmark[]): MeshPoint[] {

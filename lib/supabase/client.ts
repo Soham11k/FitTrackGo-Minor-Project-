@@ -1,16 +1,28 @@
 import { createBrowserClient } from '@supabase/ssr'
-import { validateSupabaseEnv } from '@/lib/supabase/config'
+import { validateSupabaseEnv, normalizePublicEnvScalar } from '@/lib/supabase/config'
+import { getSupabaseUrlForRuntime } from '@/lib/supabase/runtime-url'
 
-// Singleton client instance to prevent lock conflicts
+// Singleton client instance to prevent lock conflicts.
+// Cache must invalidate when public env changes — otherwise a stale client survives bad URL/key edits during dev.
 let supabaseClient: ReturnType<typeof createBrowserClient> | null = null
+let cachedPublicEnvFingerprint: string | null = null
+
+function publicSupabaseEnvFingerprint(): string {
+  const url = normalizePublicEnvScalar(process.env.NEXT_PUBLIC_SUPABASE_URL)
+  const key = normalizePublicEnvScalar(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+  return `${url}\n${key}`
+}
 
 export function createClient() {
-  // Return singleton if already created
-  if (supabaseClient) {
+  const fingerprint = publicSupabaseEnvFingerprint()
+  if (supabaseClient && cachedPublicEnvFingerprint === fingerprint) {
     return supabaseClient
   }
 
-  const { isConfigured, url, key, reason } = validateSupabaseEnv()
+  supabaseClient = null
+  cachedPublicEnvFingerprint = fingerprint
+
+  const { isConfigured, key, reason } = validateSupabaseEnv()
 
   // Handle missing env vars gracefully
   if (!isConfigured) {
@@ -63,8 +75,7 @@ export function createClient() {
     } as unknown as ReturnType<typeof createBrowserClient>
   }
 
-  // Create and cache the client (singleton pattern prevents lock conflicts)
-  supabaseClient = createBrowserClient(url!, key!)
+  supabaseClient = createBrowserClient(getSupabaseUrlForRuntime(), key!)
 
   return supabaseClient
 }
