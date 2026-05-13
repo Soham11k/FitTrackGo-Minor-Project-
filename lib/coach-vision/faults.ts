@@ -138,6 +138,50 @@ export function detectFaults(
     }
   }
 
+  if (exercise === "deadlift" || exercise === "rdl") {
+    const midFootX = (safe(lm, 27).x + safe(lm, 28).x) / 2
+    const midWristX = (safe(lm, 15).x + safe(lm, 16).x) / 2
+    const drift = Math.abs(midWristX - midFootX)
+    if (drift > 0.055) {
+      faults.push({
+        id: exercise === "rdl" ? "rdl.bar_drift" : "deadlift.bar_drift",
+        label: "Bar drifting from mid-foot",
+        cue: "Pull the bar straight up, close to your legs.",
+        region: "arms",
+        severity: severityFor(drift - 0.055, [0.03, 0.07]),
+        landmarkIndices: [...WRISTS, ...ANKLES],
+        segmentPairs: [
+          [15, 16],
+          [23, 25],
+          [24, 26],
+        ],
+      })
+    }
+    const kneeL = jointAngle(safe(lm, 23), safe(lm, 25), safe(lm, 27), wTri(23, 25, 27))
+    const kneeR = jointAngle(safe(lm, 24), safe(lm, 26), safe(lm, 28), wTri(24, 26, 28))
+    const kneeAvg = (kneeL + kneeR) / 2
+    if (exercise === "rdl" && kneeAvg < 130) {
+      faults.push({
+        id: "rdl.knees_too_bent",
+        label: "Knees bending too much",
+        cue: "It’s a hinge — push hips back with only a soft knee bend.",
+        region: "legs",
+        severity: severityFor(130 - kneeAvg, [8, 22]),
+        landmarkIndices: LEGS,
+      })
+    }
+    if (exercise === "deadlift" && kneeAvg > 155) {
+      faults.push({
+        id: "deadlift.knees_locked_early",
+        label: "Knees overly straight early",
+        cue: "Allow a modest knee bend to keep the bar close and hips low.",
+        region: "legs",
+        severity: severityFor(kneeAvg - 155, [5, 15]),
+        landmarkIndices: LEGS,
+      })
+    }
+  }
+
   if (exercise === "pushup") {
     const shoulderY = (safe(lm, 11).y + safe(lm, 12).y) / 2
     const hipY = (safe(lm, 23).y + safe(lm, 24).y) / 2

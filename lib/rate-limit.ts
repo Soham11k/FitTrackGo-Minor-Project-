@@ -33,12 +33,57 @@ class MemoryStore implements RateLimitStore {
     return v
   }
 
-  async set(key: string, bucket: Bucket): Promise<void> {
+  async set(key: string, bucket: Bucket, _ttlMs: number): Promise<void> {
+    void _ttlMs
     this.map.set(key, bucket)
   }
 }
 
 const sharedStore = new MemoryStore()
+
+async function createKvRateLimitStore(): Promise<RateLimitStore | null> {
+  const url = process.env.KV_REST_API_URL?.trim()
+  const token = process.env.KV_REST_API_TOKEN?.trim()
+  if (!url || !token) return null
+  try {
+    const kvmod = await import("@vercel/kv").catch(() => null as typeof import("@vercel/kv") | null)
+    if (!kvmod?.kv) return null
+    const kv = kvmod.kv
+    return {
+      async get(key: string): Promise<Bucket | null> {
+        const raw = await kv.get<string>(key)
+        if (!raw || typeof raw !== "string") return null
+        try {
+          const b = JSON.parse(raw) as Bucket
+          if (typeof b.tokens !== "number" || typeof b.resetAt !== "number") return null
+          if (Date.now() > b.resetAt) {
+            await kv.del(key).catch(() => {})
+            return null
+          }
+          return b
+        } catch {
+          return null
+        }
+      },
+      async set(key: string, bucket: Bucket, ttlMs: number): Promise<void> {
+        const px = Math.max(900, ttlMs, bucket.resetAt - Date.now() + 250)
+        await kv.set(key, JSON.stringify(bucket), { px: Math.ceil(px) })
+      },
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Prefer Vercel KV when configured; fall back to memory (PR D1). */
+let resolvedSharedStore: RateLimitStore | undefined
+
+async function resolveSharedRateStore(): Promise<RateLimitStore> {
+  if (resolvedSharedStore) return resolvedSharedStore
+  const kvStore = await createKvRateLimitStore()
+  resolvedSharedStore = kvStore ?? sharedStore
+  return resolvedSharedStore
+}
 
 export interface RateLimitResult {
   ok: boolean
@@ -120,11 +165,12 @@ export async function checkRateLimit(opts: {
   windowMs: number
   store?: RateLimitStore
 }): Promise<LegacyRateLimitResult> {
+  const store = opts.store ?? (await resolveSharedRateStore())
   const limiter = new RateLimiter({
     key: "legacy",
     max: opts.limit,
     windowMs: opts.windowMs,
-    store: opts.store,
+    store,
   })
   const r = await limiter.check(opts.key)
   return {
@@ -132,7 +178,7 @@ export async function checkRateLimit(opts: {
     remaining: r.remaining,
     resetAt: r.resetAt,
     limit: opts.limit,
-    source: "memory",
+    source: store === sharedStore ? "memory" : "redis",
   }
 }
 

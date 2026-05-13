@@ -1,0 +1,24 @@
+{
+  "id": "crunch",
+  "displayName": "Crunch",
+  "category": "core",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [0, 11, 12, 23, 24],
+  "visibleFraction": 0.6,
+  "positiveLine": "Solid crunch — controlled curl",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "shoulder_hip_y_delta", "op": "<", "value": -0.08 } },
+    { "name": "bottom", "enterWhen": { "metric": "shoulder_hip_y_delta", "op": ">", "value": -0.04 } }
+  ],
+  "rules": [
+    {
+      "id": "crunch.curl",
+      "region": "core",
+      "penalty": 12,
+      "when": { "any": [ { "metric": "shoulder_hip_y_delta", "op": ">=", "value": 0.1 }, { "metric": "nose_y", "op": ">=", "value": 0.65 } ] },
+      "feedback": "Curl up — shoulders off the floor",
+      "breakdown": { "label": "Curl", "format": "boolean", "okLabel": "Good", "failLabel": "Curl more", "detail": "Shoulders off floor", "region": "core" }
+    }
+  ]
+}

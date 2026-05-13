@@ -1,0 +1,32 @@
+{
+  "id": "reverse_fly",
+  "displayName": "Reverse Fly",
+  "category": "upper",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16, 23, 24],
+  "visibleFraction": 0.67,
+  "positiveLine": "Clean reverse fly — rear delts squeezing at the top",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "shoulder_angle_avg", "op": ">", "value": 70 } },
+    { "name": "bottom", "enterWhen": { "metric": "shoulder_angle_avg", "op": "<", "value": 25 } }
+  ],
+  "rules": [
+    {
+      "id": "reverse_fly.hinge",
+      "region": "torso",
+      "penalty": 10,
+      "when": { "any": [ { "metric": "hip_hinge_avg", "op": "<=", "value": 55 }, { "metric": "hip_hinge_avg", "op": ">=", "value": 120 } ] },
+      "feedback": "Stay hinged — don't stand up out of the fly",
+      "breakdown": { "label": "Torso angle", "format": "angle", "metric": "hip_hinge_avg", "region": "torso" }
+    },
+    {
+      "id": "reverse_fly.range",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "metric": "shoulder_angle_avg", "op": "<", "value": 65 },
+      "feedback": "Open arms wide until they line up with the shoulders",
+      "breakdown": { "label": "Shoulder angle", "format": "angle", "metric": "shoulder_angle_avg", "region": "arms" }
+    }
+  ]
+}

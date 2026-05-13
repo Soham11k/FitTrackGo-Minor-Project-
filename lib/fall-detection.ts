@@ -50,14 +50,31 @@ const FRAMES_REQUIRED = 12
 
 let fallFrameCount = 0
 
-export type ExerciseId = "squat" | "pushup" | "plank" | "lunge" | "bicep_curl" | "shoulder_press" | "jumping_jacks" | "high_knees" | "crunch"
+export type ExerciseId =
+  | "squat"
+  | "pushup"
+  | "plank"
+  | "lunge"
+  | "deadlift"
+  | "rdl"
+  | "bicep_curl"
+  | "shoulder_press"
+  | "jumping_jacks"
+  | "high_knees"
+  | "crunch"
 
 /** Returns true if a possible fall is detected (body horizontal and low). Disabled for plank/pushup. */
 export function detectFall(
   landmarks: LandmarkPoint[],
   exercise: ExerciseId
 ): boolean {
-  if (exercise === "plank" || exercise === "pushup" || exercise === "crunch") {
+  if (
+    exercise === "plank" ||
+    exercise === "pushup" ||
+    exercise === "crunch" ||
+    exercise === "deadlift" ||
+    exercise === "rdl"
+  ) {
     fallFrameCount = 0
     return false
   }

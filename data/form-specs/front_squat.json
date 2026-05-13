@@ -1,0 +1,34 @@
+{
+  "id": "front_squat",
+  "displayName": "Front Squat",
+  "category": "lower",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 23, 24, 25, 26, 27, 28],
+  "visibleFraction": 0.75,
+  "positiveLine": "Strong front squat — torso tall, depth on point",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "knee_angle_avg", "op": "<", "value": 100 } },
+    { "name": "top", "enterWhen": { "metric": "knee_angle_avg", "op": ">", "value": 158 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "knee_angle_avg", "op": ">=", "value": 100 }, { "metric": "knee_angle_avg", "op": "<=", "value": 158 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "front_squat.depth",
+      "region": "legs",
+      "penalty": 15,
+      "loadRelax": { "perXBodyweight": 1.0, "addThresholdDeg": 8 },
+      "when": { "all": [ { "metric": "depth_ratio", "op": "<=", "value": 0.08 }, { "metric": "knee_angle_avg", "op": ">=", "value": 100 } ] },
+      "feedback": "Break parallel at the bottom",
+      "breakdown": { "label": "Depth", "format": "boolean", "okLabel": "Good", "failLabel": "Higher", "region": "legs" }
+    },
+    {
+      "id": "front_squat.torso",
+      "region": "torso",
+      "penalty": 12,
+      "when": { "metric": "back_angle_avg", "op": "<", "value": 55 },
+      "feedback": "Keep the chest tall — elbows up",
+      "breakdown": { "label": "Torso angle", "format": "angle", "metric": "back_angle_avg", "region": "torso" }
+    }
+  ]
+}

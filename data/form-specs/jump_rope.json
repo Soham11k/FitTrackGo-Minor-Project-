@@ -1,0 +1,15 @@
+{
+  "id": "jump_rope",
+  "displayName": "Jump Rope",
+  "category": "cardio",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [27, 28],
+  "visibleFraction": 0.5,
+  "positiveLine": "Quick feet — soft landings",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "ankle_y_avg", "op": "<", "value": 0.7 } },
+    { "name": "bottom", "enterWhen": { "metric": "ankle_y_avg", "op": ">", "value": 0.82 } }
+  ],
+  "rules": []
+}

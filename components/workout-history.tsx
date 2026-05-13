@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { formatDistanceToNow, format } from "date-fns"
 import {
   ChevronLeft,
@@ -15,6 +15,8 @@ import {
   Timer,
   Gauge,
   Calendar,
+  Share2,
+  MoreVertical,
 } from "lucide-react"
 import { motion, useReducedMotion } from "framer-motion"
 import { getWorkouts, getRuns, getCoachSessions } from "@/lib/store-supabase"
@@ -24,10 +26,24 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { downloadBlob, runToGpx } from "@/lib/export"
 import { siteConfig } from "@/lib/data"
 import { toast } from "sonner"
-import type { RunRecord, CoachRecord } from "@/lib/store"
+import { pathToSvgD } from "@/lib/run-path-svg"
+import { estimateKmSplitsFromRecord } from "@/lib/run-splits-estimate"
+import { composeShareCard } from "@/lib/share-card"
+import { RunSplitBars } from "@/components/run-finish-recap"
+import type { RunRecord, CoachRecord, WorkoutRecord } from "@/lib/store"
 import { CoachRepTimeline } from "@/components/coach-rep-timeline"
 import type { TabId } from "@/components/bottom-nav"
+import { ActivityDetailSheet, type ActivityDetailPayload } from "@/components/activity-detail"
+import { CompareSessionsPanel, RunVersusShareCard } from "@/components/compare-sessions-sheet"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { useLocale } from "@/components/locale-provider"
 import {
   Empty,
   EmptyContent,
@@ -50,6 +66,7 @@ type HistoryItem = {
   icon: typeof Dumbbell
   run?: RunRecord
   coach?: CoachRecord
+  workout?: WorkoutRecord
 }
 
 /** Per-type visual identity for history rows. */
@@ -85,7 +102,19 @@ export function WorkoutHistory({
   const [coachRepPick, setCoachRepPick] = useState<number | null>(null)
   const [compareRepPick, setCompareRepPick] = useState<number | null>(null)
   const [coachRows, setCoachRows] = useState<CoachRecord[]>([])
+  const [detailActivity, setDetailActivity] = useState<ActivityDetailPayload | null>(null)
+  const { locale, t } = useLocale()
   const reduceMotion = useReducedMotion() ?? false
+
+  const historyRunSplits = useMemo(() => (detailRun ? estimateKmSplitsFromRecord(detailRun) : []), [detailRun])
+  const runCandidates = useMemo(
+    () => items.flatMap((i) => (i.type === "run" && i.run ? [i.run] : [])),
+    [items],
+  )
+  const historyRunSvg = useMemo(() => {
+    if (!detailRun?.path?.length || detailRun.path.length < 2) return ""
+    return pathToSvgD(detailRun.path)
+  }, [detailRun])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -106,6 +135,7 @@ export function WorkoutHistory({
         primaryLabel: "min",
         time: w.completedAt,
         icon: Dumbbell,
+        workout: w,
       }))
       const runItems: HistoryItem[] = runs.map((r) => ({
         type: "run",
@@ -140,6 +170,40 @@ export function WorkoutHistory({
       setLoading(false)
     }
   }, [])
+
+  async function shareHistoryRun(run: RunRecord) {
+    const dateLabel = format(new Date(run.completedAt), "EEE, MMM d")
+    const text = `${run.distance.toFixed(2)} km · ${formatDuration(run.duration)} · ${run.pace}/km · FitTrack Go`
+    try {
+      const png = await composeShareCard({
+        kind: "run",
+        payload: {
+          distanceKm: run.distance,
+          durationSec: run.duration,
+          pacePerKm: run.pace,
+          dateLabel,
+          path: run.path ?? [],
+        },
+        locale,
+      })
+      if (png && navigator.share && navigator.canShare?.({ files: [png] })) {
+        await navigator.share({ title: t("run.share.nativeTitle"), text, files: [png] })
+        return
+      }
+      if (png && navigator.share) {
+        await navigator.share({ title: t("run.share.nativeTitle"), text })
+        return
+      }
+    } catch {
+      /* dismissed */
+    }
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success(t("run.share.copied"))
+    } catch {
+      toast.error(t("run.share.failed"))
+    }
+  }
 
   useEffect(() => {
     load()
@@ -261,7 +325,7 @@ export function WorkoutHistory({
               </>
             )
             const baseRowClasses =
-              "motion-card flex w-full items-center gap-3 rounded-2xl bg-card p-4 border border-border shadow-[var(--shadow-card)]"
+              "motion-card flex w-full items-center gap-3 rounded-lg bg-background p-4 border border-border"
             const motionProps = {
               initial: reduceMotion ? false : ({ opacity: 0, y: 8 } as const),
               animate: { opacity: 1, y: 0 },
@@ -271,6 +335,21 @@ export function WorkoutHistory({
                 ease: EASE.out,
               },
             } as const
+            if (item.type === "workout" && item.workout) {
+              const w = item.workout
+              return (
+                <motion.button
+                  key={`${item.type}-${item.id}`}
+                  type="button"
+                  onClick={() => setDetailActivity({ kind: "workout", workout: w })}
+                  aria-label={`View workout ${w.title}`}
+                  className={`${baseRowClasses} text-left motion-card-interactive transition-transform hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-metric-move`}
+                  {...motionProps}
+                >
+                  {innerContent}
+                </motion.button>
+              )
+            }
             if (item.type === "run" && item.run) {
               const runForClick = item.run
               return (
@@ -288,22 +367,61 @@ export function WorkoutHistory({
             }
             if (item.type === "coach" && item.coach) {
               const c = item.coach
+              const others = coachRows
+                .filter((x) => x.exercise === c.exercise && x.id !== c.id)
+                .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())
+                .slice(0, 12)
               return (
-                <motion.button
+                <motion.div
                   key={`${item.type}-${item.id}`}
-                  type="button"
-                  onClick={() => {
-                    setDetailCoach(c)
-                    setDetailCompare(null)
-                    setCoachRepPick(c.repScores?.length ? c.repScores.length - 1 : null)
-                    setCompareRepPick(null)
-                  }}
-                  aria-label={`View coach session ${c.exercise}`}
-                  className={`${baseRowClasses} text-left motion-card-interactive transition-transform hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-metric-coach`}
+                  className={`${baseRowClasses} p-0 gap-0`}
                   {...motionProps}
                 >
-                  {innerContent}
-                </motion.button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDetailCoach(c)
+                      setDetailCompare(null)
+                      setCoachRepPick(c.repScores?.length ? c.repScores.length - 1 : null)
+                      setCompareRepPick(null)
+                    }}
+                    aria-label={`View coach session ${c.exercise}`}
+                    className={`flex flex-1 min-w-0 items-center gap-3 rounded-2xl px-4 py-4 text-left motion-card-interactive transition-transform hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-metric-coach`}
+                  >
+                    {innerContent}
+                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={`More actions for coach session ${c.exercise}`}
+                        className="shrink-0 border-l border-border px-4 py-4 text-muted-foreground hover:bg-secondary/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-metric-coach"
+                      >
+                        <MoreVertical className="h-5 w-5" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56 rounded-xl border-border bg-card shadow-lg">
+                      <DropdownMenuLabel>Compare ({c.exercise})</DropdownMenuLabel>
+                      {others.length ? (
+                        others.map((o) => (
+                          <DropdownMenuItem
+                            key={o.id}
+                            onClick={() => {
+                              setDetailCoach(c)
+                              setDetailCompare(o)
+                              setCoachRepPick(c.repScores?.length ? c.repScores.length - 1 : null)
+                              setCompareRepPick(o.repScores?.length ? o.repScores.length - 1 : null)
+                            }}
+                          >
+                            vs {format(new Date(o.completedAt), "MMM d · p")} · {o.score}%
+                          </DropdownMenuItem>
+                        ))
+                      ) : (
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground">No other sessions for this exercise</div>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </motion.div>
               )
             }
             return (
@@ -330,6 +448,24 @@ export function WorkoutHistory({
                 </SheetDescription>
               </SheetHeader>
               <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-8 pt-3">
+                <div className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl border border-border bg-muted/30">
+                  {historyRunSvg ? (
+                    <svg viewBox="0 0 100 100" className="h-full w-full" aria-hidden>
+                      <path
+                        d={historyRunSvg}
+                        fill="none"
+                        stroke="var(--primary)"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  ) : (
+                    <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
+                      No GPS trail for this run
+                    </div>
+                  )}
+                </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div className="rounded-2xl border border-border bg-card p-3 text-center shadow-[var(--shadow-card)]">
                     <MapPin className="mx-auto h-4 w-4 text-metric-run" />
@@ -373,27 +509,40 @@ export function WorkoutHistory({
                     </p>
                   </div>
                 </div>
-                {detailRun.path?.length > 0 ? (
-                  <button
+                {historyRunSplits.length > 0 ? (
+                  <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
+                    <RunSplitBars splits={historyRunSplits} tone="card" />
+                  </div>
+                ) : null}
+                <RunVersusShareCard anchor={detailRun} opponentCandidates={runCandidates} locale={locale} />
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
                     type="button"
-                    onClick={() => {
-                      downloadBlob(
-                        `run-${detailRun.id}.gpx`,
-                        runToGpx(detailRun, { appName: siteConfig.appName }),
-                        "application/gpx+xml"
-                      )
-                      toast.success("GPX exported")
-                    }}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground active:scale-[0.98]"
+                    variant="outline"
+                    className="flex-1 rounded-xl border-primary/30"
+                    onClick={() => void shareHistoryRun(detailRun)}
                   >
-                    <Download className="h-4 w-4" />
-                    Export as GPX
-                  </button>
-                ) : (
-                  <p className="rounded-xl bg-muted/40 p-3 text-center text-xs text-muted-foreground">
-                    No GPS samples recorded for this run.
-                  </p>
-                )}
+                    <Share2 className="h-4 w-4" />
+                    Share
+                  </Button>
+                  {detailRun.path?.length ? (
+                    <Button
+                      type="button"
+                      className="flex-1 rounded-xl"
+                      onClick={() => {
+                        downloadBlob(
+                          `run-${detailRun.id}.gpx`,
+                          runToGpx(detailRun, { appName: siteConfig.appName }),
+                          "application/gpx+xml",
+                        )
+                        toast.success("GPX exported")
+                      }}
+                    >
+                      <Download className="h-4 w-4" />
+                      Export GPX
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             </>
           )}
@@ -498,10 +647,11 @@ export function WorkoutHistory({
                 ) : (
                   <p className="text-center text-xs text-muted-foreground">No per-rep scores stored for this session.</p>
                 )}
+                {detailCompare ? <CompareSessionsPanel current={detailCoach} baseline={detailCompare} /> : null}
                 {detailCompare && detailCompare.repScores && detailCompare.repScores.length > 0 ? (
                   <div className="rounded-2xl border border-border bg-muted/30 p-4">
                     <p className="mb-2 text-typo-eyebrow font-bold uppercase tracking-wider text-muted-foreground">
-                      Previous · {format(new Date(detailCompare.completedAt), "MMM d · p")}
+                      Baseline · {format(new Date(detailCompare.completedAt), "MMM d · p")}
                     </p>
                     <CoachRepTimeline
                       repScores={detailCompare.repScores}
@@ -509,14 +659,6 @@ export function WorkoutHistory({
                       onRepSelect={(i) => setCompareRepPick(i)}
                       label="Rep playback"
                     />
-                    <p className="mt-3 text-xs text-muted-foreground text-center">
-                      Form score Δ{" "}
-                      <span className="font-bold tabular-nums text-foreground">
-                        {detailCoach.score >= detailCompare.score ? "+" : ""}
-                        {detailCoach.score - detailCompare.score}
-                      </span>{" "}
-                      pts vs previous
-                    </p>
                   </div>
                 ) : null}
               </div>
@@ -524,6 +666,12 @@ export function WorkoutHistory({
           )}
         </SheetContent>
       </Sheet>
+
+      <ActivityDetailSheet
+        open={detailActivity != null}
+        onOpenChange={(o) => !o && setDetailActivity(null)}
+        activity={detailActivity}
+      />
     </div>
   )
 }

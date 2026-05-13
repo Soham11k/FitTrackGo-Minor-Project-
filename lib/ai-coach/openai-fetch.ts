@@ -57,6 +57,44 @@ export async function openaiChatJson(opts: {
   return text
 }
 
+export type VisionContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string; detail?: "low" | "high" | "auto" } }
+
+export interface VisionMessage {
+  role: "system" | "user" | "assistant"
+  content: string | VisionContentPart[]
+}
+
+/**
+ * Chat completion that accepts image parts. Models that accept vision input
+ * are limited to GPT-4o family on the chat-completions endpoint.
+ */
+export async function openaiVisionChatJson(opts: {
+  model: "gpt-4o-mini" | "gpt-4o"
+  messages: VisionMessage[]
+  maxTokens: number
+}): Promise<string> {
+  const res = await fetch(`${OPENAI_BASE}/chat/completions`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({
+      model: opts.model,
+      messages: opts.messages,
+      max_tokens: opts.maxTokens,
+      temperature: 0.4,
+    }),
+  })
+  if (!res.ok) {
+    const t = await res.text()
+    throw new Error(`OpenAI vision chat ${res.status}: ${t.slice(0, 500)}`)
+  }
+  const data = (await res.json()) as { choices: { message?: { content?: string } }[] }
+  const text = data.choices[0]?.message?.content
+  if (!text) throw new Error("Empty model response")
+  return text
+}
+
 export function isOpenAIConfigured(): boolean {
   return Boolean(process.env.OPENAI_API_KEY?.trim())
 }

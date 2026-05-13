@@ -1,11 +1,50 @@
-/* FitTrackGo Service Worker — lifecycle + Web Push. */
+/* FitTrack Go SW — push + offline shell (PR C1). */
+const CACHE = "fittrackgo-shell-v1";
+const SHELL = ["/offline", "/marketing", "/manifest.json", "/brand/icon-192.png"];
 
-self.addEventListener("install", () => {
-  self.skipWaiting();
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      .then((cache) => cache.addAll(SHELL).catch(() => undefined))
+      .then(() => self.skipWaiting()),
+  );
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter((k) => k !== CACHE && k.startsWith("fittrackgo-shell-"))
+          .map((k) => caches.delete(k)),
+      ),
+    ).then(() => self.clients.claim()),
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  const req = event.request;
+  if (req.method !== "GET" || req.destination !== "document") return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+
+  event.respondWith(
+    (async () => {
+      try {
+        const res = await fetch(req);
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        }
+        return res;
+      } catch {
+        const cached = await caches.match(req).catch(() => undefined);
+        if (cached) return cached;
+        return caches.match("/offline").catch(() => undefined);
+      }
+    })(),
+  );
 });
 
 self.addEventListener("push", (event) => {
@@ -23,8 +62,8 @@ self.addEventListener("push", (event) => {
 
   const options = {
     body: payload.body,
-    icon: payload.icon || "/icon.svg",
-    badge: "/icon.svg",
+    icon: payload.icon || "/brand/icon-192.png",
+    badge: "/brand/icon-192.png",
     tag: payload.tag,
     data: { url: payload.url || "/" },
     renotify: !!payload.tag,
@@ -43,6 +82,6 @@ self.addEventListener("notificationclick", (event) => {
       }
       if (self.clients.openWindow) return self.clients.openWindow(url);
       return null;
-    })
+    }),
   );
 });

@@ -1,0 +1,29 @@
+{
+  "id": "plank",
+  "displayName": "Plank",
+  "category": "core",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 23, 24, 25, 26],
+  "visibleFraction": 0.67,
+  "positiveLine": "Strong plank — neutral spine and hips",
+  "repPattern": "hold",
+  "phases": [ { "name": "top", "always": true } ],
+  "rules": [
+    {
+      "id": "plank.hip_line",
+      "region": "core",
+      "penalty": 15,
+      "when": { "metric": "body_line_deviation", "op": ">=", "value": 16 },
+      "feedback": "Keep hips level — don't sag or pike",
+      "breakdown": { "label": "Hip height", "format": "boolean", "okLabel": "Neutral", "failLabel": "Align", "detail": "Shoulder–hip–ankle in line", "region": "core" }
+    },
+    {
+      "id": "plank.shoulders",
+      "region": "torso",
+      "penalty": 10,
+      "when": { "metric": "shoulder_hip_y_delta", "op": ">=", "value": 0.06 },
+      "feedback": "Stack shoulders over wrists",
+      "breakdown": { "label": "Shoulders", "format": "boolean", "okLabel": "Over wrists", "failLabel": "Adjust", "region": "torso" }
+    }
+  ]
+}

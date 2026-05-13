@@ -1,8 +1,8 @@
 "use client"
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import type { Locale } from "@/lib/i18n"
-import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from "@/lib/i18n"
+import { DEFAULT_LOCALE, SUPPORTED_LOCALES, getDir } from "@/lib/i18n"
 import { t as translate } from "@/lib/translations"
 
 type LocaleContextType = {
@@ -38,6 +38,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.setItem(STORAGE_KEY, newLocale)
       document.documentElement.lang = newLocale
+      document.documentElement.dir = getDir(newLocale)
     } catch {}
   }, [])
 
@@ -45,6 +46,13 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     (key: string) => translate(key, locale),
     [locale]
   )
+
+  useEffect(() => {
+    try {
+      document.documentElement.lang = locale
+      document.documentElement.dir = getDir(locale)
+    } catch {}
+  }, [locale])
 
   return (
     <LocaleContext.Provider value={{ locale, setLocale, t }}>

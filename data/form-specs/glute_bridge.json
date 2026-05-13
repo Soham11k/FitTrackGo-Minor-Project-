@@ -1,0 +1,24 @@
+{
+  "id": "glute_bridge",
+  "displayName": "Glute Bridge",
+  "category": "lower",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 23, 24, 25, 26],
+  "visibleFraction": 0.67,
+  "positiveLine": "Solid bridge — squeeze the glutes at the top",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "hip_hinge_avg", "op": ">", "value": 160 } },
+    { "name": "bottom", "enterWhen": { "metric": "hip_hinge_avg", "op": "<", "value": 100 } }
+  ],
+  "rules": [
+    {
+      "id": "glute_bridge.lockout",
+      "region": "legs",
+      "penalty": 10,
+      "when": { "metric": "hip_hinge_avg", "op": "<", "value": 155 },
+      "feedback": "Drive hips to full extension",
+      "breakdown": { "label": "Hip extension", "format": "angle", "metric": "hip_hinge_avg", "region": "legs" }
+    }
+  ]
+}

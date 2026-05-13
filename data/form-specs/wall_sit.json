@@ -1,0 +1,21 @@
+{
+  "id": "wall_sit",
+  "displayName": "Wall Sit",
+  "category": "lower",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [23, 24, 25, 26, 27, 28],
+  "visibleFraction": 0.6,
+  "positiveLine": "Strong wall sit — thighs parallel, weight in heels",
+  "repPattern": "hold",
+  "phases": [ { "name": "top", "always": true } ],
+  "rules": [
+    {
+      "id": "wall_sit.depth",
+      "region": "legs",
+      "penalty": 12,
+      "when": { "any": [ { "metric": "knee_angle_avg", "op": "<=", "value": 80 }, { "metric": "knee_angle_avg", "op": ">=", "value": 100 } ] },
+      "feedback": "Thighs parallel — knees around 90°",
+      "breakdown": { "label": "Knee angle", "format": "angle", "metric": "knee_angle_avg", "region": "legs" }
+    }
+  ]
+}

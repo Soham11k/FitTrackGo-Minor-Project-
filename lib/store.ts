@@ -1,3 +1,5 @@
+import type { RepTracePair } from "./rep-trace"
+
 const KEY = "fittrackgo_data"
 
 export interface UserProfile {
@@ -6,6 +8,10 @@ export interface UserProfile {
   goals: string[]
   joinDate: string
   onboarded: boolean
+  /** Body weight in kilograms (optional). */
+  bodyWeightKg?: number
+  /** Preferred display unit for weights. */
+  weightUnit?: "kg" | "lb"
 }
 
 export interface WorkoutRecord {
@@ -28,6 +34,8 @@ export interface RunRecord {
   completedAt: string
 }
 
+export type CoachSessionKind = "rep" | "rom"
+
 export interface CoachRecord {
   id: string
   exercise: string
@@ -35,12 +43,19 @@ export interface CoachRecord {
   score: number
   repScores: number[]
   completedAt: string
+  kind?: CoachSessionKind
+  /** Per-rep pose snapshots when captured during AI Coach sessions */
+  repTraces?: RepTracePair[]
   /** Form-weighted rep volume (for fair rankings) */
   effectiveReps?: number
   /** Met verified-movement tier (high form bar) */
   verifiedMovement?: boolean
   /** Face-enrolled user with verified identity during counted reps */
   faceVerifiedSession?: boolean
+  /** External load lifted in kg (optional, for weighted exercises) */
+  loadKg?: number
+  /** Reps × load. Cached at write time. */
+  volumeKg?: number
 }
 
 export interface AppData {

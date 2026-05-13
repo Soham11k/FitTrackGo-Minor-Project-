@@ -1,6 +1,6 @@
-import { type NextRequest } from 'next/server'
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
+import { getPreferredLocaleFromHeader, normalizeLocale } from '@/lib/i18n'
 
 /**
  * Edge entry for Next.js 16+ (Turbopack): CSP nonces + Supabase session refresh
@@ -38,12 +38,21 @@ export async function proxy(request: NextRequest) {
     "form-action 'self'",
   ].join('; ')
 
-  // Propagate nonce to route handlers / layout via request header clone.
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-nonce', nonce)
   requestHeaders.set('x-request-id', requestId)
 
-  const sessionResponse = await updateSession(request, requestId)
+  const q = request.nextUrl.searchParams.get('ft_lang')
+  const resolvedLocale =
+    q != null ? normalizeLocale(q) : getPreferredLocaleFromHeader(request.headers.get('accept-language'))
+  requestHeaders.set('x-locale', resolvedLocale)
+  requestHeaders.set('x-pathname', request.nextUrl.pathname || '/')
+
+  const forwarded = new NextRequest(request, {
+    headers: requestHeaders,
+  })
+
+  const sessionResponse = await updateSession(forwarded, requestId)
   const response = sessionResponse ??
     NextResponse.next({ request: { headers: requestHeaders } })
 

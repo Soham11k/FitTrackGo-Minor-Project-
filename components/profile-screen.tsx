@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Image from "next/image"
 import { motion, useReducedMotion } from "framer-motion"
 import {
   User,
@@ -26,17 +27,19 @@ import {
   Link2,
   Unlink,
   Download,
+  Lock,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useAccent } from "@/components/accent-provider"
 import { ACCENT_OPTIONS, type AccentId } from "@/lib/accent"
 import type { UserProfile, RunRecord, WorkoutRecord, CoachRecord } from "@/lib/store"
 import { getProfile, saveProfile, getTotalStats, getWeeklyActivity, getRuns, getWorkouts, getCoachSessions, formatErr } from "@/lib/store-supabase"
+import { BodyWeightRow } from "@/components/profile/body-weight-row"
 import { getSupabaseSqlEditorUrl } from "@/lib/supabase/config"
-import { getFaq, getAchievements, siteConfig } from "@/lib/data"
+import { getFaq, getAchievements, siteConfig, type AchievementDef } from "@/lib/data"
 import { ContactForm } from "@/components/contact-form"
 import { MetricTrendMini } from "@/components/metric-trend-mini"
-import { DURATION, EASE, staggerDelaySec } from "@/lib/motion"
+import { DURATION, EASE, staggerDelaySec, staggerChildren, CINEMATIC } from "@/lib/motion"
 import { useChartEnterOnce } from "@/hooks/use-chart-enter-once"
 import { LanguageSelector } from "@/components/language-selector"
 import { UnitSelector } from "@/components/unit-selector"
@@ -47,6 +50,21 @@ import { buildExportBundle, downloadBlob, runToGpx } from "@/lib/export"
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client"
 import { getFaceEnrollment, saveFaceEnrollment, deleteFaceEnrollment } from "@/lib/face-verification"
 import { FaceEnrollCapture } from "@/components/face-enroll-capture"
+import { AchievementBadge, type AchievementBadgeTier } from "@/components/ui/achievement-badge"
+import { StatDisplay } from "@/components/ui/stat-display"
+import { Switch } from "@/components/ui/switch"
+import { isRunVoiceEnabled, setRunVoiceEnabled } from "@/lib/run-voice"
+import {
+  coachClipsCloudFeatureFlag,
+  isCoachClipCloudSyncEnabled,
+  isCoachReplayLocalEnabled,
+  setCoachClipCloudSyncEnabled,
+  setCoachReplayLocalEnabled,
+} from "@/lib/coach-replay/prefs"
+import { isCoachMidsetTipsEnabled, setCoachMidsetTipsEnabled } from "@/lib/coach-midset-tips"
+import { isClipEncryptionEnabledEnv } from "@/lib/encryption/env"
+import { fetchUserClipKeyRow } from "@/lib/user-clip-keys-supabase"
+import { PassphraseSetupDialog } from "@/components/encryption/passphrase-setup"
 
 const menuItems = [
   { icon: Bell, label: "Notifications", action: "notifications" },
@@ -56,6 +74,13 @@ const menuItems = [
   { icon: HelpCircle, label: "Help & Support", action: "help" },
   { icon: Settings, label: "Settings", action: "settings" },
 ]
+
+function achievementBadgeTier(def: AchievementDef): AchievementBadgeTier {
+  if (def.type === "streak") return "neon"
+  if (def.targetValue >= 100) return "gold"
+  if (def.targetValue >= 40) return "silver"
+  return "bronze"
+}
 
 export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
   const { t } = useLocale()
@@ -74,7 +99,9 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
   const [runs, setRuns] = useState<RunRecord[]>([])
   const [workouts, setWorkouts] = useState<WorkoutRecord[]>([])
   const [coachSessions, setCoachSessions] = useState<CoachRecord[]>([])
-  const [achievements, setAchievements] = useState<{ title: string; description: string; earned: boolean; progress: number }[]>([])
+  const [achievements, setAchievements] = useState<
+    { title: string; description: string; earned: boolean; progress: number; tier: AchievementBadgeTier }[]
+  >([])
   const [totalDistance, setTotalDistance] = useState(0)
   const [totalReps, setTotalReps] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -86,6 +113,12 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
   const [showDeleteAccountConfirm, setShowDeleteAccountConfirm] = useState(false)
   const [deleteAccountLoading, setDeleteAccountLoading] = useState(false)
   const [wearableLoading, setWearableLoading] = useState(false)
+  const [runVoiceOn, setRunVoiceOn] = useState(false)
+  const [coachReplayLocalOn, setCoachReplayLocalOn] = useState(true)
+  const [coachClipSyncOn, setCoachClipSyncOn] = useState(false)
+  const [midsetTipsOn, setMidsetTipsOn] = useState(false)
+  const [clipPassphraseOpen, setClipPassphraseOpen] = useState(false)
+  const [clipBackupOnServer, setClipBackupOnServer] = useState<boolean | null>(null)
   const [wearableSyncing, setWearableSyncing] = useState(false)
   const [wearableStatus, setWearableStatus] = useState<{
     configured: boolean
@@ -110,8 +143,21 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
   // Use singleton client to prevent lock conflicts
   const supabase = createClient()
 
-  const faqList = getFaq()
+  useEffect(() => {
+    if (!authUserId || !coachClipsCloudFeatureFlag() || !isClipEncryptionEnabledEnv()) return
+    void fetchUserClipKeyRow().then((r) => setClipBackupOnServer(!!r))
+  }, [authUserId])
+
+  const showClipEncryptRow = coachClipsCloudFeatureFlag() && isClipEncryptionEnabledEnv()
   const achievementDefs = getAchievements()
+  const faqList = getFaq()
+
+  useEffect(() => {
+    setRunVoiceOn(isRunVoiceEnabled())
+    setCoachReplayLocalOn(isCoachReplayLocalEnabled())
+    setCoachClipSyncOn(isCoachClipCloudSyncEnabled())
+    setMidsetTipsOn(isCoachMidsetTipsEnabled())
+  }, [])
 
   useEffect(() => {
     async function load() {
@@ -173,7 +219,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
           if (def.type === "totalReps") current = calculatedReps
           const earned = current >= def.targetValue
           const progress = def.targetValue > 0 ? Math.min(100, (current / def.targetValue) * 100) : (earned ? 100 : 0)
-          return { title: def.title, description: def.description, earned, progress }
+          return { title: def.title, description: def.description, earned, progress, tier: achievementBadgeTier(def) }
         })
         setAchievements(ach)
       } catch (error: unknown) {
@@ -601,48 +647,75 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="flex flex-col gap-5 px-4 pt-4 pb-28 animate-fade-in-up" data-testid="screen-profile">
-      <div className="flex items-center gap-4 opacity-0 animate-slide-in-left" style={{ animationDelay: "0.05s", animationFillMode: "forwards" }}>
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/15 transition-transform duration-300 hover:scale-105">
-          <User className="h-8 w-8 text-primary" />
-        </div>
+      <div className="flex gap-3 items-start rounded-2xl border border-border bg-[color:var(--surface-stage)] p-5 text-[color:var(--surface-stage-fg)] shadow-[var(--shadow-card)] opacity-0 animate-slide-in-left" style={{ animationDelay: "0.05s", animationFillMode: "forwards" }}>
         <div className="flex-1 min-w-0">
           {editingName ? (
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={nameInput}
-                onChange={(e) => setNameInput(e.target.value)}
-                placeholder={displayName}
-                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSaveName()
-                  if (e.key === "Escape") { setEditingName(false); setNameInput("") }
-                }}
-              />
-              <button onClick={handleSaveName} className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground">Save</button>
-              <button onClick={() => { setEditingName(false); setNameInput("") }} className="text-xs text-muted-foreground">Cancel</button>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  type="text"
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  placeholder={displayName}
+                  className="flex-1 min-w-0 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveName()
+                    if (e.key === "Escape") { setEditingName(false); setNameInput("") }
+                  }}
+                />
+                <button type="button" onClick={handleSaveName} className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+                  Save
+                </button>
+                <button type="button" onClick={() => { setEditingName(false); setNameInput("") }} className="text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded">
+                  Cancel
+                </button>
+              </div>
+              <p className="text-typo-caption text-[color:oklch(0.92_0_0/0.65)]">Member since {joinYear}</p>
             </div>
           ) : (
             <>
-              <h1 className="text-xl font-bold text-foreground truncate" style={{ fontFamily: "var(--font-heading)" }}>{displayName}</h1>
-              <div className="flex items-center gap-2 flex-wrap">
-                <button onClick={() => { setEditingName(true); setNameInput(profile?.name || "") }} className="text-xs text-muted-foreground hover:text-foreground">Edit name</button>
+              <StatDisplay
+                tone="stage"
+                size="lg"
+                eyebrow="Profile"
+                value={displayName}
+                secondary={`Member since ${joinYear}`}
+                icon={<User className="h-7 w-7 text-[color:var(--primary)]" />}
+                className="text-start"
+                contentClassName="justify-start flex-nowrap gap-3"
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingName(true)
+                    setNameInput(profile?.name || "")
+                  }}
+                  className="text-xs font-medium text-[color:var(--surface-stage-fg)]/80 hover:text-[color:var(--surface-stage-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded underline-offset-4 hover:underline"
+                >
+                  Edit name
+                </button>
                 {userEmail && (
                   <>
-                    <span className="text-xs text-muted-foreground">•</span>
-                    <span className="text-xs text-muted-foreground">{userEmail}</span>
+                    <span className="text-xs text-[color:oklch(0.92_0_0/0.55)]">•</span>
+                    <span className="text-xs text-[color:oklch(0.92_0_0/0.65)]">{userEmail}</span>
                   </>
                 )}
               </div>
             </>
           )}
-          <p className="text-sm text-muted-foreground">Member since {joinYear}</p>
         </div>
-        <button onClick={() => handleMenuAction("settings")} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card border border-border" aria-label="Settings">
+        <button type="button" onClick={() => handleMenuAction("settings")} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-background/60 border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background" aria-label="Settings">
           <Settings className="h-4 w-4 text-muted-foreground" />
         </button>
       </div>
+
+      <section className="grid grid-cols-3 gap-2 rounded-2xl border border-border/80 bg-card p-4 shadow-[var(--shadow-card)] motion-card">
+        <StatDisplay eyebrow="Sessions" size="md" value={runs.length + workouts.length + coachSessions.length} />
+        <StatDisplay eyebrow="Distance" size="md" value={totalDistance.toFixed(1)} unit="km" />
+        <StatDisplay eyebrow="Streak" size="md" value={stats.streak} unit="d" />
+      </section>
 
       {/* Profile Details Section */}
       <section className="rounded-2xl bg-card p-4 border border-border space-y-4 animate-fade-in-up animate-stagger-2 transition-shadow duration-300 hover:shadow-md">
@@ -734,6 +807,8 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
             </div>
           )}
         </div>
+
+        <BodyWeightRow profile={profile} onSaved={async () => { const u = await getProfile(); setProfile(u) }} />
       </section>
 
       <section className="rounded-2xl bg-card p-4 border border-border space-y-3 animate-fade-in-up animate-stagger-3 transition-shadow duration-300 hover:shadow-md">
@@ -816,8 +891,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
             )}
             {!wearableStatus?.connected && wearableStatus?.configured ? (
               <div className="flex justify-center py-1 text-primary" aria-hidden>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/illustrations/wearables-disconnected.svg" alt="" className="h-16 w-16 opacity-90" />
+                <Image src="/illustrations/wearables-disconnected.svg" alt="" width={64} height={64} className="h-16 w-16 opacity-90" />
               </div>
             ) : null}
             <div className="flex flex-wrap gap-2">
@@ -894,53 +968,29 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
       </section>
 
       <div className="grid grid-cols-4 gap-2">
-        <div className="flex flex-col items-center gap-1.5 rounded-2xl bg-card p-3 border border-border" title="Total runs">
+        <div className="flex flex-col items-center gap-2 rounded-2xl bg-card p-3 border border-border" title="Total runs">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-metric-run/15">
             <MapPin className="h-4 w-4 text-metric-run" />
           </div>
-          <span
-            className="text-xl font-bold tabular-nums leading-none text-foreground"
-            style={{ fontFamily: "var(--font-heading)" }}
-          >
-            {stats.totalRuns}
-          </span>
-          <span className="text-typo-micro font-bold text-muted-foreground uppercase tracking-[0.14em] text-center leading-tight">Runs</span>
+          <StatDisplay eyebrow="Runs" value={stats.totalRuns} valueClassName="text-foreground tabular-nums" size="md" />
         </div>
-        <div className="flex flex-col items-center gap-1.5 rounded-2xl bg-card p-3 border border-border" title="Workouts + AI sessions">
+        <div className="flex flex-col items-center gap-2 rounded-2xl bg-card p-3 border border-border" title="Workouts + AI sessions">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-metric-move/15">
             <Dumbbell className="h-4 w-4 text-metric-move" />
           </div>
-          <span
-            className="text-xl font-bold tabular-nums leading-none text-foreground"
-            style={{ fontFamily: "var(--font-heading)" }}
-          >
-            {stats.totalWorkouts}
-          </span>
-          <span className="text-typo-micro font-bold text-muted-foreground uppercase tracking-[0.14em] text-center leading-tight">Workouts</span>
+          <StatDisplay eyebrow="Workouts" value={stats.totalWorkouts} valueClassName="text-foreground tabular-nums" size="md" />
         </div>
-        <div className="flex flex-col items-center gap-1.5 rounded-2xl bg-card p-3 border border-border" title="Current streak">
+        <div className="flex flex-col items-center gap-2 rounded-2xl bg-card p-3 border border-border" title="Current streak">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-metric-streak/15">
             <TrendingUp className="h-4 w-4 text-metric-streak" />
           </div>
-          <span
-            className="text-xl font-bold tabular-nums leading-none text-foreground"
-            style={{ fontFamily: "var(--font-heading)" }}
-          >
-            {stats.streak}d
-          </span>
-          <span className="text-typo-micro font-bold text-muted-foreground uppercase tracking-[0.14em] text-center leading-tight">Streak</span>
+          <StatDisplay eyebrow="Streak" value={`${stats.streak}d`} valueClassName="text-foreground tabular-nums" size="md" />
         </div>
-        <div className="flex flex-col items-center gap-1.5 rounded-2xl bg-card p-3 border border-border" title="Earned achievements">
+        <div className="flex flex-col items-center gap-2 rounded-2xl bg-card p-3 border border-border" title="Earned achievements">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-metric-coach/15">
             <Award className="h-4 w-4 text-metric-coach" />
           </div>
-          <span
-            className="text-xl font-bold tabular-nums leading-none text-foreground"
-            style={{ fontFamily: "var(--font-heading)" }}
-          >
-            {achievements.filter((a) => a.earned).length}
-          </span>
-          <span className="text-typo-micro font-bold text-muted-foreground uppercase tracking-[0.14em] text-center leading-tight">Badges</span>
+          <StatDisplay eyebrow="Badges" value={achievements.filter((a) => a.earned).length} valueClassName="text-foreground tabular-nums" size="md" />
         </div>
       </div>
 
@@ -1001,37 +1051,42 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
           <h2 className="text-sm font-semibold text-foreground">Achievements</h2>
           <span className="text-xs text-muted-foreground">{achievements.filter((a) => a.earned).length}/{achievements.length}</span>
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          {achievements.length > 0 ? (
-            achievements.map((ach, i) => (
-            <motion.button
-              key={ach.title}
-              type="button"
-              onClick={() => toast.info(ach.earned ? ach.title : `${ach.title}: ${Math.round(ach.progress)}%`)}
-              className={`motion-card flex flex-col items-center gap-1.5 rounded-2xl p-3 border text-center ${ach.earned ? "bg-card border-primary/30" : "bg-card border-border opacity-75"}`}
-              initial={reduceProfileMotion ? false : { opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{
-                duration: DURATION.medium,
-                delay: reduceProfileMotion ? 0 : staggerDelaySec(i, 9, 0.04),
-                ease: EASE.out,
-              }}
-            >
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${ach.earned ? "bg-primary/15" : "bg-secondary"}`}>
-                <Award className={`h-5 w-5 ${ach.earned ? "text-primary" : "text-muted-foreground"}`} />
-              </div>
-              <span className="text-typo-eyebrow font-semibold text-foreground leading-tight">{ach.title}</span>
-              {!ach.earned && ach.progress > 0 && (
-                <div className="w-full h-1 rounded-full bg-secondary overflow-hidden mt-1">
-                  <div className="h-full rounded-full bg-primary" style={{ width: `${ach.progress}%` }} />
+        <motion.div
+          className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          variants={staggerChildren(0.04, 0.06)}
+          initial={reduceProfileMotion ? false : "hidden"}
+          animate="show"
+        >
+          {achievements.length > 0
+            ? achievements.map((ach, i) => (
+                <motion.button
+                  key={ach.title}
+                  variants={CINEMATIC.statReveal}
+                  type="button"
+                  onClick={() => toast.info(ach.earned ? ach.title : `${ach.title}: ${Math.round(ach.progress)}%`)}
+                  className={`motion-card flex min-w-[7.5rem] max-w-[8.5rem] shrink-0 snap-start snap-always flex-col items-center gap-1.5 rounded-2xl border p-3 text-center ${ach.earned ? "border-primary/30 bg-card shadow-[0_0_16px_-4px_rgb(251_191_36/0.25)]" : "border-border bg-card opacity-75"}`}
+                  initial={reduceProfileMotion ? false : { opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: DURATION.medium,
+                    delay: reduceProfileMotion ? 0 : staggerDelaySec(i, 9, 0.04),
+                    ease: EASE.out,
+                  }}
+                >
+                  <AchievementBadge tier={ach.tier} earned={ach.earned} title={ach.title} className="w-full px-1" />
+                  {!ach.earned && ach.progress > 0 && (
+                    <div className="mt-2 w-full h-1 overflow-hidden rounded-full bg-secondary">
+                      <div className="h-full rounded-full bg-primary" style={{ width: `${ach.progress}%` }} />
+                    </div>
+                  )}
+                </motion.button>
+              ))
+            : (
+                <div className="w-full shrink-0 py-4 text-center text-sm text-muted-foreground">
+                  No achievements available
                 </div>
               )}
-            </motion.button>
-            ))
-          ) : (
-            <div className="col-span-3 text-center py-4 text-sm text-muted-foreground">No achievements available</div>
-          )}
-        </div>
+        </motion.div>
       </section>
 
       <section className="rounded-2xl bg-card p-5 border border-border">
@@ -1168,13 +1223,19 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
 
       <section className="rounded-2xl bg-card border border-border overflow-hidden">
         {menuItems.map((item, i) => (
-          <div
+          <motion.div
             key={item.label}
             role="button"
             tabIndex={0}
             onClick={() => handleMenuAction(item.action)}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleMenuAction(item.action) } }}
-            className={`flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-secondary/50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${i < menuItems.length - 1 ? "border-b border-border" : ""}`}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault()
+                handleMenuAction(item.action)
+              }
+            }}
+            whileTap={{ scale: 0.98 }}
+            className={`flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-secondary/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-2xl ${i < menuItems.length - 1 ? "border-b border-border" : ""}`}
           >
             <item.icon className="h-4 w-4 text-muted-foreground" />
             <span className="flex-1 text-sm text-foreground">{item.label}</span>
@@ -1192,7 +1253,7 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
             ) : (
               <ChevronRight className="h-4 w-4 text-muted-foreground" />
             )}
-          </div>
+          </motion.div>
         ))}
       </section>
 
@@ -1254,6 +1315,103 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
                 <div className="space-y-2">
                   <LanguageSelector />
                   <UnitSelector />
+                  <div className="flex items-center justify-between gap-4 py-3 border-b border-border">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Run voice cues</p>
+                      <p className="text-xs text-muted-foreground max-w-[14rem] sm:max-w-none">
+                        Spoken kilometer splits while tracking a run
+                      </p>
+                    </div>
+                    <Switch
+                      checked={runVoiceOn}
+                      onCheckedChange={(on) => {
+                        setRunVoiceEnabled(on)
+                        setRunVoiceOn(on)
+                      }}
+                      aria-label="Toggle run voice cues"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-4 py-3 border-b border-border">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{t("profile.coachReplayLocal")}</p>
+                      <p className="text-xs text-muted-foreground max-w-[14rem] sm:max-w-none">
+                        {t("profile.coachReplayLocalHelp")}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={coachReplayLocalOn}
+                      onCheckedChange={(on) => {
+                        setCoachReplayLocalEnabled(on)
+                        setCoachReplayLocalOn(on)
+                      }}
+                      aria-label="Toggle local coach clip recording"
+                    />
+                  </div>
+                  {coachClipsCloudFeatureFlag() ? (
+                    <div className="flex items-center justify-between gap-4 py-3 border-b border-border">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{t("profile.coachClipSync")}</p>
+                        <p className="text-xs text-muted-foreground max-w-[14rem] sm:max-w-none">
+                          {t("profile.coachClipSyncHelp")}
+                        </p>
+                        <p className="mt-1 text-[11px] text-primary/80">Required for AI review.</p>
+                      </div>
+                      <Switch
+                        checked={coachClipSyncOn}
+                        onCheckedChange={(on) => {
+                          setCoachClipCloudSyncEnabled(on)
+                          setCoachClipSyncOn(on)
+                        }}
+                        aria-label="Toggle coach clip cloud sync"
+                      />
+                    </div>
+                  ) : null}
+                  {showClipEncryptRow ? (
+                    <div className="flex flex-col gap-3 py-3 border-b border-border">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex gap-3 min-w-0">
+                          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-background">
+                            <Lock className="h-4 w-4 text-primary" aria-hidden />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-foreground">Clip encryption</p>
+                            <p className="text-xs text-muted-foreground max-w-[16rem] sm:max-w-none">
+                              Backup your local clip decryption key with a passphrase so encrypted cloud clips replay on another
+                              device.
+                            </p>
+                            {clipBackupOnServer === false ? (
+                              <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">No backup saved yet.</p>
+                            ) : clipBackupOnServer === true ? (
+                              <p className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400">Backup on account.</p>
+                            ) : null}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="shrink-0 rounded-lg border border-border bg-transparent px-3 py-2 text-xs font-semibold uppercase tracking-wide text-foreground hover:bg-secondary/60"
+                          onClick={() => setClipPassphraseOpen(true)}
+                        >
+                          Back up key
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="flex items-center justify-between gap-4 py-3 border-b border-border">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{t("profile.midsetTips")}</p>
+                      <p className="text-xs text-muted-foreground max-w-[14rem] sm:max-w-none">
+                        {t("profile.midsetTipsHelp")}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={midsetTipsOn}
+                      onCheckedChange={(on) => {
+                        setCoachMidsetTipsEnabled(on)
+                        setMidsetTipsOn(on)
+                      }}
+                      aria-label="Toggle mid-set AI tips"
+                    />
+                  </div>
                   <div className="flex items-center justify-between py-2 border-b border-border">
                     <span>Theme</span>
                     <span className="text-muted-foreground">Use the Dark mode toggle above</span>
@@ -1429,6 +1587,12 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
           </div>
         </div>
       )}
+
+      <PassphraseSetupDialog
+        open={clipPassphraseOpen}
+        onOpenChange={setClipPassphraseOpen}
+        onBackedUp={() => void fetchUserClipKeyRow().then((r) => setClipBackupOnServer(!!r))}
+      />
 
       {/* Logout */}
       <button

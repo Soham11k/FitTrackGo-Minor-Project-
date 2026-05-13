@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" xmlns="http://www.w3.org/2000/svg">
+  <rect x="8" y="8" width="48" height="48" rx="12" fill="#000"/>
+  <text x="32" y="36" dominant-baseline="middle" text-anchor="middle" fill="#fff" font-family="system-ui, sans-serif" font-size="28" font-weight="800">F</text>
+</svg>

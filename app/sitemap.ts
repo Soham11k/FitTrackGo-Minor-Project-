@@ -1,15 +1,25 @@
 import type { MetadataRoute } from 'next'
 
+import { alternatesLanguagesForPath } from '@/lib/locale-href'
+
 /** Required for `output: export` (Capacitor / static hosting). */
 export const dynamic = 'force-static'
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://fittrackgo.com'
-
 export default function sitemap(): MetadataRoute.Sitemap {
-  return [
-    { url: BASE_URL, lastModified: new Date(), changeFrequency: 'daily', priority: 1 },
-    { url: `${BASE_URL}/login`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.5 },
-    { url: `${BASE_URL}/privacy`, lastModified: new Date(), changeFrequency: 'yearly', priority: 0.3 },
-    { url: `${BASE_URL}/terms`, lastModified: new Date(), changeFrequency: 'yearly', priority: 0.3 },
-  ]
+  const paths = ['/', '/login', '/privacy', '/terms', '/marketing', '/offline']
+
+  const entries: MetadataRoute.Sitemap = []
+  for (const path of paths) {
+    const { canonical, languages } = alternatesLanguagesForPath(path)
+    entries.push({
+      url: canonical,
+      lastModified: new Date(),
+      changeFrequency: path === '/' || path === '/marketing' ? 'daily' : path === '/login' ? 'monthly' : 'yearly',
+      priority: path === '/' || path === '/marketing' ? 1 : 0.6,
+      alternates: {
+        languages,
+      },
+    })
+  }
+  return entries
 }

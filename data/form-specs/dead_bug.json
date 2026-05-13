@@ -1,0 +1,24 @@
+{
+  "id": "dead_bug",
+  "displayName": "Dead Bug",
+  "category": "core",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 23, 24, 25, 26],
+  "visibleFraction": 0.6,
+  "positiveLine": "Tight dead bug — pinned ribs, slow contralateral reach",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "knee_angle_max", "op": ">", "value": 150 } },
+    { "name": "bottom", "enterWhen": { "metric": "knee_angle_max", "op": "<", "value": 100 } }
+  ],
+  "rules": [
+    {
+      "id": "dead_bug.range",
+      "region": "core",
+      "penalty": 8,
+      "when": { "metric": "knee_angle_max", "op": "<", "value": 130 },
+      "feedback": "Reach the leg long — toe close to the floor",
+      "breakdown": { "label": "Leg reach", "format": "angle", "metric": "knee_angle_max", "region": "core" }
+    }
+  ]
+}

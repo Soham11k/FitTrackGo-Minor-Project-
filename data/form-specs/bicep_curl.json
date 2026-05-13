@@ -1,0 +1,25 @@
+{
+  "id": "bicep_curl",
+  "displayName": "Bicep Curl",
+  "category": "upper",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16],
+  "visibleFraction": 0.67,
+  "positiveLine": "Clean curl — full range and control",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 62 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 138 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 62 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 138 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "bicep_curl.full_range",
+      "region": "arms",
+      "penalty": 12,
+      "when": { "any": [ { "metric": "elbow_angle_avg", "op": "<=", "value": 30 }, { "metric": "elbow_angle_avg", "op": ">=", "value": 160 } ] },
+      "feedback": "Use full range — extend at bottom, curl to top",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "detail": "Full range 30–160°", "region": "arms" }
+    }
+  ]
+}

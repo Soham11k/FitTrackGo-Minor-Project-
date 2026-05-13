@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/client'
 import { agentDebugLog } from '@/lib/debug-agent-log'
 import type { UserProfile, WorkoutRecord, RunRecord, CoachRecord } from './store'
-import { isNetworkError, offlineQueue } from './network-status'
+import { parseRepTracesJson } from '@/lib/rep-trace'
+import { isNetworkError } from './network-status'
+import { enqueuePendingWrite } from '@/lib/offline-queue'
 
 // Use singleton client instance to prevent lock conflicts
 const supabase = createClient()
@@ -39,29 +41,43 @@ function toLocalDateStr(isoOrDate: string | Date): string {
   return `${y}-${m}-${day}`
 }
 
-async function withNetworkHandling<T>(id: string, fn: () => Promise<T>): Promise<T> {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    offlineQueue.add(() => fn().then(() => {}), id)
-    const err = new TypeError('Failed to fetch: offline')
-    throw err
+function newOfflineMutationId(kind: string): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${kind}:${crypto.randomUUID()}`
   }
-  try {
-    return await fn()
-  } catch (error) {
-    if (isNetworkError(error)) {
-      offlineQueue.add(() => fn().then(() => {}), id)
-      throw error
-    }
-    throw error
-  }
+  return `${kind}:${Date.now()}:${Math.random().toString(16).slice(2)}`
 }
 
 /** True when coach_sessions row references columns not present in the remote DB (run `20250301000000_coach_session_competition.sql`). */
 function coachSessionOptionalColumnsUnsupported(e: unknown): boolean {
   const code = (e as { code?: string })?.code
-  const msg = (e as { message?: string })?.message ?? ''
-  if (code === 'PGRST204') return true
+  const msg = String((e as { message?: string })?.message ?? '')
   if (/schema cache/i.test(msg) && /effective_reps|verified_movement|face_verified_session/i.test(msg)) return true
+  if (code === 'PGRST204' && /effective_reps|verified_movement|face_verified_session/i.test(msg)) return true
+  return false
+}
+
+function coachRepTracesColumnUnsupported(e: unknown): boolean {
+  const code = (e as { code?: string })?.code
+  const msg = String((e as { message?: string })?.message ?? "")
+  if (code === "PGRST204" && /\brep_traces\b/i.test(msg)) return true
+  if (/schema cache/i.test(msg) && /\brep_traces\b/i.test(msg)) return true
+  return false
+}
+
+function coachSessionLoadUnsupported(e: unknown): boolean {
+  const code = (e as { code?: string })?.code
+  const msg = String((e as { message?: string })?.message ?? "")
+  if (code === "PGRST204" && /\bload_kg|volume_kg\b/i.test(msg)) return true
+  if (/schema cache/i.test(msg) && /\bload_kg|volume_kg\b/i.test(msg)) return true
+  return false
+}
+
+function coachSessionKindUnsupported(e: unknown): boolean {
+  const code = (e as { code?: string })?.code
+  const msg = String((e as { message?: string })?.message ?? "")
+  if (code === "PGRST204" && /\bkind\b/i.test(msg)) return true
+  if (/schema cache/i.test(msg) && /\bkind\b/i.test(msg)) return true
   return false
 }
 
@@ -184,6 +200,8 @@ export async function getProfile(): Promise<UserProfile> {
       goals: row.goals || [],
       joinDate: row.join_date || new Date().toISOString().split('T')[0],
       onboarded: row.onboarded || false,
+      bodyWeightKg: row.body_weight_kg ?? undefined,
+      weightUnit: (row.weight_unit as UserProfile['weightUnit']) ?? 'kg',
     }
   }
 
@@ -201,6 +219,8 @@ export async function getProfile(): Promise<UserProfile> {
       goals: data?.goals || [],
       joinDate: data?.join_date || new Date().toISOString().split('T')[0],
       onboarded: data?.onboarded || false,
+      bodyWeightKg: data?.body_weight_kg ?? undefined,
+      weightUnit: (data?.weight_unit as UserProfile['weightUnit']) ?? 'kg',
     }
   })
 }
@@ -214,11 +234,15 @@ export async function saveProfile(patch: Partial<UserProfile>) {
     level: UserProfile['level']
     goals: string[]
     onboarded: boolean
+    body_weight_kg: number | null
+    weight_unit: 'kg' | 'lb'
   }> = {}
   if (patch.name !== undefined) updates.name = patch.name
   if (patch.level !== undefined) updates.level = patch.level
   if (patch.goals !== undefined) updates.goals = patch.goals
   if (patch.onboarded !== undefined) updates.onboarded = patch.onboarded
+  if (patch.bodyWeightKg !== undefined) updates.body_weight_kg = patch.bodyWeightKg ?? null
+  if (patch.weightUnit !== undefined) updates.weight_unit = patch.weightUnit
 
   const { error } = await supabase
     .from('profiles')
@@ -266,26 +290,77 @@ export async function getStreak(): Promise<number> {
   return data?.streak || 0
 }
 
+async function enqueueRunPayload(r: Omit<RunRecord, 'id' | 'completedAt'>) {
+  try {
+    await enqueuePendingWrite({
+      id: newOfflineMutationId('run'),
+      kind: 'run',
+      payload: r,
+      createdAt: Date.now(),
+    })
+  } catch (err) {
+    console.warn('[offline] could not persist pending run', err)
+  }
+}
+
+async function enqueueWorkoutPayload(r: Omit<WorkoutRecord, 'id' | 'completedAt'>) {
+  try {
+    await enqueuePendingWrite({
+      id: newOfflineMutationId('workout'),
+      kind: 'workout',
+      payload: r,
+      createdAt: Date.now(),
+    })
+  } catch (err) {
+    console.warn('[offline] could not persist pending workout', err)
+  }
+}
+
+async function enqueueCoachPayload(r: Omit<CoachRecord, 'id' | 'completedAt'>) {
+  try {
+    await enqueuePendingWrite({
+      id: newOfflineMutationId('coach'),
+      kind: 'coach',
+      payload: r,
+      createdAt: Date.now(),
+    })
+  } catch (err) {
+    console.warn('[offline] could not persist pending coach session', err)
+  }
+}
+
+/** Direct insert (replay from IndexedDB offline queue). */
+export async function commitWorkoutInsert(r: Omit<WorkoutRecord, 'id' | 'completedAt'>) {
+  const { data: { user } } = await getCachedAuthUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { error } = await supabase
+    .from('workouts')
+    .insert({
+      user_id: user.id,
+      title: r.title,
+      category: r.category,
+      duration: r.duration,
+      calories: r.calories,
+      exercise_count: r.exerciseCount,
+    })
+
+  if (error) throw error
+  await refreshStreak()
+}
+
 // Workout functions
 export async function addWorkout(r: Omit<WorkoutRecord, 'id' | 'completedAt'>) {
-  return withNetworkHandling(`workout-${Date.now()}`, async () => {
-    const { data: { user } } = await getCachedAuthUser()
-    if (!user) throw new Error('Not authenticated')
-
-    const { error } = await supabase
-      .from('workouts')
-      .insert({
-        user_id: user.id,
-        title: r.title,
-        category: r.category,
-        duration: r.duration,
-        calories: r.calories,
-        exercise_count: r.exerciseCount,
-      })
-
-    if (error) throw error
-    await refreshStreak()
-  })
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    await enqueueWorkoutPayload(r)
+    throw new TypeError('Failed to fetch: offline')
+  }
+  try {
+    await commitWorkoutInsert(r)
+  } catch (error) {
+    if (isNetworkError(error)) await enqueueWorkoutPayload(r)
+    throw error
+  }
 }
 
 export async function getWorkouts(): Promise<WorkoutRecord[]> {
@@ -314,26 +389,38 @@ export async function getWorkouts(): Promise<WorkoutRecord[]> {
   }))
 }
 
+/** Direct insert (replay from IndexedDB offline queue). */
+export async function commitRunInsert(r: Omit<RunRecord, 'id' | 'completedAt'>) {
+  const { data: { user } } = await getCachedAuthUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { error } = await supabase
+    .from('runs')
+    .insert({
+      user_id: user.id,
+      distance: r.distance,
+      duration: r.duration,
+      pace: r.pace,
+      calories: r.calories,
+      path: r.path,
+    })
+
+  if (error) throw error
+  await refreshStreak()
+}
+
 // Run functions
 export async function addRun(r: Omit<RunRecord, 'id' | 'completedAt'>) {
-  return withNetworkHandling(`run-${Date.now()}`, async () => {
-    const { data: { user } } = await getCachedAuthUser()
-    if (!user) throw new Error('Not authenticated')
-
-    const { error } = await supabase
-      .from('runs')
-      .insert({
-        user_id: user.id,
-        distance: r.distance,
-        duration: r.duration,
-        pace: r.pace,
-        calories: r.calories,
-        path: r.path,
-      })
-
-    if (error) throw error
-    await refreshStreak()
-  })
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    await enqueueRunPayload(r)
+    throw new TypeError('Failed to fetch: offline')
+  }
+  try {
+    await commitRunInsert(r)
+  } catch (error) {
+    if (isNetworkError(error)) await enqueueRunPayload(r)
+    throw error
+  }
 }
 
 export async function getRuns(): Promise<RunRecord[]> {
@@ -362,36 +449,87 @@ export async function getRuns(): Promise<RunRecord[]> {
   }))
 }
 
-// Coach session functions
-export async function addCoachSession(r: Omit<CoachRecord, 'id' | 'completedAt'>) {
-  return withNetworkHandling(`coach-${Date.now()}`, async () => {
-    const { data: { user } } = await getCachedAuthUser()
-    if (!user) throw new Error('Not authenticated')
+/** Direct insert (replay from IndexedDB offline queue). Returns inserted row id when supported. */
+export async function commitCoachInsert(r: Omit<CoachRecord, 'id' | 'completedAt'>): Promise<string | null> {
+  const { data: { user } } = await getCachedAuthUser()
+  if (!user) throw new Error('Not authenticated')
 
-    const row: Record<string, unknown> = {
-      user_id: user.id,
-      exercise: r.exercise,
-      reps: r.reps,
-      score: r.score,
-      rep_scores: r.repScores,
+  const row: Record<string, unknown> = {
+    user_id: user.id,
+    exercise: r.exercise,
+    reps: r.reps,
+    score: r.score,
+    rep_scores: r.repScores,
+  }
+  if (r.effectiveReps !== undefined) row.effective_reps = r.effectiveReps
+  if (r.verifiedMovement !== undefined) row.verified_movement = r.verifiedMovement
+  if (r.faceVerifiedSession !== undefined) row.face_verified_session = r.faceVerifiedSession
+  if (Array.isArray(r.repTraces) && r.repTraces.length > 0) {
+    row.rep_traces = r.repTraces
+  }
+  if (r.kind && r.kind !== "rep") row.kind = r.kind
+  if (r.loadKg !== undefined) row.load_kg = r.loadKg
+  if (r.volumeKg !== undefined) row.volume_kg = r.volumeKg
+
+  const insert = (p: Record<string, unknown>) =>
+    supabase.from('coach_sessions').insert(p).select('id').maybeSingle()
+
+  let payload = { ...row }
+  let data: { id?: string | null } | null = null
+  let error: { code?: string; message?: string } | null = null
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const res = await insert(payload)
+    data = res.data
+    error = res.error
+    if (!error) break
+    if (coachRepTracesColumnUnsupported(error) && payload.rep_traces != null) {
+      const p = { ...payload }
+      delete p.rep_traces
+      payload = p
+      continue
     }
-    if (r.effectiveReps !== undefined) row.effective_reps = r.effectiveReps
-    if (r.verifiedMovement !== undefined) row.verified_movement = r.verifiedMovement
-    if (r.faceVerifiedSession !== undefined) row.face_verified_session = r.faceVerifiedSession
-
-    let { error } = await supabase.from('coach_sessions').insert(row)
-    // Older DBs without migration 20250301000000: PostgREST schema cache has no effective_reps / etc.
-    if (error && coachSessionOptionalColumnsUnsupported(error)) {
-      const minimal = { ...row } as Record<string, unknown>
+    if (coachSessionKindUnsupported(error) && payload.kind != null) {
+      const p = { ...payload }
+      delete p.kind
+      payload = p
+      continue
+    }
+    if (coachSessionLoadUnsupported(error)) {
+      const p = { ...payload }
+      delete p.load_kg
+      delete p.volume_kg
+      payload = p
+      continue
+    }
+    if (coachSessionOptionalColumnsUnsupported(error)) {
+      const minimal = { ...payload } as Record<string, unknown>
       delete minimal.effective_reps
       delete minimal.verified_movement
       delete minimal.face_verified_session
-      ;({ error } = await supabase.from('coach_sessions').insert(minimal))
+      payload = minimal
+      continue
     }
+    throw error
+  }
 
-    if (error) throw error
-    await refreshStreak()
-  })
+  if (error) throw error
+  await refreshStreak()
+  const id = data && typeof data === 'object' && 'id' in data ? (data as { id: unknown }).id : null
+  return typeof id === 'string' ? id : null
+}
+
+// Coach session functions
+export async function addCoachSession(r: Omit<CoachRecord, 'id' | 'completedAt'>): Promise<string | null> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    await enqueueCoachPayload(r)
+    throw new TypeError('Failed to fetch: offline')
+  }
+  try {
+    return await commitCoachInsert(r)
+  } catch (error) {
+    if (isNetworkError(error)) await enqueueCoachPayload(r)
+    throw error
+  }
 }
 
 export async function getCoachSessions(): Promise<CoachRecord[]> {
@@ -415,21 +553,32 @@ export async function getCoachSessions(): Promise<CoachRecord[]> {
     reps?: number
     score?: number
     rep_scores?: number[]
+    rep_traces?: unknown
+    kind?: string
     effective_reps?: number | null
     verified_movement?: boolean | null
     face_verified_session?: boolean | null
     completed_at?: string | null
-  }>).map((c) => ({
-    id: c.id,
-    exercise: c.exercise,
-    reps: c.reps || 0,
-    score: c.score || 0,
-    repScores: c.rep_scores || [],
-    completedAt: c.completed_at ?? '',
-    effectiveReps: c.effective_reps ?? undefined,
-    verifiedMovement: c.verified_movement ?? undefined,
-    faceVerifiedSession: c.face_verified_session ?? undefined,
-  }))
+    load_kg?: number | null
+    volume_kg?: number | null
+  }>).map((c) => {
+    const traces = parseRepTracesJson(c.rep_traces)
+    return {
+      id: c.id,
+      exercise: c.exercise,
+      reps: c.reps || 0,
+      score: c.score || 0,
+      repScores: c.rep_scores || [],
+      repTraces: traces.length ? traces : undefined,
+      kind: c.kind === "rom" ? "rom" : "rep",
+      completedAt: c.completed_at ?? '',
+      effectiveReps: c.effective_reps ?? undefined,
+      verifiedMovement: c.verified_movement ?? undefined,
+      faceVerifiedSession: c.face_verified_session ?? undefined,
+      loadKg: c.load_kg ?? undefined,
+      volumeKg: c.volume_kg ?? undefined,
+    }
+  })
 }
 
 // Favorites functions

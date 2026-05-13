@@ -3,6 +3,8 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role"
 import { NextResponse } from "next/server"
 import { getFitbitCallbackUrl, isFitbitConfigured } from "@/lib/wearables/fitbit"
 
+export const runtime = "edge"
+
 export async function GET() {
   const configured = isFitbitConfigured()
   const hasClientId = Boolean(process.env.FITBIT_CLIENT_ID?.trim())

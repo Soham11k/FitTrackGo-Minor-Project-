@@ -34,7 +34,9 @@ export function computeJointAngles(lm: Landmark[], exercise: ExerciseId): JointA
   switch (exercise) {
     case "squat":
     case "lunge":
-    case "high_knees": {
+    case "high_knees":
+    case "deadlift":
+    case "rdl": {
       const kneeL = angle(safe(lm, 23), safe(lm, 25), safe(lm, 27))
       const kneeR = angle(safe(lm, 24), safe(lm, 26), safe(lm, 28))
       const hipL = angle(safe(lm, 11), safe(lm, 23), safe(lm, 25))

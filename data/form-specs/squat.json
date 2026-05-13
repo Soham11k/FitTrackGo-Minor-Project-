@@ -1,0 +1,62 @@
+{
+  "id": "squat",
+  "displayName": "Squat",
+  "category": "lower",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 23, 24, 25, 26, 27, 28],
+  "visibleFraction": 0.75,
+  "positiveLine": "Great form — depth and alignment look good",
+  "repPattern": "top_bottom_top",
+  "hudAngles": [
+    { "name": "Left knee", "joints": ["left_hip", "left_knee", "left_ankle"], "primary": true },
+    { "name": "Right knee", "joints": ["right_hip", "right_knee", "right_ankle"] }
+  ],
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "knee_angle_avg", "op": "<", "value": 108 } },
+    { "name": "top", "enterWhen": { "metric": "knee_angle_avg", "op": ">", "value": 156 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "knee_angle_avg", "op": ">", "value": 108 }, { "metric": "knee_angle_avg", "op": "<", "value": 156 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "squat.depth",
+      "region": "legs",
+      "penalty": 15,
+      "loadRelax": { "perXBodyweight": 1.0, "addThresholdDeg": 8 },
+      "when": { "all": [ { "metric": "depth_ratio", "op": "<=", "value": 0.1 }, { "metric": "knee_angle_avg", "op": ">=", "value": 100 } ] },
+      "feedback": "Go deeper: break parallel at the bottom",
+      "breakdown": { "label": "Depth", "format": "boolean", "okLabel": "Good", "failLabel": "Higher", "detail": "Break parallel for full rep", "region": "legs" }
+    },
+    {
+      "id": "squat.knee_angle",
+      "region": "legs",
+      "penalty": 10,
+      "when": { "any": [ { "metric": "knee_angle_avg", "op": "<=", "value": 70 }, { "metric": "knee_angle_avg", "op": ">=", "value": 110 } ] },
+      "feedback": "Keep knees over toes, don't cave in",
+      "breakdown": { "label": "Knee angle", "format": "angle", "metric": "knee_angle_avg", "detail": "Target 70–100° at bottom", "region": "legs" }
+    },
+    {
+      "id": "squat.back_angle",
+      "region": "torso",
+      "penalty": 10,
+      "when": { "any": [ { "metric": "back_angle_avg", "op": "<=", "value": 30 }, { "metric": "back_angle_avg", "op": ">=", "value": 80 } ] },
+      "feedback": "Maintain a neutral spine, hinge at hips",
+      "breakdown": { "label": "Back angle", "format": "angle", "metric": "back_angle_avg", "detail": "Keep torso forward", "region": "torso" }
+    },
+    {
+      "id": "squat.knee_tracking",
+      "region": "legs",
+      "penalty": 8,
+      "when": { "metric": "knee_tracking_x", "op": ">=", "value": 0.05 },
+      "feedback": "Push knees out, don't let them cave inward",
+      "breakdown": { "label": "Knee tracking", "format": "boolean", "okLabel": "Good", "failLabel": "Caving", "detail": "Knees over toes", "region": "legs" }
+    },
+    {
+      "id": "squat.symmetry",
+      "region": "legs",
+      "penalty": 5,
+      "when": { "metric": "knee_symmetry_diff", "op": ">=", "value": 15 },
+      "feedback": "Balance weight evenly between legs",
+      "breakdown": { "label": "Symmetry", "format": "boolean", "okLabel": "Even", "failLabel": "Adjust", "region": "legs" }
+    }
+  ]
+}

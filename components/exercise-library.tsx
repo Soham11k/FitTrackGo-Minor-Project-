@@ -1,8 +1,11 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
+import { motion } from "framer-motion"
 import { Clock, Flame, ChevronRight, Play, Star, Filter, Dumbbell, Heart, Zap, RefreshCw, Target } from "lucide-react"
 import { getFavorites, toggleFavorite, getWorkouts, formatErr } from "@/lib/store-supabase"
+import { CINEMATIC, staggerChildren } from "@/lib/motion"
+import { pulse } from "@/lib/haptics"
 import { getExercises, type ExerciseItem } from "@/lib/data"
 import { getAICoachIdForStep } from "@/lib/exercise-ai-map"
 import type { ExerciseId } from "@/lib/form-analysis"
@@ -48,12 +51,12 @@ function DifficultyBadge({ level }: { level: string }) {
   )
 }
 
-const categoryGradients: Record<Category, string> = {
-  all: "from-primary/30 to-chart-2/30",
-  strength: "from-primary/30 to-primary/10",
-  cardio: "from-destructive/20 to-chart-2/20",
-  yoga: "from-chart-2/30 to-chart-4/20",
-  hiit: "from-chart-4/30 to-destructive/20",
+const categoryMetricTint: Record<Category, string> = {
+  all: "from-metric-move/35 to-metric-run/20",
+  strength: "from-metric-move/40 to-metric-move/10",
+  cardio: "from-metric-run/40 to-metric-run/12",
+  yoga: "from-metric-coach/38 to-metric-coach/12",
+  hiit: "from-metric-streak/40 to-metric-streak/15",
 }
 
 const categoryIcons: Record<Category, typeof Dumbbell> = {
@@ -120,6 +123,7 @@ export function ExerciseLibrary({
       await toggleFavorite(id)
       const updated = await getFavorites()
       setFavorites(updated)
+      if (!wasFavorite) pulse("celebrate")
       toast.success(wasFavorite ? "Removed from favorites" : "Added to favorites")
     } catch (error) {
       toast.error("Failed to update favorites")
@@ -165,34 +169,45 @@ export function ExerciseLibrary({
           </button>
         </div>
       )}
-      <header className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
-            Exercises
-          </h1>
-          <p className="text-sm text-muted-foreground">{filtered.length} workouts</p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {onOpenAICoach && (
+      <motion.section
+        variants={CINEMATIC.heroEnter}
+        initial="hidden"
+        animate="show"
+        className="surface-stage-gradient flex flex-col gap-4 rounded-3xl border border-border/70 p-5 shadow-[var(--shadow-card)]"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-eyebrow-mega text-muted-foreground/85">Train</p>
+            <h1
+              className="text-display-stat-lg mt-1 text-foreground"
+              style={{ fontFamily: "var(--font-display), var(--font-heading), sans-serif" }}
+            >
+              {(activeCategory === "all" ? "Library" : categories.find((c) => c.id === activeCategory)?.label ?? "Library").toUpperCase()}
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">{filtered.length} workouts</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {onOpenAICoach && (
+              <button
+                type="button"
+                onClick={() => onOpenAICoach()}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-metric-coach/35 bg-metric-coach/15"
+                aria-label="Open AI Coach"
+              >
+                <Target className="h-4 w-4 text-metric-coach" />
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => onOpenAICoach()}
-              className="flex h-10 w-10 items-center justify-center rounded-xl bg-metric-coach/15 border border-metric-coach/25"
-              aria-label="Open AI Coach"
+              onClick={() => setShowFilters((v) => !v)}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card"
+              aria-label="Filters"
             >
-              <Target className="h-4 w-4 text-metric-coach" />
+              <Filter className="h-4 w-4 text-muted-foreground" />
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setShowFilters((v) => !v)}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-card border border-border"
-            aria-label="Filters"
-          >
-            <Filter className="h-4 w-4 text-muted-foreground" />
-          </button>
+          </div>
         </div>
-      </header>
+      </motion.section>
 
       {showFilters && (
         <div className="rounded-2xl bg-card p-4 border border-border space-y-3">
@@ -248,7 +263,7 @@ export function ExerciseLibrary({
           className="absolute inset-0 z-[1] cursor-pointer rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           onClick={() => setSelectedExercise(featured)}
         />
-        <div className={`relative z-0 pointer-events-none h-48 w-full bg-gradient-to-br ${categoryGradients[featured.category]} flex items-center justify-center`}>
+        <div className={`relative z-0 pointer-events-none h-48 w-full bg-gradient-to-br ${categoryMetricTint[featured.category]} flex items-center justify-center`}>
           {(() => {
             const Icon = categoryIcons[featured.category]
             return <Icon className="h-16 w-16 text-white/40" />
@@ -308,7 +323,12 @@ export function ExerciseLibrary({
         </div>
       </article>
 
-      <div className="flex flex-col gap-3">
+      <motion.div
+        className="flex flex-col gap-3"
+        variants={staggerChildren(0.06, 0.05)}
+        initial="hidden"
+        animate="show"
+      >
         {initialLoading ? (
           <div className="space-y-3" aria-busy="true" aria-label="Loading exercises">
             {[0, 1, 2].map((i) => (
@@ -364,8 +384,8 @@ export function ExerciseLibrary({
           </Empty>
         ) : (
           filtered.map((exercise) => (
+            <motion.div key={exercise.id} variants={CINEMATIC.statReveal}>
             <div
-              key={exercise.id}
               className="flex items-stretch gap-0.5 rounded-2xl border border-border bg-card transition-colors hover:border-primary/30"
             >
               <button
@@ -373,7 +393,11 @@ export function ExerciseLibrary({
                 className="flex min-w-0 flex-1 items-center gap-4 rounded-2xl p-3 text-left transition-transform active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 onClick={() => setSelectedExercise(exercise)}
               >
-                <div className={`h-20 w-20 shrink-0 rounded-xl bg-gradient-to-br flex items-center justify-center ${categoryGradients[exercise.category]}`}>
+                <div
+                  className={`h-20 w-20 shrink-0 rounded-xl bg-gradient-to-br flex items-center justify-center ${
+                    categoryMetricTint[exercise.category as Category]
+                  }`}
+                >
                   {(() => {
                     const Icon = categoryIcons[exercise.category]
                     return <Icon className="h-8 w-8 text-white/50" />
@@ -428,9 +452,10 @@ export function ExerciseLibrary({
                 <Star className={`h-4 w-4 ${favorites.includes(exercise.id) ? "fill-metric-streak text-metric-streak" : "text-muted-foreground"}`} />
               </button>
             </div>
+            </motion.div>
           ))
         )}
-      </div>
+      </motion.div>
     </div>
   )
 }
@@ -492,7 +517,7 @@ function ExerciseDetail({
   return (
     <div className="flex flex-col pb-28">
       <div className="relative h-64 overflow-hidden">
-        <div className={`h-full w-full bg-gradient-to-br flex items-center justify-center ${categoryGradients[exercise.category]}`}>
+        <div className={`h-full w-full bg-gradient-to-br flex items-center justify-center ${categoryMetricTint[exercise.category]}`}>
           {(() => { const Icon = categoryIcons[exercise.category]; return <Icon className="h-20 w-20 text-white/40" /> })()}
         </div>
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />

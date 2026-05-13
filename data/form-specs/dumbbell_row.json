@@ -1,0 +1,33 @@
+{
+  "id": "dumbbell_row",
+  "displayName": "Dumbbell Row",
+  "category": "upper",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16, 23, 24],
+  "visibleFraction": 0.67,
+  "positiveLine": "Strong row — driving the elbow back cleanly",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 80 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 158 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 80 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 158 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "dumbbell_row.hinge",
+      "region": "torso",
+      "penalty": 12,
+      "when": { "any": [ { "metric": "hip_hinge_avg", "op": "<=", "value": 60 }, { "metric": "hip_hinge_avg", "op": ">=", "value": 120 } ] },
+      "feedback": "Hinge at hips so torso stays flat",
+      "breakdown": { "label": "Torso angle", "format": "angle", "metric": "hip_hinge_avg", "detail": "Flat back, hinge at hips", "region": "torso" }
+    },
+    {
+      "id": "dumbbell_row.range",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "metric": "elbow_angle_avg", "op": ">=", "value": 110 },
+      "feedback": "Pull the dumbbell to the hip — full range",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "detail": "Drive elbow past the ribs", "region": "arms" }
+    }
+  ]
+}

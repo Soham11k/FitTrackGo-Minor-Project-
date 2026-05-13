@@ -1,0 +1,33 @@
+{
+  "id": "barbell_row",
+  "displayName": "Barbell Row",
+  "category": "upper",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16, 23, 24],
+  "visibleFraction": 0.67,
+  "positiveLine": "Clean row — torso braced and elbow drive complete",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 80 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 158 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 80 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 158 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "barbell_row.hinge",
+      "region": "torso",
+      "penalty": 14,
+      "when": { "any": [ { "metric": "hip_hinge_avg", "op": "<=", "value": 60 }, { "metric": "hip_hinge_avg", "op": ">=", "value": 115 } ] },
+      "feedback": "Stay hinged — don't stand up out of the pull",
+      "breakdown": { "label": "Torso angle", "format": "angle", "metric": "hip_hinge_avg", "detail": "Flat back, hinge at hips", "region": "torso" }
+    },
+    {
+      "id": "barbell_row.range",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "metric": "elbow_angle_avg", "op": ">=", "value": 115 },
+      "feedback": "Pull the bar to your lower ribs",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "detail": "Drive elbows back", "region": "arms" }
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "bicycle_crunch",
+  "displayName": "Bicycle Crunch",
+  "category": "core",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [0, 11, 12, 23, 24, 25, 26],
+  "visibleFraction": 0.6,
+  "positiveLine": "Strong bicycle — rotate and reach with control",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "knee_angle_min", "op": "<", "value": 80 } },
+    { "name": "bottom", "enterWhen": { "metric": "knee_angle_min", "op": ">", "value": 150 } }
+  ],
+  "rules": [
+    {
+      "id": "bicycle_crunch.range",
+      "region": "core",
+      "penalty": 10,
+      "when": { "metric": "shoulder_hip_y_delta", "op": ">=", "value": 0.05 },
+      "feedback": "Lift the shoulders off the floor each rep",
+      "breakdown": { "label": "Curl", "format": "boolean", "okLabel": "Good", "failLabel": "Curl more", "region": "core" }
+    }
+  ]
+}

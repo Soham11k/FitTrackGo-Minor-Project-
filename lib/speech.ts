@@ -84,3 +84,14 @@ export function speakAdjustForm() {
   if (Date.now() - lastSpokeAt < 12000) return
   speakMotivation("Adjust your form.", { force: true })
 }
+
+/** Queue a trimmed phrase after cancelling chatter. */
+export function speakAndQueue(text: string, options?: { force?: boolean }) {
+  speakMotivation(text.slice(0, 380), options)
+}
+
+/** One short AI-derived cue when voice cues are enabled. */
+export function speakCoachMidsetTip(text: string) {
+  if (!getCoachA11yPrefs().announceReps) return
+  speakAndQueue(text, { force: true })
+}

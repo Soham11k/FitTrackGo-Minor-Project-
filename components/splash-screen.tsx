@@ -1,13 +1,17 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { Activity } from "lucide-react"
+import { motion, useReducedMotion } from "framer-motion"
 import { siteConfig } from "@/lib/data"
+import { StatDisplay } from "@/components/ui/stat-display"
+import { CinematicStage } from "@/components/ui/cinematic-stage"
+import { CINEMATIC, EASE } from "@/lib/motion"
 
 const SPLASH_KEY = "ft-splash-seen"
 
 export function SplashScreen({ onComplete }: { onComplete: () => void }) {
   const [phase, setPhase] = useState(0)
+  const reduce = useReducedMotion() ?? false
 
   const finish = useCallback(() => {
     try {
@@ -24,12 +28,6 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
       if (!cancelled) finish()
     }
 
-    let reduce = false
-    try {
-      reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
-    } catch {
-      reduce = false
-    }
     if (reduce) {
       safeFinish()
       return () => {
@@ -45,8 +43,8 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
     }
 
     if (seen) {
-      setPhase(2)
-      const id = setTimeout(safeFinish, 600)
+      setPhase(4)
+      const id = setTimeout(safeFinish, 500)
       return () => {
         cancelled = true
         clearTimeout(id)
@@ -54,96 +52,88 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
     }
 
     const timers = [
-      setTimeout(() => setPhase(1), 100),
-      setTimeout(() => setPhase(2), 600),
-      setTimeout(() => setPhase(3), 1200),
-      setTimeout(() => setPhase(4), 2000),
-      setTimeout(() => safeFinish(), 2800),
+      setTimeout(() => setPhase(1), 80),
+      setTimeout(() => setPhase(2), 520),
+      setTimeout(() => setPhase(3), 980),
+      setTimeout(() => setPhase(4), 1680),
+      setTimeout(() => safeFinish(), 2500),
     ]
     return () => {
       cancelled = true
       timers.forEach(clearTimeout)
     }
-  }, [finish])
+  }, [finish, reduce])
 
-  const progressPct = phase >= 4 ? 100 : phase >= 1 ? Math.min(100, 20 + phase * 22) : 0
+  const progressPct = phase >= 4 ? 100 : phase >= 1 ? Math.min(100, 16 + phase * 24) : 0
+
+  const content = (
+    <div className="relative flex max-w-lg flex-col items-center justify-center px-6 text-center" role="presentation">
+      <motion.div
+        className="relative w-full"
+        variants={CINEMATIC.heroEnter}
+        initial="hidden"
+        animate={phase >= 1 ? "show" : "hidden"}
+      >
+        <p className="text-eyebrow-mega mb-4 text-[color:oklch(1_0_0/0.55)]">FITTRACK</p>
+        <StatDisplay
+          value={
+            <>
+              GO<span className="text-primary">.</span>
+            </>
+          }
+          tone="stage"
+          size="lg"
+          secondary={phase >= 3 ? siteConfig.tagline : undefined}
+        />
+      </motion.div>
+
+      <motion.div
+        className="relative mx-auto mt-12 h-[3px] w-56 overflow-hidden bg-[color:var(--surface-stage-hairline)] sm:w-80"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(progressPct)}
+        aria-busy={phase < 4}
+        aria-label="Launch progress"
+        initial={{ opacity: reduce ? 1 : 0.35 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.35, ease: [...EASE.cinematic] }}
+      >
+        <motion.div
+          className="h-full bg-primary"
+          initial={{ width: "0%" }}
+          animate={{ width: `${progressPct}%` }}
+          transition={{ duration: 1.1, ease: [...EASE.cinematic] }}
+        />
+      </motion.div>
+
+      <p
+        className={`mt-6 text-center text-typo-eyebrow uppercase tracking-[0.28em] text-[color:oklch(0.92_0_0/0.55)] transition-opacity duration-500 ${
+          phase >= 3 ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        Tap or Enter to skip
+      </p>
+    </div>
+  )
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background px-6"
-      role="button"
-      tabIndex={0}
-      onClick={() => finish()}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault()
-          finish()
-        }
-      }}
-      aria-label="Splash screen. Press Enter or tap to skip."
-    >
-      <div className="relative flex flex-col items-center justify-center">
-        <div className="relative flex items-center justify-center">
-          <div
-            className={`absolute h-32 w-32 rounded-full border border-primary/20 transition-all duration-1000 ${
-              phase >= 1 ? "scale-150 opacity-0" : "scale-100 opacity-100"
-            }`}
-            aria-hidden
-          />
-          <div
-            className={`absolute h-32 w-32 rounded-full border border-primary/30 transition-all duration-1000 delay-200 ${
-              phase >= 2 ? "scale-200 opacity-0" : "scale-100 opacity-100"
-            }`}
-            aria-hidden
-          />
-
-          <div
-            className={`relative flex h-20 w-20 items-center justify-center rounded-2xl bg-primary transition-all duration-700 ${
-              phase >= 1 ? "scale-100 opacity-100" : "scale-50 opacity-0"
-            }`}
-          >
-            <Activity className="h-10 w-10 text-primary-foreground" strokeWidth={2.5} aria-hidden />
-          </div>
-        </div>
-
-        <div className="mt-8 overflow-hidden">
-          <h1
-            className={`text-4xl font-bold tracking-tight text-foreground transition-all duration-700 ${
-              phase >= 2 ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0"
-            }`}
-            style={{ fontFamily: "var(--font-heading)" }}
-          >
-            FitTrack<span className="text-primary">Go</span>
-          </h1>
-        </div>
-
-        <p
-          className={`mt-3 text-sm tracking-widest uppercase text-muted-foreground transition-all duration-700 ${
-            phase >= 3 ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
-          }`}
-        >
-          {siteConfig.tagline}
-        </p>
-
-        <div
-          className="mt-12 h-0.5 w-48 overflow-hidden rounded-full bg-secondary"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(progressPct)}
-          aria-busy={phase < 4}
-          aria-label="Launch progress"
-        >
-          <div
-            className={`h-full rounded-full bg-primary transition-all duration-[1800ms] ease-out ${
-              phase >= 1 ? "w-full" : "w-0"
-            }`}
-          />
-        </div>
-        <p className="mt-6 text-center text-typo-eyebrow text-muted-foreground/80 uppercase tracking-[0.2em]">
-          Tap or press Enter to skip
-        </p>
-      </div>
-    </div>
+    <CinematicStage vignette className="fixed inset-0 z-50 cursor-default">
+      <button
+        type="button"
+        className="flex h-full min-h-dvh w-full flex-col cursor-pointer items-center justify-center px-6 outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        tabIndex={0}
+        aria-label="Splash screen. Press Enter or tap to skip."
+        onClick={() => finish()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            finish()
+          }
+        }}
+      >
+        {content}
+      </button>
+    </CinematicStage>
   )
 }

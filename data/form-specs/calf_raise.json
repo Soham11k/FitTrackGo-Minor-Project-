@@ -1,0 +1,24 @@
+{
+  "id": "calf_raise",
+  "displayName": "Calf Raise",
+  "category": "lower",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [25, 26, 27, 28],
+  "visibleFraction": 0.67,
+  "positiveLine": "Clean calf raise — pause at the top",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "ankle_y_avg", "op": "<", "value": 0.7 } },
+    { "name": "bottom", "enterWhen": { "metric": "ankle_y_avg", "op": ">", "value": 0.78 } }
+  ],
+  "rules": [
+    {
+      "id": "calf_raise.range",
+      "region": "legs",
+      "penalty": 8,
+      "when": { "metric": "ankle_y_avg", "op": ">=", "value": 0.78 },
+      "feedback": "Rise high on the balls of your feet",
+      "breakdown": { "label": "Heel height", "format": "boolean", "okLabel": "High", "failLabel": "Low", "region": "legs" }
+    }
+  ]
+}

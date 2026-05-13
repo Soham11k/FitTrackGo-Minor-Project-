@@ -1,0 +1,24 @@
+{
+  "id": "step_up",
+  "displayName": "Step-up",
+  "category": "lower",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 23, 24, 25, 26, 27, 28],
+  "visibleFraction": 0.75,
+  "positiveLine": "Strong step-up — drive through the heel",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "knee_angle_avg", "op": ">", "value": 162 } },
+    { "name": "bottom", "enterWhen": { "metric": "knee_angle_avg", "op": "<", "value": 110 } }
+  ],
+  "rules": [
+    {
+      "id": "step_up.lockout",
+      "region": "legs",
+      "penalty": 10,
+      "when": { "metric": "knee_angle_avg", "op": "<", "value": 158 },
+      "feedback": "Stand tall on top — full hip and knee extension",
+      "breakdown": { "label": "Top extension", "format": "angle", "metric": "knee_angle_avg", "region": "legs" }
+    }
+  ]
+}

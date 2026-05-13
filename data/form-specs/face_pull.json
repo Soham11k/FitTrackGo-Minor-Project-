@@ -1,0 +1,25 @@
+{
+  "id": "face_pull",
+  "displayName": "Face Pull",
+  "category": "upper",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16],
+  "visibleFraction": 0.67,
+  "positiveLine": "Strong face pull — rear delts and traps doing the work",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 80 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 160 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 80 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 160 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "face_pull.range",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "metric": "elbow_angle_avg", "op": ">=", "value": 115 },
+      "feedback": "Pull until hands are wide of the ears",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "region": "arms" }
+    }
+  ]
+}

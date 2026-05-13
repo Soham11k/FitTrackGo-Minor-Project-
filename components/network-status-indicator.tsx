@@ -5,10 +5,13 @@ import { Wifi, WifiOff, AlertCircle, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { useEffect } from "react"
 import { useLocale } from "@/components/locale-provider"
+import { usePersistedPendingCount } from "@/hooks/use-persisted-pending"
 
 export function NetworkStatusIndicator() {
   const { t } = useLocale()
   const { status, isOffline, isSlow, queuedActions } = useNetworkStatus()
+  const { count: persistedPending } = usePersistedPendingCount()
+  const queuedTotal = queuedActions.length + persistedPending
 
   useEffect(() => {
     if (isOffline) {
@@ -22,7 +25,7 @@ export function NetworkStatusIndicator() {
     }
   }, [isOffline, isSlow, t])
 
-  if (status === "online" && queuedActions.length === 0) {
+  if (status === "online" && queuedTotal === 0) {
     return null
   }
 
@@ -36,9 +39,9 @@ export function NetworkStatusIndicator() {
               <span className="text-xs font-medium text-foreground">
                 {t("network.offlineLabel")}
               </span>
-              {queuedActions.length > 0 && (
+              {queuedTotal > 0 && (
                 <span className="text-xs text-muted-foreground">
-                  ({queuedActions.length} {t("network.pending")})
+                  ({queuedTotal} {t("network.pending")})
                 </span>
               )}
             </>
@@ -49,11 +52,11 @@ export function NetworkStatusIndicator() {
                 {t("network.slowLabel")}
               </span>
             </>
-          ) : queuedActions.length > 0 ? (
+          ) : queuedTotal > 0 ? (
             <>
               <RefreshCw className="h-4 w-4 text-primary animate-spin" />
               <span className="text-xs font-medium text-foreground">
-                {t("network.syncing")} {queuedActions.length}
+                {t("network.syncing")} {queuedTotal}
               </span>
             </>
           ) : (

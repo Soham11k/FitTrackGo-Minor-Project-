@@ -33,8 +33,17 @@ describe("form-analysis", () => {
 
     it("supports all exercise ids", () => {
       const ids: ExerciseId[] = [
-        "squat", "pushup", "plank", "lunge", "bicep_curl",
-        "shoulder_press", "jumping_jacks", "high_knees", "crunch",
+        "squat",
+        "pushup",
+        "plank",
+        "lunge",
+        "deadlift",
+        "rdl",
+        "bicep_curl",
+        "shoulder_press",
+        "jumping_jacks",
+        "high_knees",
+        "crunch",
       ]
       const lm = makeLandmarks()
       for (const id of ids) {
@@ -61,6 +70,24 @@ describe("form-analysis", () => {
       const result = analyzeForm(lm, "squat")
       expect(result.score).toBeGreaterThanOrEqual(0)
       expect(result.breakdown.length).toBeGreaterThan(0)
+    })
+
+    it("deadlift/RDL hinge exercises return scored breakdown", () => {
+      const lm = makeLandmarks({
+        11: { x: 0.44, y: 0.38 },
+        12: { x: 0.56, y: 0.38 },
+        23: { x: 0.46, y: 0.5 },
+        24: { x: 0.54, y: 0.5 },
+        25: { x: 0.45, y: 0.65 },
+        26: { x: 0.55, y: 0.65 },
+        27: { x: 0.42, y: 0.82 },
+        28: { x: 0.58, y: 0.82 },
+        15: { x: 0.43, y: 0.45 },
+        16: { x: 0.57, y: 0.45 },
+      })
+      expect(analyzeForm(lm, "deadlift").score).toBeGreaterThanOrEqual(0)
+      expect(analyzeForm(lm, "deadlift").breakdown.length).toBeGreaterThan(1)
+      expect(analyzeForm(lm, "rdl").breakdown.some((b) => b.label === "Knee angle")).toBe(true)
     })
 
     it("applies trackingQuality scale to the final score", () => {
@@ -104,7 +131,19 @@ describe("form-analysis", () => {
     it("returns a phase for each exercise with reset true", () => {
       const phases = ["idle", "eccentric", "bottom", "concentric", "top"] as const
       const lm = makeLandmarks()
-      const ids: ExerciseId[] = ["squat", "pushup", "plank", "lunge", "bicep_curl", "shoulder_press", "jumping_jacks", "high_knees", "crunch"]
+      const ids: ExerciseId[] = [
+        "squat",
+        "pushup",
+        "plank",
+        "lunge",
+        "deadlift",
+        "rdl",
+        "bicep_curl",
+        "shoulder_press",
+        "jumping_jacks",
+        "high_knees",
+        "crunch",
+      ]
       for (const id of ids) {
         const phase = getRepPhase(lm, id, true)
         expect(phases).toContain(phase)

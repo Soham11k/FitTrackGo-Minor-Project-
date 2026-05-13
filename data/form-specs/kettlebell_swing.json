@@ -1,0 +1,24 @@
+{
+  "id": "kettlebell_swing",
+  "displayName": "Kettlebell Swing",
+  "category": "compound",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 15, 16, 23, 24, 25, 26],
+  "visibleFraction": 0.72,
+  "positiveLine": "Snappy swing — hip drive and tight core",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "hip_hinge_avg", "op": ">", "value": 165 } },
+    { "name": "bottom", "enterWhen": { "metric": "hip_hinge_avg", "op": "<", "value": 100 } }
+  ],
+  "rules": [
+    {
+      "id": "kettlebell_swing.hinge",
+      "region": "legs",
+      "penalty": 12,
+      "when": { "metric": "hip_hinge_avg", "op": "<", "value": 75 },
+      "feedback": "Hinge at the hips — don't squat the swing",
+      "breakdown": { "label": "Hinge", "format": "angle", "metric": "hip_hinge_avg", "region": "legs" }
+    }
+  ]
+}

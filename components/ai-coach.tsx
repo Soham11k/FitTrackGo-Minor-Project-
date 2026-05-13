@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { motion } from "framer-motion"
 import {
   Camera,
   ScanLine,
@@ -21,6 +22,7 @@ import {
   Move,
   Footprints,
   LayoutList,
+  Weight,
   UserCheck,
   Phone,
   Crosshair,
@@ -46,6 +48,8 @@ import { renderFaults } from "@/lib/coach-vision/fault-overlay"
 import { skeletonAnim } from "@/lib/skeleton-animations"
 import { addCoachSession, formatErr, getCoachSessions } from "@/lib/store-supabase"
 import { isNetworkError } from "@/lib/network-status"
+import { LoadChip } from "@/components/ai-coach/load-chip"
+import { hasSpec as coachHasSpec, loadSpec as coachLoadSpecRaw } from "@/lib/form-engine/registry"
 import { effectiveRepCount, isVerifiedMovement } from "@/lib/competition"
 import { recordCoachSessionMemory, getCoachMemoryTip } from "@/lib/coach-memory"
 import { getCulturalTipExtras } from "@/lib/cultural-tips"
@@ -56,7 +60,7 @@ import { useLocale } from "@/components/locale-provider"
 import { createClient } from "@/lib/supabase/client"
 import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
-import { speakRepComplete, speakGoodForm } from "@/lib/speech"
+import { speakRepComplete, speakGoodForm, speakCoachMidsetTip } from "@/lib/speech"
 import {
   faceMatches,
   createFaceMatchSmoother,
@@ -80,7 +84,20 @@ import { AICoachLlmPanel } from "@/components/ai-coach-llm-panel"
 import { consumeAICoachIntent } from "@/lib/ai-coach-intent"
 import { topCuesFromBreakdown } from "@/lib/coach-session-cues"
 import { CoachRepTimeline } from "@/components/coach-rep-timeline"
+import { captureRepTrace, aggregateTopFaults, type RepTracePair } from "@/lib/rep-trace"
+import { CoachSetRecorder } from "@/lib/coach-replay/recorder"
+import { isCoachReplayLocalEnabled } from "@/lib/coach-replay/prefs"
+import { saveCoachReplayPackage, linkCoachReplayToSession } from "@/lib/coach-replay/store"
+import { uploadCoachClipIfEnabled } from "@/lib/coach-clips-supabase"
+import { isCoachMidsetTipsEnabled } from "@/lib/coach-midset-tips"
+import { CoachFinishShareBar } from "@/components/coach-finish-recap"
+import { CoachReplaySheet } from "@/components/coach-replay-sheet"
 import type { TabId } from "@/components/bottom-nav"
+import { StatDisplay } from "@/components/ui/stat-display"
+import { CelebrationBurst } from "@/components/ui/celebration-burst"
+import { MotionCelebrate } from "@/components/motion-celebrate"
+import { CINEMATIC, staggerChildren } from "@/lib/motion"
+import { MobilityCoach } from "@/components/mobility-coach"
 
 const POSTURE_PENALTY_THRESHOLD = 75
 const POSTURE_PENALTY_NO_ACCUM_THRESHOLD = 85
@@ -99,18 +116,6 @@ function goodFormBadge(exercise: ExerciseId, phase: RepPhase, res: FormResult): 
 
 type DetectionState = "select" | "setup" | "enrolling" | "detecting" | "feedback"
 
-const availableExercises: { id: ExerciseId; name: string; description: string; icon: typeof Dumbbell; gradient: string }[] = [
-  { id: "squat", name: "Squats", description: "AI checks depth, knee alignment, and back posture", icon: Dumbbell, gradient: "from-primary/30 to-primary/10" },
-  { id: "pushup", name: "Push Ups", description: "Track elbow angle, body alignment, and range of motion", icon: Activity, gradient: "from-destructive/20 to-chart-2/20" },
-  { id: "plank", name: "Plank Hold", description: "Monitor hip alignment and shoulder positioning", icon: Shield, gradient: "from-chart-2/30 to-chart-4/20" },
-  { id: "lunge", name: "Lunges", description: "Analyze step depth, knee tracking, and balance", icon: Flame, gradient: "from-chart-4/30 to-destructive/20" },
-  { id: "bicep_curl", name: "Bicep Curls", description: "Full range and elbow control, no swinging", icon: BicepsFlexed, gradient: "from-primary/25 to-chart-2/20" },
-  { id: "shoulder_press", name: "Shoulder Press", description: "Symmetry and overhead extension", icon: CircleDot, gradient: "from-chart-2/25 to-chart-4/20" },
-  { id: "jumping_jacks", name: "Jumping Jacks", description: "Full arm and leg spread, steady rhythm", icon: Move, gradient: "from-chart-4/25 to-primary/20" },
-  { id: "high_knees", name: "High Knees", description: "Knee drive and quick feet", icon: Footprints, gradient: "from-destructive/20 to-chart-2/20" },
-  { id: "crunch", name: "Crunches", description: "Controlled curl, shoulders off floor", icon: LayoutList, gradient: "from-chart-2/30 to-primary/15" },
-]
-
 export function AICoach({
   focusMode = false,
   onExitFocus,
@@ -120,8 +125,24 @@ export function AICoach({
   onExitFocus?: () => void
   onNavigate?: (tab: TabId) => void
 } = {}) {
-  const { locale } = useLocale()
-  const [state, setState] = useState<DetectionState>("select")
+  const { locale, t } = useLocale()
+  const availableExercises = useMemo(
+    (): { id: ExerciseId; name: string; description: string; icon: typeof Dumbbell; gradient: string }[] => [
+      { id: "squat", name: "Squats", description: "AI checks depth, knee alignment, and back posture", icon: Dumbbell, gradient: "from-primary/30 to-primary/10" },
+      { id: "pushup", name: "Push Ups", description: "Track elbow angle, body alignment, and range of motion", icon: Activity, gradient: "from-destructive/20 to-chart-2/20" },
+      { id: "plank", name: "Plank Hold", description: "Monitor hip alignment and shoulder positioning", icon: Shield, gradient: "from-chart-2/30 to-chart-4/20" },
+      { id: "lunge", name: "Lunges", description: "Analyze step depth, knee tracking, and balance", icon: Flame, gradient: "from-chart-4/30 to-destructive/20" },
+      { id: "deadlift", name: t("coach.deadlift.name"), description: t("coach.deadlift.desc"), icon: Weight, gradient: "from-chart-4/35 to-muted/25" },
+      { id: "rdl", name: t("coach.rdl.name"), description: t("coach.rdl.desc"), icon: Weight, gradient: "from-primary/35 to-muted/25" },
+      { id: "bicep_curl", name: "Bicep Curls", description: "Full range and elbow control, no swinging", icon: BicepsFlexed, gradient: "from-primary/25 to-chart-2/20" },
+      { id: "shoulder_press", name: "Shoulder Press", description: "Symmetry and overhead extension", icon: CircleDot, gradient: "from-chart-2/25 to-chart-4/20" },
+      { id: "jumping_jacks", name: "Jumping Jacks", description: "Full arm and leg spread, steady rhythm", icon: Move, gradient: "from-chart-4/25 to-primary/20" },
+      { id: "high_knees", name: "High Knees", description: "Knee drive and quick feet", icon: Footprints, gradient: "from-destructive/20 to-chart-2/20" },
+      { id: "crunch", name: "Crunches", description: "Controlled curl, shoulders off floor", icon: LayoutList, gradient: "from-chart-2/30 to-primary/15" },
+    ],
+    [t]
+  )
+
   const [selectedExercise, setSelectedExercise] = useState<ExerciseId | null>(null)
   const [score, setScore] = useState(0)
   const [reps, setReps] = useState(0)
@@ -143,6 +164,19 @@ export function AICoach({
   const [targetReps, setTargetReps] = useState(0)
   const [envAssessment, setEnvAssessment] = useState<EnvironmentAssessment | null>(null)
   const [sessionDna, setSessionDna] = useState<SessionDnaProps | null>(null)
+  const [finishShareSessionId, setFinishShareSessionId] = useState<string | null>(null)
+  const [replayOpen, setReplayOpen] = useState(false)
+  const [replayTarget, setReplayTarget] = useState<{ sessionId: string | null; clipId: string | null }>({
+    sessionId: null,
+    clipId: null,
+  })
+  const [recapIsPr, setRecapIsPr] = useState(false)
+  const [sessionCelebrateBurst, setSessionCelebrateBurst] = useState(false)
+  const [loadKg, setLoadKg] = useState<number | undefined>(undefined)
+  const [bodyWeightKg, setBodyWeightKg] = useState<number | undefined>(undefined)
+  const [weightUnitPref, setWeightUnitPref] = useState<"kg" | "lb">("kg")
+  const [state, setState] = useState<DetectionState>("select")
+  const [coachTrack, setCoachTrack] = useState<"strength" | "mobility">("strength")
   const [a11yPrefs, setA11yPrefs] = useState<CoachA11yPrefs>(() =>
     typeof window !== "undefined" ? getCoachA11yPrefs() : { hapticOnRep: true, announceReps: true, reduceMotion: false, highContrastVideo: false }
   )
@@ -174,8 +208,19 @@ export function AICoach({
   const detectingStartedAtRef = useRef<number>(0)
   const fallDismissedAtRef = useRef<number>(0)
   const faceVerifiedSessionRef = useRef(false)
+  /** Per-rep joint traces (bottom + top) persisted with the session. */
+  const repTracesRef = useRef<RepTracePair[]>([])
+  const lastBottomTraceRef = useRef<ReturnType<typeof captureRepTrace> | null>(null)
+  const clipRecorderRef = useRef<CoachSetRecorder | null>(null)
+  const activeClipIdRef = useRef<string | null>(null)
+  const aiTipServerEnabledRef = useRef(false)
+  const lastMidsetTipAtRef = useRef(0)
+  const lastRepScoreWindowRef = useRef<number[]>([])
 
   const exerciseName = selectedExercise ? (availableExercises.find((e) => e.id === selectedExercise)?.name ?? "") : ""
+
+  /** Resolve the FormSpec for the active exercise, if one exists. */
+  const coachLoadSpec = (id: string) => (coachHasSpec(id) ? coachLoadSpecRaw(id) ?? null : null)
 
   useEffect(() => {
     const intent = consumeAICoachIntent()
@@ -184,6 +229,19 @@ export function AICoach({
     if (!known) return
     setSelectedExercise(intent.exerciseId)
     setState("setup")
+  }, [availableExercises])
+
+  // Pull body weight + unit preference from the local profile cache on mount.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const mod = await import("@/lib/weight/profile")
+        setBodyWeightKg(mod.getBodyWeightKg())
+        setWeightUnitPref(mod.getWeightUnit())
+      } catch {
+        /* fall back to defaults */
+      }
+    })()
   }, [])
 
   const applyA11yPrefs = useCallback((patch: Partial<CoachA11yPrefs>) => {
@@ -193,6 +251,16 @@ export function AICoach({
 
   const handleSelectExercise = (id: string) => {
     setSelectedExercise(id as ExerciseId)
+    setLoadKg(undefined)
+    void (async () => {
+      try {
+        const mod = await import("@/lib/weight/load-history")
+        const last = mod.getLastLoadKg(id)
+        if (last !== undefined) setLoadKg(last)
+      } catch {
+        /* ignore */
+      }
+    })()
     setState("setup")
   }
 
@@ -221,19 +289,76 @@ export function AICoach({
     skeletonAnim.reset()
     skeletonAnim.startScanSweep()
     faceVerifiedSessionRef.current = false
+    repTracesRef.current = []
+    lastBottomTraceRef.current = null
+    setFinishShareSessionId(null)
+    setReplayTarget({ sessionId: null, clipId: null })
+    setReplayOpen(false)
+    setCoachTrack("strength")
+    void clipRecorderRef.current?.stop?.().catch(() => {})
+    clipRecorderRef.current = null
+    activeClipIdRef.current = null
+    lastRepScoreWindowRef.current = []
+    lastMidsetTipAtRef.current = 0
+    setRecapIsPr(false)
+    setSessionCelebrateBurst(false)
     setA11yPrefs(getCoachA11yPrefs())
     setState("detecting")
+
+    if (isCoachReplayLocalEnabled()) {
+      const rec = new CoachSetRecorder()
+      clipRecorderRef.current = rec
+      activeClipIdRef.current =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `coach-${Date.now()}`
+      let n = 0
+      const boot = () => {
+        n += 1
+        if (clipRecorderRef.current !== rec) return
+        const v = videoRef.current
+        if (v && v.videoWidth > 0 && v.videoHeight > 0) {
+          if (!rec.start(v)) {
+            clipRecorderRef.current = null
+            activeClipIdRef.current = null
+          }
+        } else if (n < 400) requestAnimationFrame(boot)
+        else {
+          clipRecorderRef.current = null
+          activeClipIdRef.current = null
+        }
+      }
+      requestAnimationFrame(boot)
+    }
   }, [selectedExercise])
 
   const handleFinish = useCallback(async () => {
     stopFallAlarm()
     resetFallDetection()
     setFallDetected(false)
+
+    const clipIdCaptured = activeClipIdRef.current
+    activeClipIdRef.current = null
+    const recInst = clipRecorderRef.current
+    clipRecorderRef.current = null
+    let clipPack: Awaited<ReturnType<CoachSetRecorder["stop"]>> | null = null
+    if (recInst) {
+      try {
+        clipPack = await recInst.stop()
+      } catch {
+        clipPack = null
+      }
+    }
+
     const finalFeedback = feedback.length > 0 ? feedback : ["Great effort! Keep practicing for even better form."]
     setRecapBreakdown([...breakdown])
     setSelectedRecapRep(repScores.length > 0 ? repScores.length - 1 : null)
     setFeedback(finalFeedback)
     setState("feedback")
+    setFinishShareSessionId(null)
+    setReplayTarget({ sessionId: null, clipId: null })
+    setSessionCelebrateBurst(false)
+
     if (selectedExercise && (reps > 0 || score > 0)) {
       let prevBestScore = 0
       try {
@@ -261,18 +386,36 @@ export function AICoach({
         verifiedMovement: verified,
         faceVerifiedSession: faceOk,
       })
+      setRecapIsPr(rounded > prevBestScore && reps > 0)
+      const repTracesPayload =
+        repTracesRef.current.length > 0 ? [...repTracesRef.current] : undefined
+      let insertedIdLocal: string | null = null
+      const volumeKg = loadKg !== undefined && reps > 0 ? loadKg * reps : undefined
       try {
-        await addCoachSession({
+        insertedIdLocal = await addCoachSession({
           exercise: exerciseName,
           reps,
           score: rounded,
           repScores: [...repScores],
+          repTraces: repTracesPayload,
           effectiveReps: eff,
           verifiedMovement: verified,
           faceVerifiedSession: faceOk,
+          loadKg,
+          volumeKg,
         })
+        if (selectedExercise && loadKg !== undefined && reps > 0) {
+          try {
+            const mod = await import("@/lib/weight/load-history")
+            mod.recordSet(selectedExercise, { loadKg, reps })
+          } catch {
+            /* non-blocking */
+          }
+        }
+        if (insertedIdLocal) setFinishShareSessionId(insertedIdLocal)
         recordCoachSessionMemory(exerciseName, repScores, rounded)
         toast.success(`Saved · ${eff.toFixed(1)} effective reps · ${rounded}% form${verified ? " · Verified" : ""}`)
+        setSessionCelebrateBurst(rounded >= 80)
         if (rounded > prevBestScore && reps > 0) {
           toast.success(`New personal best — ${exerciseName} at ${rounded}% form`, { duration: 4500 })
           try {
@@ -300,16 +443,51 @@ export function AICoach({
           }
         }
       }
+
+      if (clipIdCaptured && clipPack) {
+        try {
+          await saveCoachReplayPackage({
+            clipId: clipIdCaptured,
+            sessionId: insertedIdLocal,
+            exerciseId: selectedExercise,
+            exerciseLabel: exerciseName,
+            durationMs: clipPack.durationMs,
+            blob: clipPack.blob,
+            landmarkFrames: clipPack.landmarkFrames,
+            repMarkersMs: clipPack.repMarkersMs,
+          })
+          if (insertedIdLocal) {
+            await linkCoachReplayToSession(clipIdCaptured, insertedIdLocal).catch(() => {})
+            void uploadCoachClipIfEnabled({
+              sessionId: insertedIdLocal,
+              blob: clipPack.blob,
+              durationMs: clipPack.durationMs,
+            })
+          }
+        } catch {
+          /* best-effort local replay */
+        }
+        setReplayTarget({
+          sessionId: insertedIdLocal,
+          clipId: insertedIdLocal ? null : clipIdCaptured,
+        })
+      }
     } else {
       setSessionDna(null)
+      setRecapIsPr(false)
     }
-  }, [selectedExercise, exerciseName, reps, score, repScores, feedback, breakdown])
+  }, [selectedExercise, exerciseName, reps, score, repScores, feedback, breakdown, loadKg])
 
   const handleReset = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop())
       streamRef.current = null
     }
+    void clipRecorderRef.current?.stop?.().catch(() => {})
+    clipRecorderRef.current = null
+    activeClipIdRef.current = null
+    setReplayOpen(false)
+    setReplayTarget({ sessionId: null, clipId: null })
     setState("select")
     setSelectedExercise(null)
     setScore(0)
@@ -321,6 +499,12 @@ export function AICoach({
     setRecapBreakdown([])
     setSelectedRecapRep(null)
     setSessionDna(null)
+    setRecapIsPr(false)
+    setSessionCelebrateBurst(false)
+    repTracesRef.current = []
+    lastBottomTraceRef.current = null
+    setFinishShareSessionId(null)
+    setCoachTrack("strength")
   }, [])
 
   // Init pose + face landmarker (enrolling / setup / detecting)
@@ -336,6 +520,24 @@ export function AICoach({
         }
       }
     })
+    return () => {
+      cancelled = true
+    }
+  }, [state])
+
+  useEffect(() => {
+    if (state !== "detecting") return
+    let cancelled = false
+    void fetch("/api/ai-coach/chat")
+      .then((r) => r.json().catch(() => ({})))
+      .then((d: unknown) => {
+        if (cancelled) return
+        aiTipServerEnabledRef.current =
+          typeof d === "object" &&
+          d !== null &&
+          "enabled" in d &&
+          Boolean((d as { enabled?: boolean }).enabled)
+      })
     return () => {
       cancelled = true
     }
@@ -673,9 +875,16 @@ export function AICoach({
           const env = assessEnvironment(result.landmarks, timestamp, exercise)
           setEnvAssessment(env)
           const worldLm = (result.worldLandmarks ?? undefined) as Landmark[] | undefined
-          const res = analyzeForm(result.landmarks, exercise, {
+          const traceOpts = {
             world: worldLm && worldLm.length >= 33 ? worldLm : undefined,
             trackingQuality: getDetectionQuality(),
+          }
+          const res = analyzeForm(result.landmarks, exercise, {
+            world: traceOpts.world,
+            trackingQuality: traceOpts.trackingQuality,
+            bodyWeightKg,
+            loadKg,
+            recentRepScores: repScores,
           })
           const displayRes: FormResult = exerciseBodyOk
             ? res
@@ -743,6 +952,9 @@ export function AICoach({
             topFrameCountRef.current = 0
             bottomWasHeldRef.current = bottomFrameCountRef.current >= 1
             addRepFormSample(res.score, W_BOTTOM)
+            if (canCountRep && enoughVisible) {
+              lastBottomTraceRef.current = captureRepTrace(result.landmarks, exercise, "bottom", traceOpts)
+            }
           } else if (phase === "eccentric" || phase === "concentric") {
             addRepFormSample(res.score, W_MOVE)
           } else if (phase === "top") {
@@ -793,9 +1005,58 @@ export function AICoach({
             skeletonAnim.onRepComplete(result.landmarks)
             setRepBounce(true)
             setTimeout(() => setRepBounce(false), 400)
+            const topTrace = captureRepTrace(result.landmarks, exercise, "top", traceOpts)
+            const bottomTrace = lastBottomTraceRef.current ?? captureRepTrace(result.landmarks, exercise, "bottom", traceOpts)
+            repTracesRef.current.push({
+              rep: repTracesRef.current.length + 1,
+              bottom: bottomTrace,
+              top: topTrace,
+            })
+            clipRecorderRef.current?.markRepBoundary()
+            lastBottomTraceRef.current = null
             const st = repScoreStatsRef.current
             const repScore = st.w > 0 ? Math.round(st.sum / st.w) : res.score
             const repScoreForPenalty = st.min ?? res.score
+
+            const usedScore = isCardio ? res.score : repScore
+            const pendingScores = [...repScores, usedScore]
+            const lw = lastRepScoreWindowRef.current
+            lw.push(usedScore)
+            if (lw.length > 2) lw.splice(0, lw.length - 2)
+            const lowTwice = lw.length === 2 && lw[0]! < 60 && lw[1]! < 60
+            const nextRepIdx = repScores.length + 1
+            if (
+              isCoachMidsetTipsEnabled() &&
+              aiTipServerEnabledRef.current &&
+              (lowTwice || (nextRepIdx >= 3 && nextRepIdx % 3 === 0))
+            ) {
+              const nowTip = Date.now()
+              const minGap = lowTwice ? 4000 : 35_000
+              if (nowTip - lastMidsetTipAtRef.current >= minGap) {
+                void (async () => {
+                  try {
+                    const r = await fetch("/api/ai-coach/tip", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      credentials: "include",
+                      body: JSON.stringify({
+                        exerciseId: exercise,
+                        exerciseName,
+                        repScores: pendingScores.slice(-12),
+                        repTraces: repTracesRef.current.slice(-5),
+                      }),
+                    })
+                    const data = (await r.json().catch(() => ({}))) as { tip?: string; error?: string }
+                    if (!r.ok || !data.tip?.trim()) return
+                    lastMidsetTipAtRef.current = Date.now()
+                    speakCoachMidsetTip(data.tip.trim())
+                  } catch {
+                    /* noop */
+                  }
+                })()
+              }
+            }
+
             setRepScores((prev) => [...prev, isCardio ? res.score : repScore])
             const penaltyThreshold = st.w > 0 ? POSTURE_PENALTY_THRESHOLD : POSTURE_PENALTY_NO_ACCUM_THRESHOLD
             if (!isCardio && repScoreForPenalty < penaltyThreshold) {
@@ -838,6 +1099,14 @@ export function AICoach({
           const faultSegmentPairs = faults.flatMap(f =>
             f.segmentPairs ?? []
           ) as [number, number][]
+
+          clipRecorderRef.current?.tick(
+            video,
+            result.landmarks as LandmarkPoint[],
+            displayRes.isGoodForm,
+            displayRes.score,
+            faultSegmentPairs,
+          )
 
           ctx.clearRect(0, 0, cw, ch)
           skeletonAnim.drawScanSweep(ctx, cw, ch, result.landmarks)
@@ -927,6 +1196,9 @@ export function AICoach({
     return (
       <>
         {coachFocusBar}
+        {coachTrack === "mobility" ? (
+          <MobilityCoach onBack={() => setCoachTrack("strength")} />
+        ) : (
       <div className="flex flex-col gap-5 px-4 pt-4 pb-28">
         <header>
           <h1 className="text-2xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
@@ -936,6 +1208,22 @@ export function AICoach({
             Real-time pose detection and form analysis for every rep
           </p>
         </header>
+        <div className="flex rounded-2xl border border-border bg-card p-1">
+          <button
+            type="button"
+            onClick={() => setCoachTrack("strength")}
+            className="flex-1 rounded-xl bg-primary py-2.5 text-xs font-semibold uppercase tracking-wide text-primary-foreground shadow-sm transition-colors"
+          >
+            Strength
+          </button>
+          <button
+            type="button"
+            onClick={() => setCoachTrack("mobility")}
+            className="flex-1 rounded-xl py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted"
+          >
+            Mobility
+          </button>
+        </div>
         <div className="grid grid-cols-3 gap-3">
           {[
             { icon: ScanLine, label: "Pose Detection", color: "bg-metric-coach/15 text-metric-coach" },
@@ -963,14 +1251,21 @@ export function AICoach({
           </div>
         </div>
         <h2 className="text-sm font-semibold text-foreground">Choose Exercise</h2>
-        <div className="grid grid-cols-2 gap-3">
+        <motion.div
+          className="grid grid-cols-2 gap-3"
+          variants={staggerChildren(0.06, 0.05)}
+          initial="hidden"
+          animate="show"
+        >
           {availableExercises.map((ex) => {
             const Icon = ex.icon
             return (
-              <button
+              <motion.button
                 key={ex.id}
+                variants={CINEMATIC.statReveal}
+                type="button"
                 onClick={() => handleSelectExercise(ex.id)}
-                className="group flex min-h-[140px] flex-col items-start gap-3 rounded-2xl border border-border bg-card p-4 text-left shadow-[var(--shadow-card)] transition-all hover:border-metric-coach/40 hover:ring-2 hover:ring-metric-coach/20 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-metric-coach"
+                className="group flex min-h-[140px] flex-col items-start gap-3 rounded-lg border border-border bg-background p-4 text-left transition-colors hover:border-primary active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <div className={`h-14 w-14 rounded-2xl bg-gradient-to-br ${ex.gradient} flex items-center justify-center shrink-0`}>
                   <Icon className="h-7 w-7 text-white/90" />
@@ -984,11 +1279,12 @@ export function AICoach({
                   </h3>
                   <p className="mt-1 line-clamp-2 text-typo-caption text-muted-foreground">{ex.description}</p>
                 </div>
-              </button>
+              </motion.button>
             )
           })}
-        </div>
+        </motion.div>
       </div>
+        )}
       </>
     )
   }
@@ -999,6 +1295,8 @@ export function AICoach({
     const memoryTip = exercise ? getCoachMemoryTip(exercise.name) : null
     const culturalExtras = selectedExercise ? getCulturalTipExtras(locale, selectedExercise) : []
     const SetupIcon = exercise?.icon ?? Camera
+    const spec = selectedExercise ? coachLoadSpec(selectedExercise) : null
+    const showLoadChip = spec?.loadType === "external"
     return (
       <>
         {coachFocusBar}
@@ -1021,6 +1319,17 @@ export function AICoach({
             Position your full body in the camera frame. Stand 6–8 ft away for best detection.
           </p>
         </div>
+        {showLoadChip && selectedExercise && (
+          <div className="flex flex-col items-center gap-2">
+            <span className="text-typo-eyebrow font-semibold uppercase tracking-wide text-muted-foreground">Set load</span>
+            <LoadChip
+              exerciseId={selectedExercise}
+              unit={weightUnitPref}
+              value={loadKg}
+              onChange={setLoadKg}
+            />
+          </div>
+        )}
         <div className="w-full max-w-sm space-y-2">
           <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
             <Info className="h-4 w-4 text-primary" />
@@ -1135,7 +1444,7 @@ export function AICoach({
       <>
         {coachFocusBar}
       <div className="flex flex-col min-h-[calc(100vh-80px)] pb-24">
-        <div className="relative h-[78vh] min-h-[450px] max-h-[85vh] bg-secondary overflow-hidden rounded-3xl border-4 border-primary/40 mx-2 mt-2">
+        <div className="relative h-[78vh] min-h-[450px] max-h-[85vh] bg-secondary overflow-hidden rounded-lg border-2 border-primary mx-2 mt-2">
           <video
             ref={videoRef}
             className="absolute inset-0 w-full h-full object-cover z-0"
@@ -1169,7 +1478,7 @@ export function AICoach({
       <>
         {coachFocusBar}
       <div className="flex min-h-[calc(100vh-80px)] flex-col pb-24 lg:flex-row lg:items-start lg:gap-4 lg:px-3 lg:pt-2">
-        <div className="relative mx-2 mt-2 h-[78vh] min-h-[450px] max-h-[85vh] min-w-0 flex-1 overflow-hidden rounded-3xl border-4 border-primary/40 bg-secondary shadow-[0_0_0_2px_var(--border)] ring-4 ring-primary/20 lg:mx-0 lg:mt-0">
+        <div className="relative mx-2 mt-2 h-[78vh] min-h-[450px] max-h-[85vh] min-w-0 flex-1 overflow-hidden rounded-lg border-2 border-primary bg-secondary lg:mx-0 lg:mt-0">
           {useCamera && (
             <video
               ref={videoRef}
@@ -1229,12 +1538,12 @@ export function AICoach({
           <div
             className={`absolute top-3 right-3 z-20 flex items-center gap-2 rounded-2xl border px-3 py-2 shadow-lg backdrop-blur-md transition-all duration-300 ${
               isGoodForm
-                ? "border-emerald-400/35 bg-emerald-950/80 text-emerald-50"
-                : "border-amber-400/40 bg-amber-950/85 text-amber-50"
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-destructive bg-black/80 text-destructive"
             }`}
           >
-            {isGoodForm ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-300" /> : <AlertCircle className="h-4 w-4 shrink-0 text-amber-200" />}
-            <span className="text-xs font-semibold tracking-wide">{isGoodForm ? "Good form" : "Adjust form"}</span>
+            {isGoodForm ? <CheckCircle2 className="h-4 w-4 shrink-0 text-primary-foreground" /> : <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />}
+            <span className="text-typo-eyebrow font-bold uppercase tracking-[0.2em]">{isGoodForm ? "Good form" : "Adjust form"}</span>
           </div>
           <div className="absolute top-3 left-3 z-20 w-[min(calc(100%-7rem),15.5rem)]">
             <div
@@ -1266,7 +1575,7 @@ export function AICoach({
                       <span className="text-typo-micro font-semibold uppercase tracking-wider text-white/45">/ {targetReps}</span>
                     </RingGauge>
                     {reps >= targetReps && (
-                      <span className="text-typo-caption font-semibold text-emerald-300">Goal reached</span>
+                      <span className="text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-primary">Goal reached</span>
                     )}
                   </div>
                 ) : (
@@ -1281,8 +1590,8 @@ export function AICoach({
               {useCamera && (
                 <div className="flex flex-wrap gap-1.5 border-t border-white/10 bg-black/25 px-2.5 py-2 sm:px-3">
                   <span
-                    className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-typo-eyebrow font-semibold ${
-                      userCentered ? "bg-emerald-500/20 text-emerald-100" : "bg-amber-500/25 text-amber-100"
+                    className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 text-typo-eyebrow font-bold uppercase tracking-[0.18em] ${
+                      userCentered ? "bg-primary/20 text-primary" : "bg-destructive/25 text-destructive"
                     }`}
                     title={userCentered ? "You're in the center zone" : "Move into the dashed box"}
                   >
@@ -1291,8 +1600,8 @@ export function AICoach({
                   </span>
                   {faceEnrolled && (
                     <span
-                      className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-typo-eyebrow font-semibold motion-reduce:animate-none ${
-                        faceMatch ? "bg-emerald-500/20 text-emerald-100" : "bg-red-500/25 text-red-100 motion-safe:animate-pulse"
+                      className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 text-typo-eyebrow font-bold uppercase tracking-[0.18em] motion-reduce:animate-none ${
+                        faceMatch ? "bg-primary/20 text-primary" : "bg-destructive/25 text-destructive motion-safe:animate-pulse"
                       }`}
                       title={faceMatch ? "Your face — reps count" : "Checking face — hold steady if this is you"}
                     >
@@ -1531,15 +1840,45 @@ export function AICoach({
     <>
       {coachFocusBar}
     <div className="flex flex-col items-center gap-6 px-4 pt-8 pb-28">
-      <div className="text-center">
+      <div className="text-center space-y-1">
         <h2 className="text-xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
           Workout Complete
         </h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          {reps} reps · {score}% form · {exerciseName}
+        <p className="text-sm text-muted-foreground">
+          {reps} reps · {exerciseName}
           {effLine ? ` · ${effLine}` : ""}
         </p>
       </div>
+
+      {recapIsPr ? (
+        <MotionCelebrate className="w-full max-w-sm">
+          <div className="rounded-2xl border border-primary/35 bg-primary/15 px-4 py-2.5 text-center text-sm font-bold uppercase tracking-[0.2em] text-primary">
+            Personal record
+          </div>
+        </MotionCelebrate>
+      ) : null}
+
+      <div className="relative w-full max-w-sm overflow-hidden rounded-[1.35rem] border border-[color:var(--surface-stage-hairline)] bg-[color:var(--surface-stage)] px-5 py-10 shadow-xl">
+        {sessionCelebrateBurst ? <CelebrationBurst className="-translate-y-4" /> : null}
+        <StatDisplay tone="stage" eyebrow="Form score" value={Math.round(score)} unit="%" size="lg" />
+        {recapCues.length > 0 ? (
+          <div className="mt-8 space-y-3 border-t border-white/10 pt-8">
+            <p className="text-typo-eyebrow font-bold uppercase tracking-[0.24em] text-white/50">Coach verdict</p>
+            <ul className="space-y-3">
+              {recapCues.slice(0, 3).map((cue, idx) => (
+                <li key={idx} className="flex gap-2 text-base font-medium leading-snug text-[color:var(--surface-stage-fg)]">
+                  <Target className="h-5 w-5 shrink-0 text-primary mt-0.5" aria-hidden />
+                  <span>{cue}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-typo-caption text-white/45">
+              Open the assistant below—your session DNA and these cues ship as context.
+            </p>
+          </div>
+        ) : null}
+      </div>
+
       {sessionDna != null ? (
         <SessionDnaCard {...sessionDna} ringSize={120} className="w-full max-w-sm border-primary/25 shadow-lg" />
       ) : (
@@ -1577,27 +1916,51 @@ export function AICoach({
         </div>
       )}
       <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
-        <div className="rounded-xl bg-card p-4 border border-border text-center">
-          <span className="text-2xl font-bold text-foreground">{reps}</span>
-          <p className="text-typo-eyebrow text-muted-foreground uppercase">Total Reps</p>
+        <div className="rounded-xl border border-border bg-card p-3">
+          <StatDisplay size="md" eyebrow="Total reps" value={reps} />
         </div>
-        <div className="rounded-xl bg-card p-4 border border-border text-center">
-          <span className="text-2xl font-bold text-primary">{avgRepScore}%</span>
-          <p className="text-typo-eyebrow text-muted-foreground uppercase">Avg rep quality</p>
+        <div className="rounded-xl border border-border bg-card p-3">
+          <StatDisplay size="md" eyebrow="Avg rep quality" value={`${avgRepScore}%`} />
         </div>
         {repScores.length > 0 && (
           <>
-            <div className="rounded-xl bg-card p-4 border border-border text-center">
-              <span className="text-2xl font-bold text-chart-4">{Math.max(...repScores)}%</span>
-              <p className="text-typo-eyebrow text-muted-foreground uppercase">Best rep</p>
+            <div className="rounded-xl border border-border bg-card p-3">
+              <StatDisplay size="md" eyebrow="Best rep" value={`${Math.max(...repScores)}%`} />
             </div>
-            <div className="rounded-xl bg-card p-4 border border-border text-center">
-              <span className="text-2xl font-bold text-chart-2">{repScores.filter((s) => s >= 80).length}</span>
-              <p className="text-typo-eyebrow text-muted-foreground uppercase">High-form reps</p>
+            <div className="rounded-xl border border-border bg-card p-3">
+              <StatDisplay size="md" eyebrow="High-form reps" value={repScores.filter((s) => s >= 80).length} />
             </div>
           </>
         )}
       </div>
+      {sessionDna != null ? (
+        <CoachFinishShareBar
+          savedSessionId={finishShareSessionId}
+          pngPayload={{
+            exercise: sessionDna.exercise,
+            reps: sessionDna.reps,
+            score: sessionDna.score,
+            effectiveReps: sessionDna.effectiveReps,
+            repScores: sessionDna.repScores,
+            verifiedMovement: sessionDna.verifiedMovement,
+            faceVerifiedSession: sessionDna.faceVerifiedSession,
+            topFaults: aggregateTopFaults(repTracesRef.current, 3),
+          }}
+          onRequestAiReview={
+            replayTarget.sessionId || replayTarget.clipId ? () => setReplayOpen(true) : undefined
+          }
+        />
+      ) : null}
+      {(replayTarget.sessionId || replayTarget.clipId) && (
+        <button
+          type="button"
+          onClick={() => setReplayOpen(true)}
+          className="flex w-full max-w-sm items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 py-3 text-sm font-semibold text-primary transition-colors hover:bg-primary/15"
+        >
+          <Play className="h-4 w-4 shrink-0" aria-hidden />
+          Replay set
+        </button>
+      )}
       <div className="w-full max-w-sm space-y-2">
         <h3 className="text-sm font-semibold text-foreground">Coach feedback</h3>
         {feedback.map((item, i) => (
@@ -1607,22 +1970,6 @@ export function AICoach({
           </div>
         ))}
       </div>
-      {recapCues.length > 0 && (
-        <div className="w-full max-w-sm rounded-2xl border border-primary/25 bg-primary/5 p-4">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-primary mb-2">Focus next set</h3>
-          <ul className="space-y-2">
-            {recapCues.slice(0, 3).map((cue, idx) => (
-              <li key={idx} className="flex gap-2 text-sm text-foreground">
-                <Target className="h-4 w-4 shrink-0 text-primary mt-0.5" />
-                <span>{cue}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-typo-caption text-muted-foreground">
-            Tap into the assistant below with a follow-up—the recap sends the same session DNA plus these cues as context.
-          </p>
-        </div>
-      )}
       {selectedExercise && (
         <AICoachLlmPanel
           exerciseId={selectedExercise}
@@ -1683,7 +2030,16 @@ export function AICoach({
       <div className="flex gap-3 w-full max-w-sm">
         <button
           onClick={() => {
+            void clipRecorderRef.current?.stop?.().catch(() => {})
+            clipRecorderRef.current = null
+            activeClipIdRef.current = null
+            setReplayOpen(false)
+            setReplayTarget({ sessionId: null, clipId: null })
             setSessionDna(null)
+            setRecapIsPr(false)
+            setFinishShareSessionId(null)
+            repTracesRef.current = []
+            lastBottomTraceRef.current = null
             setState("setup")
             setReps(0)
             setRepScores([])
@@ -1703,6 +2059,14 @@ export function AICoach({
         </button>
       </div>
     </div>
+    <CoachReplaySheet
+      open={replayOpen}
+      onOpenChange={setReplayOpen}
+      sessionId={replayTarget.sessionId}
+      clipId={replayTarget.clipId}
+      loadKg={loadKg}
+      reps={repScores.map((s, i) => ({ index: i, score: s, faults: [] }))}
+    />
     </>
   )
 }

@@ -34,14 +34,15 @@ import { WorkoutHistory } from "@/components/workout-history"
 import { OnboardingWizard } from "@/components/onboarding-wizard"
 import { SupabaseSetupGuide } from "@/components/supabase-setup-guide"
 import { NetworkStatusIndicator } from "@/components/network-status-indicator"
-import { Activity, AlertTriangle, X } from "lucide-react"
+import { AlertTriangle, X } from "lucide-react"
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client"
 import { getAuthErrorMessage } from "@/lib/supabase/config"
-import { getProfile } from "@/lib/store-supabase"
+import { getProfile, getStreak } from "@/lib/store-supabase"
 import { isSecureContext } from "@/lib/secure-context"
-import { siteConfig } from "@/lib/data"
 import { setAICoachIntent } from "@/lib/ai-coach-intent"
 import type { ExerciseId } from "@/lib/form-analysis"
+import { AppHeader } from "@/components/app-header"
+import { isGuestMode, clearGuestMode, markGuestMode } from "@/lib/guest-mode"
 
 type AppState = "splash" | "login" | "app"
 type View = "main" | "history"
@@ -56,8 +57,21 @@ export default function Page() {
   const [insecureBannerDismissed, setInsecureBannerDismissed] = useState(false)
   const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null)
   const [coachFocusMode, setCoachFocusMode] = useState(false)
+  const [headerStreak, setHeaderStreak] = useState(0)
   const [initialName, setInitialName] = useState<string>("")
+  const [guestSession, setGuestSession] = useState(false)
   const supabase = createClient()
+
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined" && isGuestMode()) {
+        setGuestSession(true)
+        setAppState((s) => (s === "splash" || s === "login" ? "app" : s))
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [])
 
   useEffect(() => {
     setInsecureContext(!isSecureContext())
@@ -79,6 +93,7 @@ export default function Page() {
     async function checkAuth() {
       try {
         const { data: { user } } = await supabase.auth.getUser()
+        if (guestSession) return
         if (user && appState === "splash") {
           setAppState("app")
         } else if (!user && appState === "app") {
@@ -86,28 +101,50 @@ export default function Page() {
         }
       } catch (error) {
         console.warn("Auth check failed:", getAuthErrorMessage(error, "Unable to validate auth session."))
-        if (appState === "app") {
+        if (!guestSession && appState === "app") {
           setAppState("login")
         }
       }
     }
     checkAuth()
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, session: { user?: unknown } | null) => {
       if (event === "SIGNED_IN" && session) {
+        clearGuestMode()
+        setGuestSession(false)
         setAppState("app")
       } else if (event === "SIGNED_OUT") {
+        clearGuestMode()
+        setGuestSession(false)
         setAppState("login")
       }
     })
 
     return () => subscription.unsubscribe()
-  }, [appState, supabase])
+  }, [appState, supabase, guestSession])
 
-  // Check onboarding flag once the user is signed in.
   useEffect(() => {
     if (appState !== "app") return
+    let cancelled = false
+    void getStreak()
+      .then((n) => {
+        if (!cancelled) setHeaderStreak(Number(n) || 0)
+      })
+      .catch(() => {
+        if (!cancelled) setHeaderStreak(0)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [appState, activeTab])
+
+  // Check onboarding flag once the user is signed in (skip for guest).
+  useEffect(() => {
+    if (appState !== "app") return
+    if (guestSession) {
+      setNeedsOnboarding(false)
+      return
+    }
     let cancelled = false
     getProfile()
       .then((p) => {
@@ -120,6 +157,18 @@ export default function Page() {
       })
     return () => {
       cancelled = true
+    }
+  }, [appState, guestSession])
+
+  // PWA manifest shortcuts: /?tab=run | ai-coach | arena
+  useEffect(() => {
+    if (appState !== "app") return
+    try {
+      const q = new URLSearchParams(window.location.search).get("tab")
+      const allowed: TabId[] = ["home", "run", "exercises", "ai-coach", "arena", "profile"]
+      if (q && (allowed as string[]).includes(q)) setActiveTab(q as TabId)
+    } catch {
+      /* ignore */
     }
   }, [appState])
 
@@ -135,9 +184,21 @@ export default function Page() {
     }, 300)
   }, [])
 
+  const handleGuestEnter = useCallback(() => {
+    markGuestMode()
+    setGuestSession(true)
+    setTransitioning(true)
+    setTimeout(() => {
+      setAppState("app")
+      setTransitioning(false)
+    }, 300)
+  }, [])
+
   const handleLogout = useCallback(async () => {
     setTransitioning(true)
     try {
+      clearGuestMode()
+      setGuestSession(false)
       await supabase.auth.signOut()
       setAppState("login")
       setActiveTab("home")
@@ -179,7 +240,7 @@ export default function Page() {
           transitioning ? "opacity-0" : "opacity-100"
         }`}
       >
-        <LoginScreen onLogin={handleLogin} />
+        <LoginScreen onLogin={handleLogin} onGuestEnter={handleGuestEnter} />
       </div>
     )
   }
@@ -199,28 +260,16 @@ export default function Page() {
         transitioning ? "opacity-0" : "opacity-100"
       }`}
     >
-      {/* Top bar — slim, brand-only. Streak lives in the Dashboard hero to
-          avoid duplicate chrome. */}
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-background/80 backdrop-blur-xl px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <Activity className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
-          </div>
-          <span
-            className="text-base font-bold text-foreground"
-            style={{ fontFamily: "var(--font-heading)" }}
-          >
-            {siteConfig.appName.includes("Go") ? (
-              <>
-                {siteConfig.appName.replace("Go", "")}
-                <span className="text-primary">Go</span>
-              </>
-            ) : (
-              siteConfig.appName
-            )}
-          </span>
-        </div>
-      </header>
+      <AppHeader
+        guest={guestSession}
+        streakChip={
+          headerStreak > 0 ? (
+            <span className="shrink-0 rounded-sm border border-border bg-transparent px-2.5 py-1 text-typo-micro font-bold uppercase tracking-[0.18em] text-foreground tabular-nums">
+              <span className="text-primary">{headerStreak}d</span> streak
+            </span>
+          ) : null
+        }
+      />
 
       {/* Insecure context banner (HTTP / LAN) */}
       {appState === "app" && insecureContext && !insecureBannerDismissed && (
@@ -241,7 +290,7 @@ export default function Page() {
       )}
 
       {/* Page content */}
-      <main>
+      <main className="min-h-0">
         {view === "history" ? (
           <WorkoutHistory
             onBack={() => setView("main")}
@@ -251,7 +300,7 @@ export default function Page() {
             }}
           />
         ) : (
-          <>
+          <div key={activeTab} className="route-in pb-24">
             {activeTab === "home" && (
               <Dashboard
                 onNavigate={handleTabChange}
@@ -275,7 +324,7 @@ export default function Page() {
             )}
             {activeTab === "arena" && <ArenaHub onNavigate={handleTabChange} />}
             {activeTab === "profile" && <ProfileScreen onLogout={handleLogout} />}
-          </>
+          </div>
         )}
       </main>
 

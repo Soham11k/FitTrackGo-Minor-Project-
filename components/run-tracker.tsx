@@ -2,12 +2,22 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import dynamic from "next/dynamic"
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion"
 import { Play, Pause, Square, MapPin, ChevronDown } from "lucide-react"
-import { addRun } from "@/lib/store-supabase"
+import { addRun, getRuns } from "@/lib/store-supabase"
 import { isNetworkError } from "@/lib/network-status"
 import { isSecureContext } from "@/lib/secure-context"
 import { toast } from "sonner"
 import { RunFinishRecap, type RunFinishLap } from "@/components/run-finish-recap"
+import { RunReadyScreen, type RunReadyGpsStatus } from "@/components/run-ready-screen"
+import { StatDisplay } from "@/components/ui/stat-display"
+import { staggerChildren, CINEMATIC } from "@/lib/motion"
+import { computeWeeklyRunKmImpact, weeklyImpactSentence } from "@/lib/run-week-impact"
+import { detectRunPersonalBest } from "@/lib/run-pb"
+import type { PbResult } from "@/lib/run-pb"
+import type { RunRecord } from "@/lib/store"
+import { announceRunKmSplit } from "@/lib/run-voice"
+import { useLocale } from "@/components/locale-provider"
 
 const RunMap = dynamic(() => import("./run-map").then((m) => m.RunMap), { ssr: false })
 
@@ -34,7 +44,11 @@ function haversineKm(
   return R * c
 }
 
+type PrimaryRunMetric = "pace" | "distance" | "time"
+
 export function RunTracker() {
+  const { t } = useLocale()
+  const reducedMotionPref = useReducedMotion() ?? false
   const [runState, setRunState] = useState<RunState>("idle")
   const [seconds, setSeconds] = useState(0)
   const [distance, setDistance] = useState(0)
@@ -55,7 +69,11 @@ export function RunTracker() {
     path: [number, number][]
     splits: RunFinishLap[]
     calories: number
+    pbResult: PbResult
+    weeklyImpactLine: string
   } | null>(null)
+  const [primaryMetric, setPrimaryMetric] = useState<PrimaryRunMetric>("pace")
+  const [liveHudAnimKey, setLiveHudAnimKey] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const watchIdRef = useRef<number | null>(null)
   const runStateRef = useRef<RunState>("idle")
@@ -166,15 +184,17 @@ export function RunTracker() {
       const lapTimeSecs = seconds - lastLapTimeRef.current
       lastLapDistRef.current = distance
       lastLapTimeRef.current = seconds
+      const lapPace = paceFromDistTime(lapDist, lapTimeSecs)
       setSplits((prev) => [
         ...prev,
         {
           lap: lapKm,
           distance: Math.round(distance * 100) / 100,
           time: lapTimeSecs,
-          pace: paceFromDistTime(lapDist, lapTimeSecs),
+          pace: lapPace,
         },
       ])
+      announceRunKmSplit(lapKm, lapPace)
     }
   }, [runState, distance, seconds, paceFromDistTime])
 
@@ -185,12 +205,33 @@ export function RunTracker() {
     lapCountRef.current = 0
     setPath([])
     setSplits([])
+    setPrimaryMetric("pace")
+    setLiveHudAnimKey((k) => k + 1)
     setRunState("running")
   }
   const handlePause = () => setRunState("paused")
   const handleResume = () => setRunState("running")
   const handleStop = async () => {
-    if (seconds > 0 || distance > 0) {
+    const hadActivity = seconds > 0 || distance > 0
+    if (hadActivity) {
+      let priorRuns: Pick<RunRecord, "distance" | "pace" | "completedAt">[] = []
+      try {
+        const list = await getRuns()
+        priorRuns = list.map((r) => ({
+          distance: r.distance,
+          pace: r.pace,
+          completedAt: r.completedAt,
+        }))
+      } catch {
+        /* guest / offline — skip history-based signals */
+      }
+
+      const pbResult = detectRunPersonalBest(
+        priorRuns.map(({ distance: d, pace: p }) => ({ distance: d, pace: p })),
+        { distanceKm: distance, pace },
+      )
+      const weeklyImpactLine = weeklyImpactSentence(computeWeeklyRunKmImpact(priorRuns, distance))
+
       const snapshot = {
         distanceKm: distance,
         durationSec: seconds,
@@ -198,6 +239,8 @@ export function RunTracker() {
         path: [...path] as [number, number][],
         splits: [...splits] as RunFinishLap[],
         calories: Math.round(calories),
+        pbResult,
+        weeklyImpactLine,
       }
       setSavingRun(true)
       try {
@@ -235,25 +278,112 @@ export function RunTracker() {
     setGpsStatus("off")
   }
 
-  return (
-    <div className="flex flex-col min-h-[calc(100vh-80px)] pb-24 animate-fade-in-up">
-      {recapPayload ? (
-        <RunFinishRecap
-          open={recapOpen}
-          onOpenChange={(o) => {
-            setRecapOpen(o)
-            if (!o) setRecapPayload(null)
-          }}
-          distanceKm={recapPayload.distanceKm}
-          durationSec={recapPayload.durationSec}
-          pacePerKm={recapPayload.pace}
-          path={recapPayload.path}
-          splits={recapPayload.splits}
-          calories={recapPayload.calories}
+  const idleReadyGps = (): RunReadyGpsStatus => {
+    if (typeof window === "undefined") return "off"
+    if (!isSecureContext() || !navigator.geolocation) return "simulated"
+    return mapCenter ? "good" : "searching"
+  }
+
+  const cyclePrimaryMetric = () => {
+    setPrimaryMetric((m) => (m === "pace" ? "distance" : m === "distance" ? "time" : "pace"))
+  }
+
+  const secondaryMetrics = (["pace", "distance", "time"] as const).filter((m) => m !== primaryMetric)
+
+  const hudVariants = staggerChildren(0.06, 0.05)
+
+  function renderMetricCell(m: PrimaryRunMetric, opts: { hero: boolean }) {
+    const layoutIds: Record<PrimaryRunMetric, string> = {
+      pace: "run-stat-pace",
+      distance: "run-stat-distance",
+      time: "run-stat-time",
+    }
+    const lid = opts.hero ? layoutIds[m] : undefined
+    const size = opts.hero ? "lg" : "md"
+    if (m === "pace") {
+      return (
+        <StatDisplay
+          key="pace"
+          eyebrow={t("run.stat.pace")}
+          value={pace}
+          unit="/km"
+          size={size}
+          layoutId={lid}
         />
-      ) : null}
-      {/* Real map (OpenStreetMap / like Google Maps) */}
-      <div className="relative h-[45vh] min-h-[300px] overflow-hidden bg-secondary rounded-b-2xl">
+      )
+    }
+    if (m === "distance") {
+      return (
+        <StatDisplay
+          key="dist"
+          eyebrow={t("run.stat.distance")}
+          value={distance.toFixed(2)}
+          unit="km"
+          size={size}
+          layoutId={lid}
+        />
+      )
+    }
+    return (
+      <StatDisplay
+        key="time"
+        eyebrow={t("run.stat.time")}
+        value={formatTime(seconds)}
+        size={size}
+        layoutId={lid}
+      />
+    )
+  }
+
+  const statsCardClass =
+    "relative z-[20] mx-4 -mt-12 rounded-lg border border-border bg-background p-6 backdrop-blur-xl"
+
+  const statsBody = (
+    <>
+      <button
+        type="button"
+        onClick={cyclePrimaryMetric}
+        className="w-full border border-transparent py-2 text-center transition-colors hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        aria-label="Cycle primary statistic"
+      >
+        {renderMetricCell(primaryMetric, { hero: true })}
+      </button>
+      <div className="mt-5 grid grid-cols-3 hairline-divide-x border-t border-border pt-5">
+        {secondaryMetrics.map((m) => (
+          <div key={m} className="px-2">{renderMetricCell(m, { hero: false })}</div>
+        ))}
+        <div className="px-2">
+          <StatDisplay eyebrow={t("run.stat.cal")} value={String(Math.round(calories))} unit="kcal" size="md" />
+        </div>
+      </div>
+    </>
+  )
+
+  return (
+    <LayoutGroup id="run-track-session">
+      <div className="flex flex-col min-h-[calc(100vh-80px)] pb-24 animate-fade-in-up route-in">
+        <AnimatePresence>
+          {recapOpen && recapPayload ? (
+            <RunFinishRecap
+              key="run-finish"
+              open={recapOpen}
+              onOpenChange={(o) => {
+                setRecapOpen(o)
+                if (!o) setRecapPayload(null)
+              }}
+              distanceKm={recapPayload.distanceKm}
+              durationSec={recapPayload.durationSec}
+              pacePerKm={recapPayload.pace}
+              path={recapPayload.path}
+              splits={recapPayload.splits}
+              calories={recapPayload.calories}
+              pbResult={recapPayload.pbResult}
+              weeklyImpactLine={recapPayload.weeklyImpactLine}
+            />
+          ) : null}
+        </AnimatePresence>
+      {/* Real map — pushed taller to NRC scale */}
+      <div className="relative h-[40vh] min-h-[280px] overflow-hidden bg-secondary">
         {mapReady && (
           <RunMap
             path={path}
@@ -268,59 +398,64 @@ export function RunTracker() {
           </div>
         )}
         <div className="absolute top-4 left-4 right-4 z-[1000] flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 rounded-full bg-background/90 backdrop-blur-sm px-3 py-1.5 shadow-sm">
+          <div className="flex items-center gap-2 rounded-sm border border-border bg-background/95 backdrop-blur-sm px-3 py-1.5">
             <MapPin className="h-3.5 w-3.5 text-primary" />
-            <span className="text-xs font-medium text-foreground">
-              {gpsStatus === "good" ? "GPS active" : gpsStatus === "searching" ? "Searching…" : gpsStatus === "simulated" ? "Simulated" : "Ready"}
+            <span className="text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-foreground">
+              {gpsStatus === "good"
+                ? t("run.gps.active")
+                : gpsStatus === "searching"
+                  ? t("run.gps.searching")
+                  : gpsStatus === "simulated"
+                    ? t("run.gps.simulated")
+                    : t("run.gps.ready")}
             </span>
           </div>
           {typeof window !== "undefined" && !window.isSecureContext && runState !== "idle" && (
-            <span className="text-typo-eyebrow text-muted-foreground bg-background/80 backdrop-blur-sm px-2 py-1 rounded-lg">
-              Use HTTPS for real GPS
+            <span className="text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-muted-foreground border border-border bg-background/80 backdrop-blur-sm px-2 py-1 rounded-sm">
+              {t("run.httpsGPS")}
             </span>
           )}
         </div>
         {runState === "idle" && (
-          <div className="absolute inset-0 z-[500] flex flex-col items-center justify-center bg-background/50 backdrop-blur-[2px] animate-scale-in">
-            <MapPin className="h-12 w-12 text-primary mb-3 drop-shadow-sm" />
-            <p className="text-lg font-semibold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
-              Ready to Run
-            </p>
-            <p className="text-xs text-muted-foreground mt-1 text-center px-4">
-              Tap Start — your route will appear on the map
-            </p>
-            <p className="text-typo-caption text-muted-foreground/80 mt-2 text-center px-4 max-w-[280px]">
-              Your runs will show here after you finish one.
-            </p>
+          <>
+            <RunReadyScreen gpsStatus={idleReadyGps()} onStartRun={handleStart} className="absolute inset-0 z-[500]" />
             {typeof window !== "undefined" && !window.isSecureContext && (
-              <p className="text-typo-eyebrow text-chart-4 mt-2 text-center px-4 max-w-[260px]">
-                For real GPS, use HTTPS or localhost. Some browsers block location on plain HTTP.
+              <p className="absolute bottom-28 left-0 right-0 z-[502] px-8 text-center text-typo-eyebrow text-chart-4">
+                {t("run.https.banner")}
               </p>
             )}
-          </div>
+          </>
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-px bg-border">
-        {[
-          { label: "Distance", value: distance.toFixed(2), unit: "km", delay: "animate-stagger-1" },
-          { label: "Duration", value: formatTime(seconds), unit: "", delay: "animate-stagger-2" },
-          { label: "Pace", value: pace, unit: "min/km", delay: "animate-stagger-3" },
-          { label: "Calories", value: String(Math.round(calories)), unit: "kcal", delay: "animate-stagger-4" },
-        ].map((stat) => (
-          <div
-            key={stat.label}
-            className={`flex flex-col items-center justify-center bg-background p-5 opacity-0 animate-slide-in-bottom ${stat.delay}`}
-            style={{ animationFillMode: "forwards" }}
-          >
-            <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{stat.label}</span>
-            <span className="text-2xl md:text-3xl font-bold text-foreground tabular-nums transition-transform duration-300 hover:scale-110 animate-stat-pop" style={{ fontFamily: "var(--font-heading)" }}>
-              {stat.value}
-            </span>
-            {stat.unit && <span className="text-xs text-muted-foreground">{stat.unit}</span>}
-          </div>
-        ))}
-      </div>
+      {runState === "idle" ? (
+        <div className={statsCardClass}>{statsBody}</div>
+      ) : (
+        <motion.div
+          key={liveHudAnimKey}
+          className={statsCardClass}
+          variants={hudVariants}
+          initial={reducedMotionPref ? false : "hidden"}
+          animate="show"
+        >
+          <motion.div variants={CINEMATIC.statReveal}>
+            <button
+              type="button"
+              onClick={cyclePrimaryMetric}
+              className="w-full rounded-2xl border border-transparent text-center transition-colors hover:border-primary/20 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              aria-label="Cycle primary statistic"
+            >
+              {renderMetricCell(primaryMetric, { hero: true })}
+            </button>
+          </motion.div>
+          <motion.div variants={CINEMATIC.statReveal} className="mt-5 grid grid-cols-3 gap-2 border-t border-border/60 pt-5">
+            {secondaryMetrics.map((m) => (
+              <div key={m}>{renderMetricCell(m, { hero: false })}</div>
+            ))}
+            <StatDisplay eyebrow={t("run.stat.cal")} value={String(Math.round(calories))} unit="kcal" size="md" />
+          </motion.div>
+        </motion.div>
+      )}
 
       {splits.length > 0 && (
         <section className="mx-4 mt-4 rounded-2xl bg-card border border-border overflow-hidden shadow-sm animate-scale-in transition-shadow duration-300 hover:shadow-md">
@@ -328,14 +463,16 @@ export function RunTracker() {
             onClick={() => setShowSplits((v) => !v)}
             className="w-full flex items-center justify-between p-4 text-left transition-all duration-200 hover:bg-secondary/50 active:scale-[0.99]"
           >
-            <span className="text-sm font-semibold text-foreground">Splits / Laps</span>
+            <span className="text-sm font-semibold text-foreground">{t("run.splits")}</span>
             <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${showSplits ? "rotate-180" : ""}`} />
           </button>
           {showSplits && (
             <div className="border-t border-border px-4 pb-4 pt-2 space-y-2 animate-fade-in-up">
               {splits.map((lap) => (
                 <div key={lap.lap} className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Km {lap.lap}</span>
+                  <span className="text-muted-foreground">
+                    {t("run.kmAbbrev")} {lap.lap}
+                  </span>
                   <span className="font-medium text-foreground">{formatTime(lap.time)}</span>
                   <span className="text-muted-foreground">{lap.pace}/km</span>
                 </div>
@@ -346,38 +483,45 @@ export function RunTracker() {
       )}
 
       <div className="flex items-center justify-center gap-6 px-6 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] mt-auto">
-        {runState === "idle" && (
-          <button
-            onClick={handleStart}
-            className="flex h-20 w-20 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-300 hover:scale-110 hover:shadow-xl active:scale-95 animate-scale-in animate-glow-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            aria-label="Start run"
-          >
-            <Play className="h-8 w-8 ml-1 animate-float" fill="currentColor" />
-          </button>
-        )}
+        {runState === "idle" && <div className="w-20 shrink-0" aria-hidden />}
         {runState === "running" && (
           <>
-            <button onClick={handleStop} disabled={savingRun} className="flex h-14 w-14 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-all duration-200 hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-70 disabled:pointer-events-none" aria-label="Stop run">
-              {savingRun ? <span className="text-typo-eyebrow font-medium">Saving…</span> : <Square className="h-5 w-5" fill="currentColor" />}
+            <button onClick={handleStop} disabled={savingRun} className="flex h-14 w-14 min-h-[44px] min-w-[44px] items-center justify-center rounded-full border-2 border-destructive bg-transparent text-destructive transition-all duration-200 hover:bg-destructive hover:text-destructive-foreground active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-70 disabled:pointer-events-none" aria-label="Stop run">
+              {savingRun ? <span className="text-typo-eyebrow font-bold uppercase tracking-[0.18em]">{t("run.saving")}</span> : <Square className="h-5 w-5" fill="currentColor" />}
             </button>
-            <button onClick={handlePause} className="flex h-20 w-20 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-200 hover:scale-105 active:scale-95 animate-glow-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background" aria-label="Pause run">
+            <motion.button
+              layoutId="run-start-button"
+              type="button"
+              onClick={handlePause}
+              className="flex h-20 w-20 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-foreground ring-offset-4 ring-offset-background transition-colors hover:bg-primary/92 focus-visible:outline-none focus-visible:ring-primary"
+              aria-label="Pause run"
+              whileTap={{ scale: reducedMotionPref ? 1 : 0.96 }}
+            >
               <Pause className="h-8 w-8" fill="currentColor" />
-            </button>
+            </motion.button>
             <div className="w-14" />
           </>
         )}
         {runState === "paused" && (
           <>
-            <button onClick={handleStop} disabled={savingRun} className="flex h-14 w-14 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-all duration-200 hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-70 disabled:pointer-events-none" aria-label="Stop run">
-              {savingRun ? <span className="text-typo-eyebrow font-medium">Saving…</span> : <Square className="h-5 w-5" fill="currentColor" />}
+            <button onClick={handleStop} disabled={savingRun} className="flex h-14 w-14 min-h-[44px] min-w-[44px] items-center justify-center rounded-full border-2 border-destructive bg-transparent text-destructive transition-all duration-200 hover:bg-destructive hover:text-destructive-foreground active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-70 disabled:pointer-events-none" aria-label="Stop run">
+              {savingRun ? <span className="text-typo-eyebrow font-bold uppercase tracking-[0.18em]">{t("run.saving")}</span> : <Square className="h-5 w-5" fill="currentColor" />}
             </button>
-            <button onClick={handleResume} className="flex h-20 w-20 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-200 hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background" aria-label="Resume run">
+            <motion.button
+              layoutId="run-start-button"
+              type="button"
+              onClick={handleResume}
+              className="flex h-20 w-20 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-foreground ring-offset-4 ring-offset-background transition-colors hover:bg-primary/92 focus-visible:outline-none focus-visible:ring-primary"
+              aria-label="Resume run"
+              whileTap={{ scale: reducedMotionPref ? 1 : 0.96 }}
+            >
               <Play className="h-8 w-8 ml-1" fill="currentColor" />
-            </button>
+            </motion.button>
             <div className="w-14" />
           </>
         )}
       </div>
     </div>
+    </LayoutGroup>
   )
 }

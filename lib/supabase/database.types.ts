@@ -356,6 +356,27 @@ export interface Database {
         }
         Update: Partial<Database["public"]["Tables"]["program_adherence"]["Insert"]>
       }
+      user_clip_keys: {
+        Row: {
+          user_id: string
+          wrapped_key: string
+          salt: string
+          algo: string
+          iterations: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          wrapped_key: string | Uint8Array
+          salt: string | Uint8Array
+          algo?: string
+          iterations?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Database["public"]["Tables"]["user_clip_keys"]["Insert"]>
+      }
       form_duels: {
         Row: {
           id: string

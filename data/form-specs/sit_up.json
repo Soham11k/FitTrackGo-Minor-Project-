@@ -1,0 +1,24 @@
+{
+  "id": "sit_up",
+  "displayName": "Sit-up",
+  "category": "core",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [0, 11, 12, 23, 24],
+  "visibleFraction": 0.6,
+  "positiveLine": "Strong sit-up — controlled curl up and down",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "shoulder_hip_y_delta", "op": "<", "value": -0.12 } },
+    { "name": "bottom", "enterWhen": { "metric": "shoulder_hip_y_delta", "op": ">", "value": -0.02 } }
+  ],
+  "rules": [
+    {
+      "id": "sit_up.curl",
+      "region": "core",
+      "penalty": 12,
+      "when": { "metric": "shoulder_hip_y_delta", "op": ">=", "value": 0.05 },
+      "feedback": "Sit all the way up — torso clears off the floor",
+      "breakdown": { "label": "Curl", "format": "boolean", "okLabel": "Good", "failLabel": "Curl more", "region": "core" }
+    }
+  ]
+}

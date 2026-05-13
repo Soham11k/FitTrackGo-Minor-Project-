@@ -21,7 +21,13 @@ function getClientIp(request: Request): string {
   return request.headers.get("x-real-ip") || "unknown"
 }
 
+export const runtime = "edge"
+
 const YMD = /^\d{4}-\d{2}-\d{2}$/
+
+/** Short per-user cache to reduce Fitbit API churn (PR D1). */
+const liveResponseCache = new Map<string, { at: number; body: Record<string, unknown> }>()
+const LIVE_CACHE_MS = 5000
 
 export async function GET(request: Request) {
   const configured = isFitbitConfigured()
@@ -223,7 +229,14 @@ export async function GET(request: Request) {
     )
   }
 
-  return NextResponse.json({
+  const cacheKey = `${user.id}:${today}`
+  const now = Date.now()
+  const cached = liveResponseCache.get(cacheKey)
+  if (cached && now - cached.at < LIVE_CACHE_MS) {
+    return NextResponse.json(cached.body)
+  }
+
+  const payload = {
     ok: true,
     fitbitConfigured: true,
     connected: true,
@@ -234,5 +247,7 @@ export async function GET(request: Request) {
     spo2Date,
     spo2Source,
     note: parts.length ? parts.join(" ") : null,
-  })
+  }
+  liveResponseCache.set(cacheKey, { at: now, body: payload })
+  return NextResponse.json(payload)
 }

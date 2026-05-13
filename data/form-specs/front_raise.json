@@ -1,0 +1,24 @@
+{
+  "id": "front_raise",
+  "displayName": "Front Raise",
+  "category": "upper",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16],
+  "visibleFraction": 0.67,
+  "positiveLine": "Strong raise — keep the torso still",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "shoulder_angle_avg", "op": ">", "value": 70 } },
+    { "name": "bottom", "enterWhen": { "metric": "shoulder_angle_avg", "op": "<", "value": 30 } }
+  ],
+  "rules": [
+    {
+      "id": "front_raise.range",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "metric": "shoulder_angle_avg", "op": "<", "value": 65 },
+      "feedback": "Raise to shoulder height",
+      "breakdown": { "label": "Shoulder angle", "format": "angle", "metric": "shoulder_angle_avg", "region": "arms" }
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "burpee",
+  "displayName": "Burpee",
+  "category": "cardio",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 15, 16, 23, 24, 25, 26, 27, 28],
+  "visibleFraction": 0.72,
+  "positiveLine": "Strong burpee — full chest tap and jump",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "hip_y_avg", "op": ">", "value": 0.78 } },
+    { "name": "top", "enterWhen": { "metric": "hip_y_avg", "op": "<", "value": 0.45 } }
+  ],
+  "rules": [
+    {
+      "id": "burpee.chest_tap",
+      "region": "torso",
+      "penalty": 12,
+      "when": { "all": [ { "metric": "hip_y_avg", "op": ">=", "value": 0.78 }, { "metric": "shoulder_hip_y_delta", "op": ">=", "value": 0.06 } ] },
+      "feedback": "Chest taps the floor, then drive back up",
+      "breakdown": { "label": "Chest tap", "format": "boolean", "okLabel": "Good", "failLabel": "Lower", "region": "torso" }
+    }
+  ]
+}

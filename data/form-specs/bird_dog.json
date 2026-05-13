@@ -1,0 +1,24 @@
+{
+  "id": "bird_dog",
+  "displayName": "Bird Dog",
+  "category": "core",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 13, 14, 23, 24, 25, 26],
+  "visibleFraction": 0.67,
+  "positiveLine": "Tight bird dog — slow reach, level hips",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "knee_angle_max", "op": ">", "value": 150 } },
+    { "name": "bottom", "enterWhen": { "metric": "knee_angle_max", "op": "<", "value": 100 } }
+  ],
+  "rules": [
+    {
+      "id": "bird_dog.balance",
+      "region": "core",
+      "penalty": 10,
+      "when": { "metric": "body_line_deviation", "op": ">=", "value": 20 },
+      "feedback": "Keep the hips and shoulders square",
+      "breakdown": { "label": "Body line", "format": "boolean", "okLabel": "Square", "failLabel": "Tilting", "region": "core" }
+    }
+  ]
+}

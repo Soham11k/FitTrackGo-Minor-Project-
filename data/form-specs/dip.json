@@ -1,0 +1,33 @@
+{
+  "id": "dip",
+  "displayName": "Dip",
+  "category": "upper",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16],
+  "visibleFraction": 0.67,
+  "positiveLine": "Strong dip — depth and control on point",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 85 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 160 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 85 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 160 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "dip.depth",
+      "region": "arms",
+      "penalty": 12,
+      "when": { "metric": "elbow_angle_avg", "op": ">=", "value": 105 },
+      "feedback": "Lower until upper arms break parallel",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "region": "arms" }
+    },
+    {
+      "id": "dip.symmetry",
+      "region": "arms",
+      "penalty": 8,
+      "when": { "metric": "elbow_symmetry_diff", "op": ">=", "value": 18 },
+      "feedback": "Press evenly from both sides",
+      "breakdown": { "label": "Symmetry", "format": "boolean", "okLabel": "Even", "failLabel": "Adjust", "region": "arms" }
+    }
+  ]
+}

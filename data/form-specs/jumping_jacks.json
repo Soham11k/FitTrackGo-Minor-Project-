@@ -1,0 +1,24 @@
+{
+  "id": "jumping_jacks",
+  "displayName": "Jumping Jacks",
+  "category": "cardio",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 15, 16, 23, 24, 27, 28],
+  "visibleFraction": 0.67,
+  "positiveLine": "Good jack — full range",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "total_spread_x", "op": ">", "value": 0.78 } },
+    { "name": "bottom", "enterWhen": { "metric": "total_spread_x", "op": "<", "value": 0.22 } }
+  ],
+  "rules": [
+    {
+      "id": "jumping_jacks.spread",
+      "region": "global",
+      "penalty": 10,
+      "when": { "metric": "total_spread_x", "op": "<=", "value": 0.5 },
+      "feedback": "Open arms and legs fully at the top",
+      "breakdown": { "label": "Arm/leg spread", "format": "boolean", "okLabel": "Good", "failLabel": "Wider", "detail": "Full star position" }
+    }
+  ]
+}

@@ -1,5 +1,18 @@
 import { VIS_FORM_ANALYSIS, VIS_EXERCISE_GATE } from "./pose-config"
 import { angle2d, jointAngle, hipPlumbLineDeviation } from "./pose-geometry"
+import { hasSpec, loadSpec } from "./form-engine/registry"
+import { analyzeSpec, getSpecRepPhase } from "./form-engine/engine"
+import type { AnalyzeContext } from "./form-engine/types"
+
+/**
+ * Feature flag toggling spec-driven form analysis. Defaults to OFF so the
+ * legacy hand-coded rule branches stay live until specs are validated.
+ * Enable in dev with `NEXT_PUBLIC_ENABLE_FORM_ENGINE=1`.
+ */
+function isFormEngineEnabled(): boolean {
+  if (typeof process === "undefined") return false
+  return process.env.NEXT_PUBLIC_ENABLE_FORM_ENGINE === "1"
+}
 
 export interface Landmark {
   x: number
@@ -8,13 +21,30 @@ export interface Landmark {
   visibility?: number
 }
 
-export type ExerciseId = "squat" | "pushup" | "plank" | "lunge" | "bicep_curl" | "shoulder_press" | "jumping_jacks" | "high_knees" | "crunch"
+export type ExerciseId =
+  | "squat"
+  | "pushup"
+  | "plank"
+  | "lunge"
+  | "deadlift"
+  | "rdl"
+  | "bicep_curl"
+  | "shoulder_press"
+  | "jumping_jacks"
+  | "high_knees"
+  | "crunch"
 
 export interface AnalyzeFormOptions {
   /** MediaPipe world landmarks (same indices as image) for 3D joint angles when available. */
   world?: Landmark[]
   /** 0–1 from getDetectionQuality(); down-weights score when tracking is poor. */
   trackingQuality?: number
+  /** User body weight (kg) for load-aware scoring (form-engine path). */
+  bodyWeightKg?: number
+  /** External load lifted (kg) for load-aware scoring (form-engine path). */
+  loadKg?: number
+  /** Recent rep scores (for load-degraded meta rule). */
+  recentRepScores?: number[]
 }
 
 export type FormRegion = "torso" | "legs" | "arms" | "core"
@@ -46,6 +76,8 @@ const REQUIRED_LANDMARKS: Record<ExerciseId, number[]> = {
   pushup: [11, 12, 13, 14, 15, 16, 23, 24],
   plank: [11, 12, 23, 24, 25, 26],
   lunge: [11, 12, 23, 24, 25, 26, 27, 28],
+  deadlift: [11, 12, 15, 16, 23, 24, 25, 26, 27, 28],
+  rdl: [11, 12, 15, 16, 23, 24, 25, 26, 27, 28],
   bicep_curl: [11, 12, 13, 14, 15, 16],
   shoulder_press: [11, 12, 13, 14, 15, 16],
   jumping_jacks: [11, 12, 15, 16, 23, 24, 27, 28],
@@ -77,6 +109,34 @@ function applyTrackingScale(rawScore: number, trackingQuality: number | undefine
 }
 
 export function analyzeForm(lm: Landmark[], exercise: ExerciseId, opts: AnalyzeFormOptions = {}): FormResult {
+  // Spec-driven path (feature-flagged).
+  if (isFormEngineEnabled() && hasSpec(exercise)) {
+    const spec = loadSpec(exercise)!
+    const ctx: AnalyzeContext = {
+      bodyWeightKg: opts.bodyWeightKg,
+      loadKg: opts.loadKg,
+      recentRepScores: opts.recentRepScores,
+    }
+    const r = analyzeSpec(spec, lm, {
+      ...ctx,
+      world: opts.world,
+      trackingQuality: opts.trackingQuality,
+    })
+    return {
+      feedback: r.feedback,
+      isGoodForm: r.isGoodForm,
+      score: r.score,
+      breakdown: r.breakdown.map((b) => ({
+        label: b.label,
+        value: b.value,
+        ok: b.ok,
+        detail: b.detail,
+        region: b.region,
+      })),
+      trackingReliability: r.trackingReliability,
+    }
+  }
+
   const feedback: string[] = []
   const breakdown: FormBreakdown[] = []
   let score = 100
@@ -261,6 +321,87 @@ export function analyzeForm(lm: Landmark[], exercise: ExerciseId, opts: AnalyzeF
     if (feedback.length === 0) feedback.push("Good lunge — depth and alignment on point")
   }
 
+  /** Conventional deadlift + Romanian deadlift: hip hinge, bar path proxy (wrist vs mid-foot), neutral back. */
+  if (exercise === "deadlift" || exercise === "rdl") {
+    const isRdl = exercise === "rdl"
+    const lS = get(11)
+    const rS = get(12)
+    const lH = get(23)
+    const rH = get(24)
+    const lK = get(25)
+    const rK = get(26)
+    const lA = get(27)
+    const rA = get(28)
+    const lW = get(15)
+    const rW = get(16)
+    const kneeL = jointAngle(lH, lK, lA, wTri(23, 25, 27))
+    const kneeR = jointAngle(rH, rK, rA, wTri(24, 26, 28))
+    const kneeAvg = (kneeL + kneeR) / 2
+    const hipHingeL = jointAngle(lS, lH, lK, wTri(11, 23, 25))
+    const hipHingeR = jointAngle(rS, rH, rK, wTri(12, 24, 26))
+    const hipHinge = (hipHingeL + hipHingeR) / 2
+    const midFootX = (lA.x + rA.x) / 2
+    const midWristX = (lW.x + rW.x) / 2
+    const barDrift = Math.abs(midWristX - midFootX)
+    const barPathOk = barDrift < 0.072
+    const symKnee = Math.abs(kneeL - kneeR) < 18
+
+    const backOk = hipHinge > 35 && hipHinge < 118
+    let kneeOk: boolean
+    if (isRdl) {
+      kneeOk = kneeAvg > 140 && kneeAvg < 178
+    } else {
+      kneeOk = kneeAvg > 98 && kneeAvg < 155
+    }
+
+    breakdown.push({
+      label: "Hip hinge",
+      value: `${Math.round(hipHinge)}°`,
+      ok: hipHinge >= 40 && hipHinge <= 110,
+      detail: isRdl ? "Push hips back, knees soft" : "Hinge hips, chest proud",
+      region: "legs",
+    })
+    breakdown.push({
+      label: "Knee angle",
+      value: `${Math.round(kneeAvg)}°`,
+      ok: kneeOk,
+      detail: isRdl ? "Keep legs straighter (Romanian)" : "Moderate bend — not a squat",
+      region: "legs",
+    })
+    breakdown.push({
+      label: "Bar path",
+      value: barPathOk ? "Over mid-foot" : "Drift",
+      ok: barPathOk,
+      detail: "Hands over mid-foot (camera proxy)",
+      region: "arms",
+    })
+    breakdown.push({ label: "Symmetry", value: symKnee ? "Even" : "Adjust", ok: symKnee, region: "legs" })
+
+    if (!backOk) {
+      feedback.push("Brace your core and keep a neutral spine through the hinge")
+      score -= 14
+    }
+    if (!barPathOk) {
+      feedback.push("Keep the pull close — bar over mid-foot")
+      score -= 10
+    }
+    if (!kneeOk) {
+      feedback.push(
+        isRdl
+          ? "RDL: soften knees slightly but don’t squat the weight down"
+          : "Deadlift is a hinge — don’t turn it into a squat or lock knees too early"
+      )
+      score -= 12
+    }
+    if (!symKnee) {
+      feedback.push("Balance load evenly between legs")
+      score -= 6
+    }
+    if (feedback.length === 0) {
+      feedback.push(isRdl ? "Strong RDL — hinge and bar path look controlled" : "Solid pull — hinge depth and path on point")
+    }
+  }
+
   if (exercise === "bicep_curl") {
     const lShoulder = get(11)
     const rShoulder = get(12)
@@ -401,6 +542,8 @@ const VISIBLE_FRACTION: Record<ExerciseId, number> = {
   lunge: 0.75,
   pushup: 0.75,
   plank: 0.67,
+  deadlift: 0.72,
+  rdl: 0.72,
   bicep_curl: 0.67,
   shoulder_press: 0.67,
   jumping_jacks: 0.67,
@@ -418,6 +561,8 @@ export function hasEnoughVisibilityForExercise(lm: Landmark[], exercise: Exercis
   switch (exercise) {
     case "squat":
     case "lunge":
+    case "deadlift":
+    case "rdl":
       if (countVisible(lm, [25, 26, 27, 28]) < 2) return false
       if (countVisible(lm, TORSO_INDICES) < 2) return false
       return true
@@ -444,6 +589,10 @@ export function hasEnoughVisibilityForExercise(lm: Landmark[], exercise: Exercis
 }
 
 export function getRepPhase(lm: Landmark[], exercise: ExerciseId, reset: boolean = false): RepPhase {
+  if (isFormEngineEnabled() && hasSpec(exercise)) {
+    const spec = loadSpec(exercise)!
+    return getSpecRepPhase(spec, lm, reset)
+  }
   if (reset) {
     lastPhase = "idle"
     phaseHistory = []
@@ -452,7 +601,35 @@ export function getRepPhase(lm: Landmark[], exercise: ExerciseId, reset: boolean
   
   const get = (i: number) => lm[i] ?? { x: 0.5, y: 0.5 }
   let rawPhase: RepPhase = "idle"
-  
+
+  if (exercise === "deadlift" || exercise === "rdl") {
+    const hipHinge =
+      (angle2d(get(11), get(23), get(25)) + angle2d(get(12), get(24), get(26))) / 2
+    const kneeAvg =
+      (angle2d(get(23), get(25), get(27)) + angle2d(get(24), get(26), get(28))) / 2
+    const isRdl = exercise === "rdl"
+    const atTop = hipHinge > 154 && kneeAvg > 158
+    const atBottom = isRdl ? hipHinge < 98 && kneeAvg > 128 : hipHinge < 98 && kneeAvg < 148
+
+    if (lastPhase === "top" || lastPhase === "idle") {
+      if (atBottom) rawPhase = "bottom"
+      else if (hipHinge < 132) rawPhase = "eccentric"
+      else rawPhase = "top"
+    } else if (lastPhase === "bottom") {
+      if (atTop) rawPhase = "top"
+      else if (hipHinge > 102) rawPhase = "concentric"
+      else rawPhase = "bottom"
+    } else if (lastPhase === "eccentric") {
+      if (atBottom) rawPhase = "bottom"
+      else if (hipHinge < 112) rawPhase = "eccentric"
+      else rawPhase = "top"
+    } else {
+      if (atTop) rawPhase = "top"
+      else if (hipHinge > 100) rawPhase = "concentric"
+      else rawPhase = "bottom"
+    }
+  }
+
   if (exercise === "squat") {
     const lHip = get(23)
     const rHip = get(24)
@@ -630,6 +807,18 @@ export const EXERCISE_TIPS: Record<ExerciseId, string[]> = {
   pushup: ["Camera from the side for best angle", "Hands under shoulders, body in one line", "Lower until chest nearly touches floor", "Elbows ~45° from body", "Squeeze glutes to avoid sagging"],
   plank: ["Side view preferred", "Forearms or hands under shoulders", "Hips level with shoulders", "Engage core and glutes", "Breathe steadily"],
   lunge: ["Full body in frame, side or 45°", "Step far enough: front knee ~90°", "Back knee drops toward floor", "Keep torso upright", "Drive through front heel to stand"],
+  deadlift: [
+    "Side view preferred — bar path is easiest to judge",
+    "Feet hip-width; wrists mimic bar staying over mid-foot",
+    "Hinge at hips — unlock knees slightly, don’t squat the weight",
+    "Brace core each rep and stand tall without hyperextending neck",
+  ],
+  rdl: [
+    "Side view; torso and thighs fully in frame",
+    "Slight knee bend only — hinge by pushing hips back",
+    "Keep spine neutral; stop when hips can’t travel further without rounding",
+    "Range over weight — chase hamstring tension, not the floor",
+  ],
   bicep_curl: ["Face camera, full upper body visible", "Elbows at sides, no swinging", "Full range: extend at bottom, curl to top", "Control the weight, no momentum"],
   shoulder_press: ["Face or slight angle, upper body in frame", "Start elbows ~90°, press straight up", "Keep core tight, don't arch back", "Lower with control"],
   jumping_jacks: ["Full body in frame, step back if needed", "Arms overhead, legs apart at top", "Land softly, stay light on feet", "Steady rhythm"],

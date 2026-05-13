@@ -6,10 +6,14 @@
  * set `isAnimationActive={false}` (see `useChartEnterOnce`) so bars/lines do not re-tween every poll.
  */
 
+import type { Variants } from "framer-motion"
+
 /** Standard easing — smooth deceleration. */
 export const EASE = {
   out: [0.22, 1, 0.36, 1] as const,
   smooth: [0.4, 0, 0.2, 1] as const,
+  /** Slower deceleration for route-draw and hero beats. */
+  cinematic: [0.16, 1, 0.3, 1] as const,
 }
 
 export const DURATION = {
@@ -18,6 +22,9 @@ export const DURATION = {
   medium: 0.38,
   slow: 0.55,
   page: 0.42,
+  /** Hero route trace, stat staggers after draw. */
+  cinematic: 1.2,
+  celebration: 0.7,
 }
 
 export const SPRING = {
@@ -34,6 +41,56 @@ export const SPRING = {
 export function staggerDelaySec(index: number, cap = 12, base = 0.05) {
   return Math.min(index, cap - 1) * base
 }
+
+/** Parent Variants that stagger visible children (`delayChildren` + `staggerChildren`). `cap` limits long lists. */
+export function staggerChildren(
+  delayChildren = 0,
+  staggerEach = 0.06,
+): Variants {
+  return {
+    hidden: {},
+    show: {
+      transition: {
+        delayChildren,
+        staggerChildren: staggerEach,
+        when: "beforeChildren",
+      },
+    },
+  }
+}
+
+/** Stagger duration for child `variant` transitions (optional manual use with capped index). */
+export function staggerDelayForIndex(index: number, cap = 12, staggerEach = 0.06) {
+  return Math.min(index, cap - 1) * staggerEach
+}
+
+/** Named cinematic presets for `motion.div` `variants`. */
+export const CINEMATIC = {
+  heroEnter: {
+    hidden: { opacity: 0, y: 24 },
+    show: {
+      opacity: 1,
+      y: 0,
+      transition: { duration: DURATION.medium, ease: [...EASE.out] },
+    },
+  } satisfies Variants,
+  statReveal: {
+    hidden: { opacity: 0, y: 12 },
+    show: {
+      opacity: 1,
+      y: 0,
+      transition: { duration: DURATION.micro, ease: [...EASE.out] },
+    },
+  } satisfies Variants,
+  celebrationBurst: {
+    hidden: { scale: 0.82, opacity: 0 },
+    show: {
+      scale: 1,
+      opacity: 1,
+      transition: SPRING.celebrate,
+    },
+  } satisfies Variants,
+} as const
 
 /** Recharts bar/area enter; parent should disable after first paint via `isAnimationActive`. */
 export const CHART = {

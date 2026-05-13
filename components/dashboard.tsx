@@ -6,7 +6,7 @@
  * use `metric-coach` / `chart-2` for coach, `metric-run` for runs, `chart-4` for trophies/PBs.
  */
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import {
   Activity,
@@ -19,9 +19,10 @@ import {
   ScanLine,
   Shield,
   RefreshCw,
+  Move,
 } from "lucide-react"
 import type { TabId } from "./bottom-nav"
-import type { UserProfile, CoachRecord } from "@/lib/store"
+import type { UserProfile, CoachRecord, RunRecord } from "@/lib/store"
 import {
   getProfile,
   getWorkouts,
@@ -30,6 +31,8 @@ import {
   getStreak,
 } from "@/lib/store-supabase"
 import { WearableLiveHome } from "@/components/wearable-live-home"
+import { ActivityDetailSheet, type ActivityDetailPayload } from "@/components/activity-detail"
+import { TodayTripleRing } from "@/components/today-triple-ring"
 import { RingGauge } from "@/components/ring-gauge"
 import { HomeWeekChart } from "@/components/home-week-chart"
 import { TodayStatQuad } from "@/components/today-stat-quad"
@@ -46,15 +49,22 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
-import { DURATION, EASE, SPRING, staggerDelaySec } from "@/lib/motion"
+import { DURATION, EASE, SPRING, staggerDelaySec, CINEMATIC } from "@/lib/motion"
 import { useChartEnterOnce } from "@/hooks/use-chart-enter-once"
 import { useLocale } from "@/components/locale-provider"
+import { PwaInstallPrompt } from "@/components/pwa-install-prompt"
+import { resolveTodayPrompt } from "@/lib/today-prompt"
+import { cn } from "@/lib/utils"
 
+/**
+ * NRC-style quick actions: the first (Run) is a hero black tile with a Volt CTA;
+ * the rest are flush mono tiles with a hairline border. Volt overlay on the primary action.
+ */
 const quickActionDefs = [
-  { icon: Zap, labelKey: "dashboard.goRun", tab: "run" as TabId, gradient: "from-primary/40 to-primary/5" },
-  { icon: Target, labelKey: "dashboard.goForm", tab: "ai-coach" as TabId, gradient: "from-chart-2/35 to-chart-2/5" },
-  { icon: Trophy, labelKey: "dashboard.goArena", tab: "arena" as TabId, gradient: "from-chart-4/35 to-chart-4/5" },
-  { icon: Activity, labelKey: "dashboard.goMoves", tab: "exercises" as TabId, gradient: "from-chart-3/25 to-chart-3/5" },
+  { icon: Zap, labelKey: "dashboard.goRun", tab: "run" as TabId, hero: true },
+  { icon: Target, labelKey: "dashboard.goForm", tab: "ai-coach" as TabId, hero: false },
+  { icon: Trophy, labelKey: "dashboard.goArena", tab: "arena" as TabId, hero: false },
+  { icon: Activity, labelKey: "dashboard.goMoves", tab: "exercises" as TabId, hero: false },
 ] as const
 
 function getGreeting() {
@@ -65,6 +75,15 @@ function getGreeting() {
 }
 
 const typeIcons = { workout: Activity, run: Activity, coach: Target, story: TrendingUp } as const
+
+type DashboardFeedRow = {
+  rowKey: string
+  listType: keyof typeof typeIcons
+  title: string
+  detail: string
+  time: string
+  activity: ActivityDetailPayload
+}
 
 const fadeUp = {
   hidden: { opacity: 0, y: 10 },
@@ -116,7 +135,10 @@ export function Dashboard({
     activeMinutes: 0,
     runDistanceTodayKm: 0,
   })
-  const [recent, setRecent] = useState<{ type: string; title: string; detail: string; time: string }[]>([])
+  const [feedRows, setFeedRows] = useState<DashboardFeedRow[]>([])
+  const [sessionsLast7d, setSessionsLast7d] = useState(0)
+  const [mobilityWeekMinutes, setMobilityWeekMinutes] = useState(0)
+  const [feedDetailActivity, setFeedDetailActivity] = useState<ActivityDetailPayload | null>(null)
   const [lastWeekTotal, setLastWeekTotal] = useState(0)
   const [ringSheet, setRingSheet] = useState<null | "week" | "streak">(null)
   const [personalBests, setPersonalBests] = useState<{
@@ -130,6 +152,18 @@ export function Dashboard({
   const reduceMotion = useReducedMotion() ?? false
   const [loadError, setLoadError] = useState<string | null>(null)
   const [retryBump, setRetryBump] = useState(0)
+  const [promptRuns, setPromptRuns] = useState<RunRecord[]>([])
+  const [heroNameBig, setHeroNameBig] = useState(true)
+
+  useEffect(() => {
+    if (reduceMotion) {
+      setHeroNameBig(false)
+      return
+    }
+    if (loading) return
+    const id = window.setTimeout(() => setHeroNameBig(false), 900)
+    return () => clearTimeout(id)
+  }, [loading, reduceMotion])
 
   useEffect(() => {
     if (!isActive) return
@@ -148,6 +182,7 @@ export function Dashboard({
         ])
         setProfile(p)
         setLatestCoach(coachSessions[0] ?? null)
+        setPromptRuns(runs)
 
         const totalCalories = [...workouts.map((w) => w.calories || 0), ...runs.map((r) => r.calories || 0)].reduce((a, b) => a + b, 0)
         const totalActiveMinutes = workouts.reduce((a, w) => a + Math.round((w.duration || 0) / 60), 0) + runs.reduce((a, r) => a + Math.round((r.duration || 0) / 60), 0)
@@ -178,6 +213,11 @@ export function Dashboard({
         })
         setWeekly(weeklyData)
 
+        const mobilitySecWeek = coachSessions
+          .filter((c) => c.kind === "rom" && c.completedAt && new Date(c.completedAt).getTime() >= monday.getTime())
+          .reduce((sum, c) => sum + (c.reps || 0), 0)
+        setMobilityWeekMinutes(Math.round(mobilitySecWeek / 60))
+
         const todayWorkouts = workouts.filter((w) => toLocalDateStr(w.completedAt) === todayStr)
         const todayRuns = runs.filter((r) => toLocalDateStr(r.completedAt) === todayStr)
         const todayCoach = coachSessions.filter((c) => toLocalDateStr(c.completedAt) === todayStr)
@@ -191,33 +231,62 @@ export function Dashboard({
           runDistanceTodayKm: todayRuns.reduce((a, r) => a + runDistanceKm(r), 0),
         })
 
-        const allRecent: { type: string; title: string; detail: string; time: string }[] = [
-          ...workouts.map((w) => ({ type: "workout", title: w.title, detail: `${w.exerciseCount} exercises · ${Math.round(w.duration / 60)}min`, time: w.completedAt })),
+        const allRecent: DashboardFeedRow[] = [
+          ...workouts.map((w) => ({
+            rowKey: `workout-${w.id}`,
+            listType: "workout" as const,
+            title: w.title,
+            detail: `${w.exerciseCount} exercises · ${Math.round(w.duration / 60)}min`,
+            time: w.completedAt,
+            activity: { kind: "workout" as const, workout: w },
+          })),
           ...runs.map((r) => ({
-            type: "run",
+            rowKey: `run-${r.id}`,
+            listType: "run" as const,
             title: "Run",
             detail: `${runDistanceKm(r).toFixed(2)} km · ${r.pace ?? "—"} pace`,
             time: r.completedAt,
+            activity: { kind: "run" as const, run: r },
           })),
           ...coachSessions.map((c) => ({
-            type: "coach",
+            rowKey: `coach-${c.id}`,
+            listType: "coach" as const,
             title: `Coach: ${c.exercise}`,
             detail: `${c.reps} reps · ${c.score}%${c.effectiveReps != null ? ` · ${c.effectiveReps.toFixed(1)} eff` : ""}`,
             time: c.completedAt,
+            activity: { kind: "coach" as const, coach: c },
           })),
         ]
         const tr = runs.find((r) => toLocalDateStr(r.completedAt) === todayStr)
         const tc = coachSessions.find((c) => toLocalDateStr(c.completedAt) === todayStr)
         if (tr && tc) {
           allRecent.push({
-            type: "story",
+            rowKey: `story-${tr.id}-${tc.id}`,
+            listType: "story",
             title: "Run + Coach day",
             detail: `${runDistanceKm(tr).toFixed(2)} km · ${tc.exercise} ${tc.reps} reps`,
             time: new Date(tr.completedAt) > new Date(tc.completedAt) ? tr.completedAt : tc.completedAt,
+            activity: { kind: "story" as const, run: tr, coach: tc },
           })
         }
         allRecent.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
-        setRecent(allRecent.slice(0, 8))
+        setFeedRows(allRecent.slice(0, 8))
+
+        const weekAgoTs = Date.now() - 7 * 86400000
+        const sessions7d = [...workouts, ...runs, ...coachSessions].filter(
+          (x) => new Date(x.completedAt).getTime() >= weekAgoTs,
+        ).length
+        setSessionsLast7d(sessions7d)
+
+        const lifetime = workouts.length + runs.length + coachSessions.length
+        if (lifetime > 0 && typeof window !== "undefined") {
+          try {
+            localStorage.setItem("ft-bottom-nav-tutored", "1")
+            window.dispatchEvent(new Event("ft-bottom-nav-tutored"))
+          } catch {
+            /* private mode */
+          }
+        }
 
         const lastWeekStart = new Date()
         lastWeekStart.setDate(lastWeekStart.getDate() - ((lastWeekStart.getDay() + 6) % 7) - 7)
@@ -301,6 +370,16 @@ export function Dashboard({
   const streakProgressPct = Math.min(100, (stats.streak / Math.max(1, streakTarget)) * 100)
   const todayDateLine = new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })
 
+  const todayPrompt = useMemo(
+    () =>
+      resolveTodayPrompt({
+        runs: promptRuns,
+        streakDays: stats.streak,
+        coachSessionsThisWeekRomMinutes: mobilityWeekMinutes,
+      }),
+    [promptRuns, stats.streak, mobilityWeekMinutes],
+  )
+
   if (loading) {
     return (
       <div className="relative z-[1] flex flex-col gap-4 px-4 pt-3 pb-28">
@@ -329,6 +408,7 @@ export function Dashboard({
 
   return (
     <div className="relative z-[1] flex flex-col gap-4 px-4 pt-3 pb-28">
+      <PwaInstallPrompt />
       {loadError ? (
         <Alert variant="destructive" role="alert" className="border-destructive/40">
           <AlertTitle>Couldn&apos;t refresh home</AlertTitle>
@@ -347,26 +427,44 @@ export function Dashboard({
           </AlertDescription>
         </Alert>
       ) : null}
-      <header className="opacity-0 animate-fade-in-up animate-stagger-1">
-        <p className="text-typo-caption font-medium text-primary">{greeting}</p>
+      <motion.header variants={CINEMATIC.heroEnter} initial="hidden" animate="show" className="-mx-1">
+        <p className="text-typo-eyebrow font-bold uppercase tracking-[0.32em] text-muted-foreground">
+          {todayDateLine}
+        </p>
+        <p className="mt-1 text-typo-caption font-bold uppercase tracking-[0.22em] text-primary">{greeting}</p>
         <h1
-          className="mt-0.5 text-3xl font-bold leading-tight tracking-tight text-foreground sm:text-4xl"
-          style={{ fontFamily: "var(--font-heading)" }}
+          className={cn(
+            "mt-1 font-bold uppercase leading-[0.86] tracking-[-0.04em] text-foreground transition-[font-size,line-height] duration-500",
+            displayName !== "there" && heroNameBig ? "text-display-stat-lg sm:text-[clamp(5rem,18vw,9rem)]" : "text-display-stat sm:text-5xl",
+          )}
+          style={{ fontFamily: "var(--font-display), var(--font-heading)" }}
         >
           {displayName === "there" ? (
             <>
-              Start
+              START
               <span className="text-primary">.</span>
             </>
           ) : (
             <>
-              {titleCaseFirstName(displayName)}
+              {titleCaseFirstName(displayName).toUpperCase()}
               <span className="text-primary">.</span>
             </>
           )}
         </h1>
-        <p className="mt-1.5 text-xs font-medium text-muted-foreground">{todayDateLine}</p>
-      </header>
+        {todayPrompt ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (todayPrompt.kind === "run" || todayPrompt.kind === "streak") onNavigate("run")
+              else onNavigate("ai-coach")
+            }}
+            className="motion-card-interactive mt-4 w-full border-t border-border bg-transparent px-1 py-3 text-left transition-colors hover:bg-secondary/40 volt-edge"
+          >
+            <p className="text-typo-eyebrow font-bold uppercase tracking-[0.22em] text-primary">{todayPrompt.title}</p>
+            <p className="mt-1 text-typo-caption leading-snug text-muted-foreground">{todayPrompt.hint}</p>
+          </button>
+        ) : null}
+      </motion.header>
 
       <motion.section
         className="rounded-3xl border border-metric-coach/25 bg-gradient-to-br from-metric-coach/10 via-card to-card p-4 shadow-sm dark:border-white/10"
@@ -414,7 +512,25 @@ export function Dashboard({
         </div>
       </motion.section>
 
-      <WearableLiveHome onNavigate={onNavigate} paused={!isActive} />
+      <WearableLiveHome sessionsLast7d={sessionsLast7d} onNavigate={onNavigate} paused={!isActive} />
+
+      <motion.section
+        className="rounded-3xl border border-border/80 bg-card p-3 sm:p-4 dark:border-white/10"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: EASE.out }}
+        aria-label="Today rings summary"
+      >
+        <h2 className="mb-3 text-xs font-semibold text-foreground">Today rings</h2>
+        <TodayTripleRing
+          calories={today.calories}
+          calorieGoal={dailyCalorieGoal}
+          activeMinutes={today.activeMinutes}
+          activeMinGoal={dailyActiveMinGoal}
+          sessions={todaySessionTotal}
+          sessionGoal={dailySessionGoal}
+        />
+      </motion.section>
 
       <motion.section
         className="rounded-3xl border border-border/80 bg-card p-3 sm:p-4 dark:border-white/10"
@@ -501,6 +617,29 @@ export function Dashboard({
               className="h-full rounded-full bg-amber-500/90 transition-all duration-500"
               style={{ width: `${streakProgressPct}%` }}
             />
+          </div>
+        </motion.button>
+        <motion.button
+          type="button"
+          onClick={() => onNavigate("ai-coach")}
+          className="col-span-1 flex flex-col gap-3 rounded-3xl border border-chart-3/35 bg-gradient-to-br from-chart-3/12 via-card to-card p-4 text-left shadow-sm transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:col-span-2 dark:border-white/10"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.38, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
+          aria-label={t("dashboard.mobilityWeekTitle")}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold text-foreground">{t("dashboard.mobilityWeekTitle")}</p>
+              <p className="mt-0.5 text-2xl font-bold tabular-nums text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
+                {mobilityWeekMinutes}{" "}
+                <span className="text-sm font-medium text-muted-foreground">min</span>
+              </p>
+              <p className="text-typo-caption text-muted-foreground">{t("dashboard.mobilityWeekHint")}</p>
+            </div>
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-chart-3/20">
+              <Move className="h-6 w-6 text-chart-3" strokeWidth={2} aria-hidden />
+            </div>
           </div>
         </motion.button>
       </div>
@@ -601,31 +740,26 @@ export function Dashboard({
       </Sheet>
 
       <motion.div
-        className="grid grid-cols-3 gap-2"
+        className="-mx-4 grid grid-cols-3 hairline-divide-x border-y border-border bg-background py-5"
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.05, ease: [0.22, 1, 0.36, 1] }}
+        aria-label="Lifetime totals"
       >
-        <div className="flex flex-col items-center gap-1.5 rounded-2xl border border-border/80 bg-card py-4 shadow-sm dark:border-white/10">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10">
-            <Flame className="h-5 w-5 text-primary" />
-          </div>
-          <span className="text-2xl font-bold tabular-nums leading-none" style={{ fontFamily: "var(--font-heading)" }}>{stats.totalCalories}</span>
-          <span className="text-typo-micro font-semibold uppercase tracking-[0.18em] text-muted-foreground">kcal</span>
+        <div className="flex flex-col items-center justify-center gap-1 px-2 text-center">
+          <Flame className="h-4 w-4 text-primary" aria-hidden />
+          <span className="text-3xl font-bold tabular-nums leading-none text-foreground" style={{ fontFamily: "var(--font-display), var(--font-heading)" }}>{stats.totalCalories}</span>
+          <span className="text-typo-micro font-bold uppercase tracking-[0.22em] text-muted-foreground">kcal</span>
         </div>
-        <div className="flex flex-col items-center gap-1.5 rounded-2xl border border-border/80 bg-card py-4 shadow-sm dark:border-white/10">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10">
-            <Timer className="h-5 w-5 text-primary" />
-          </div>
-          <span className="text-2xl font-bold tabular-nums leading-none" style={{ fontFamily: "var(--font-heading)" }}>{stats.totalActiveMinutes}</span>
-          <span className="text-typo-micro font-semibold uppercase tracking-[0.18em] text-muted-foreground">min</span>
+        <div className="flex flex-col items-center justify-center gap-1 px-2 text-center">
+          <Timer className="h-4 w-4 text-primary" aria-hidden />
+          <span className="text-3xl font-bold tabular-nums leading-none text-foreground" style={{ fontFamily: "var(--font-display), var(--font-heading)" }}>{stats.totalActiveMinutes}</span>
+          <span className="text-typo-micro font-bold uppercase tracking-[0.22em] text-muted-foreground">min</span>
         </div>
-        <div className="flex flex-col items-center gap-1.5 rounded-2xl border border-border/80 bg-card py-4 shadow-sm dark:border-white/10">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10">
-            <TrendingUp className="h-5 w-5 text-primary" />
-          </div>
-          <span className="text-2xl font-bold tabular-nums leading-none" style={{ fontFamily: "var(--font-heading)" }}>{stats.totalWorkouts + stats.totalRuns}</span>
-          <span className="text-typo-micro font-semibold uppercase tracking-[0.18em] text-muted-foreground">log</span>
+        <div className="flex flex-col items-center justify-center gap-1 px-2 text-center">
+          <TrendingUp className="h-4 w-4 text-primary" aria-hidden />
+          <span className="text-3xl font-bold tabular-nums leading-none text-foreground" style={{ fontFamily: "var(--font-display), var(--font-heading)" }}>{stats.totalWorkouts + stats.totalRuns}</span>
+          <span className="text-typo-micro font-bold uppercase tracking-[0.22em] text-muted-foreground">log</span>
         </div>
       </motion.div>
 
@@ -780,35 +914,66 @@ export function Dashboard({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.14, ease: [0.22, 1, 0.36, 1] }}
       >
-        <h2 className="mb-2 text-typo-eyebrow font-bold uppercase tracking-[0.22em] text-muted-foreground">Go</h2>
-        <div className="grid grid-cols-2 gap-3">
-          {quickActionDefs.map((action, i) => (
-            <motion.button
-              key={action.labelKey}
-              type="button"
-              onClick={() => onNavigate(action.tab)}
-              className={`relative flex min-h-[100px] flex-col items-start justify-end overflow-hidden rounded-3xl border border-border/80 bg-gradient-to-br p-4 text-left transition-shadow duration-200 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:border-white/10 ${action.gradient} shadow-lg shadow-black/10`}
-              initial={{ opacity: 0, scale: 0.94 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ ...SPRING.list, delay: 0.16 + staggerDelaySec(i, 4, 0.06) }}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <motion.span
-                className="absolute right-3 top-3 inline-flex"
-                animate={{ y: [0, -2, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: i * 0.2 }}
+        <h2 className="mb-3 text-typo-eyebrow font-bold uppercase tracking-[0.32em] text-muted-foreground">Go</h2>
+        {/* Hero black tile (Run) + small mono tiles for the rest. */}
+        <div className="space-y-2">
+          {(() => {
+            const hero = quickActionDefs[0]
+            const HeroIcon = hero.icon
+            return (
+              <motion.button
+                key={hero.labelKey}
+                type="button"
+                onClick={() => onNavigate(hero.tab)}
+                className="relative flex min-h-[120px] w-full items-end overflow-hidden rounded-lg border border-border bg-foreground text-background transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ ...SPRING.list, delay: 0.16 }}
+                whileTap={{ scale: 0.99 }}
               >
-                <action.icon className="h-9 w-9 text-foreground/90 drop-shadow-sm" strokeWidth={1.75} />
-              </motion.span>
-              <span
-                className="text-lg font-bold uppercase tracking-tight text-foreground"
-                style={{ fontFamily: "var(--font-heading)" }}
+                <span className="absolute right-4 top-4 inline-flex">
+                  <HeroIcon className="h-10 w-10 text-primary" strokeWidth={2} aria-hidden />
+                </span>
+                <div className="flex w-full items-end justify-between gap-2 p-4">
+                  <div>
+                    <p className="text-typo-eyebrow font-bold uppercase tracking-[0.32em] text-background/60">Start</p>
+                    <span
+                      className="block text-3xl font-bold uppercase leading-none tracking-tight text-background"
+                      style={{ fontFamily: "var(--font-display), var(--font-heading)" }}
+                    >
+                      {t(hero.labelKey)}
+                    </span>
+                  </div>
+                  <span className="inline-flex items-center gap-1 rounded-sm bg-primary px-3 py-2 text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-primary-foreground">
+                    Go
+                    <Zap className="h-3.5 w-3.5" aria-hidden />
+                  </span>
+                </div>
+              </motion.button>
+            )
+          })()}
+          <div className="grid grid-cols-3 gap-2">
+            {quickActionDefs.slice(1).map((action, i) => (
+              <motion.button
+                key={action.labelKey}
+                type="button"
+                onClick={() => onNavigate(action.tab)}
+                className="relative flex min-h-[96px] flex-col items-start justify-between overflow-hidden rounded-lg border border-border bg-background p-3 text-left transition-colors hover:border-primary/60 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ ...SPRING.list, delay: 0.2 + staggerDelaySec(i, 3, 0.06) }}
+                whileTap={{ scale: 0.98 }}
               >
-                {t(action.labelKey)}
-              </span>
-            </motion.button>
-          ))}
+                <action.icon className="h-6 w-6 text-foreground" strokeWidth={2} aria-hidden />
+                <span
+                  className="text-typo-eyebrow font-bold uppercase tracking-[0.16em] text-foreground"
+                  style={{ fontFamily: "var(--font-heading)" }}
+                >
+                  {t(action.labelKey)}
+                </span>
+              </motion.button>
+            ))}
+          </div>
         </div>
       </motion.section>
 
@@ -839,24 +1004,24 @@ export function Dashboard({
       ) : null}
 
       <motion.section
-        className="rounded-3xl border border-border/80 bg-card/45 p-4 backdrop-blur-xl dark:border-white/10"
+        className="-mx-4 border-y border-border bg-background"
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.42, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
       >
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-typo-eyebrow font-bold uppercase tracking-[0.22em] text-muted-foreground">Feed</h2>
+        <div className="flex items-center justify-between px-4 pt-4 pb-2">
+          <h2 className="text-typo-eyebrow font-bold uppercase tracking-[0.32em] text-muted-foreground">Feed</h2>
           <button
             type="button"
             onClick={onViewAll}
-            className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-typo-eyebrow font-bold uppercase tracking-wider text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="text-typo-eyebrow font-bold uppercase tracking-[0.22em] text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
-            All
+            View All →
           </button>
         </div>
-        <div className="flex flex-col gap-2">
-          {recent.length === 0 ? (
-            <Empty className="w-full rounded-2xl border border-dashed border-border/70 bg-muted/20 py-10 text-primary">
+        <div className="flex flex-col">
+          {feedRows.length === 0 ? (
+            <Empty className="mx-4 w-auto border border-dashed border-border bg-background py-10 text-primary">
               <EmptyHeader>
                 <EmptyMedia>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -886,8 +1051,8 @@ export function Dashboard({
               </EmptyContent>
             </Empty>
           ) : (
-            recent.map((item, i) => {
-              const Icon = typeIcons[item.type as keyof typeof typeIcons] ?? Activity
+            feedRows.map((item, i) => {
+              const Icon = typeIcons[item.listType] ?? Activity
               const rel = (() => {
                 const d = toLocalDateStr(item.time)
                 const today = toLocalDateStr(new Date())
@@ -896,10 +1061,18 @@ export function Dashboard({
                 if (d === yesterday) return "1d"
                 return `${Math.floor((Date.now() - new Date(item.time).getTime()) / 86400000)}d`
               })()
+              const isLatest = i === 0
+              const isLast = i === feedRows.length - 1
               return (
-                <motion.div
-                  key={`${item.type}-${item.time}`}
-                  className="motion-card flex items-center gap-3 rounded-2xl border border-border/50 bg-gradient-to-r from-card/80 to-card/30 px-2 py-2.5 transition-colors hover:border-primary/20 dark:border-white/10"
+                <motion.button
+                  key={item.rowKey}
+                  type="button"
+                  onClick={() => setFeedDetailActivity(item.activity)}
+                  className={cn(
+                    "motion-card relative flex w-full items-center gap-3 border-t border-border bg-background px-4 py-3 text-left transition-colors hover:bg-secondary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-inset",
+                    isLast && "border-b",
+                    isLatest && "volt-edge",
+                  )}
                   initial={reduceMotion ? false : { opacity: 0, x: -12 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{
@@ -908,22 +1081,26 @@ export function Dashboard({
                     ease: EASE.out,
                   }}
                 >
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 ring-1 ring-primary/15">
-                    <Icon className="h-7 w-7 text-primary" strokeWidth={2} />
-                  </div>
+                  <Icon className="h-5 w-5 shrink-0 text-foreground" strokeWidth={2} aria-hidden />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold leading-tight text-foreground">{item.title}</p>
-                    <p className="truncate text-typo-eyebrow text-muted-foreground">{item.detail}</p>
+                    <p className="truncate text-sm font-bold uppercase tracking-wide leading-tight text-foreground">{item.title}</p>
+                    <p className="truncate text-typo-caption text-muted-foreground">{item.detail}</p>
                   </div>
-                  <span className="shrink-0 rounded-full bg-muted/80 px-2 py-1 text-typo-micro font-bold tabular-nums text-muted-foreground">
+                  <span className="shrink-0 text-typo-micro font-bold uppercase tracking-[0.22em] tabular-nums text-muted-foreground">
                     {rel}
                   </span>
-                </motion.div>
+                </motion.button>
               )
             })
           )}
         </div>
       </motion.section>
+
+      <ActivityDetailSheet
+        open={feedDetailActivity != null}
+        onOpenChange={(o) => !o && setFeedDetailActivity(null)}
+        activity={feedDetailActivity}
+      />
     </div>
   )
 }

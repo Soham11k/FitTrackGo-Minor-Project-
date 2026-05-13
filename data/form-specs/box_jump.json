@@ -1,0 +1,24 @@
+{
+  "id": "box_jump",
+  "displayName": "Box Jump",
+  "category": "cardio",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [23, 24, 25, 26, 27, 28],
+  "visibleFraction": 0.67,
+  "positiveLine": "Powerful jump — land soft on top",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "ankle_y_avg", "op": "<", "value": 0.5 } },
+    { "name": "bottom", "enterWhen": { "metric": "ankle_y_avg", "op": ">", "value": 0.78 } }
+  ],
+  "rules": [
+    {
+      "id": "box_jump.landing",
+      "region": "legs",
+      "penalty": 10,
+      "when": { "metric": "knee_angle_avg", "op": "<", "value": 95 },
+      "feedback": "Stand tall on top — full hip and knee extension",
+      "breakdown": { "label": "Top extension", "format": "angle", "metric": "knee_angle_avg", "region": "legs" }
+    }
+  ]
+}

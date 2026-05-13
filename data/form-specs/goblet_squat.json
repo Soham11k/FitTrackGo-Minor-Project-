@@ -1,0 +1,34 @@
+{
+  "id": "goblet_squat",
+  "displayName": "Goblet Squat",
+  "category": "lower",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 23, 24, 25, 26, 27, 28],
+  "visibleFraction": 0.75,
+  "positiveLine": "Strong goblet — depth and chest stay up",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "knee_angle_avg", "op": "<", "value": 100 } },
+    { "name": "top", "enterWhen": { "metric": "knee_angle_avg", "op": ">", "value": 158 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "knee_angle_avg", "op": ">=", "value": 100 }, { "metric": "knee_angle_avg", "op": "<=", "value": 158 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "goblet_squat.depth",
+      "region": "legs",
+      "penalty": 12,
+      "loadRelax": { "perXBodyweight": 0.8, "addThresholdDeg": 6 },
+      "when": { "all": [ { "metric": "depth_ratio", "op": "<=", "value": 0.08 }, { "metric": "knee_angle_avg", "op": ">=", "value": 100 } ] },
+      "feedback": "Sit between the heels — break parallel",
+      "breakdown": { "label": "Depth", "format": "boolean", "okLabel": "Good", "failLabel": "Higher", "region": "legs" }
+    },
+    {
+      "id": "goblet_squat.knee_tracking",
+      "region": "legs",
+      "penalty": 8,
+      "when": { "metric": "knee_tracking_x", "op": ">=", "value": 0.06 },
+      "feedback": "Push knees out, don't cave in",
+      "breakdown": { "label": "Knee tracking", "format": "boolean", "okLabel": "Good", "failLabel": "Caving", "region": "legs" }
+    }
+  ]
+}

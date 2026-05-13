@@ -1,0 +1,25 @@
+{
+  "id": "overhead_tricep_extension",
+  "displayName": "Overhead Tricep Extension",
+  "category": "upper",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16],
+  "visibleFraction": 0.67,
+  "positiveLine": "Clean extension — elbows tight, control on the negative",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 70 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 165 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 70 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 165 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "overhead_tricep_extension.range",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "any": [ { "metric": "elbow_angle_avg", "op": "<=", "value": 50 }, { "metric": "elbow_angle_avg", "op": ">=", "value": 175 } ] },
+      "feedback": "Full range — flex deep, then lock out",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "region": "arms" }
+    }
+  ]
+}

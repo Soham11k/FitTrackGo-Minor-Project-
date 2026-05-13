@@ -1,0 +1,25 @@
+{
+  "id": "bench_dip",
+  "displayName": "Bench Dip",
+  "category": "upper",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16],
+  "visibleFraction": 0.67,
+  "positiveLine": "Clean bench dip — elbows track straight",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 80 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 160 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 80 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 160 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "bench_dip.depth",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "metric": "elbow_angle_avg", "op": ">=", "value": 105 },
+      "feedback": "Lower until upper arms break parallel",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "region": "arms" }
+    }
+  ]
+}

@@ -1,11 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import Image from "next/image"
 import { motion, AnimatePresence } from "framer-motion"
-import { Check, ChevronRight, Target, Zap, Flame, Heart, Award, Sparkles } from "lucide-react"
+import { Check, ChevronRight, Lock, Target, Zap, Flame, Heart, Award, Sparkles } from "lucide-react"
 import type { UserProfile } from "@/lib/store"
 import { saveProfile } from "@/lib/store-supabase"
 import { toast } from "sonner"
+import { StatDisplay } from "@/components/ui/stat-display"
+import { CINEMATIC } from "@/lib/motion"
+import { coachClipsCloudFeatureFlag } from "@/lib/coach-replay/prefs"
+import { isClipEncryptionEnabledEnv } from "@/lib/encryption/env"
+import { PassphraseSetupDialog } from "@/components/encryption/passphrase-setup"
+import { Button } from "@/components/ui/button"
 
 type Level = UserProfile["level"]
 
@@ -35,14 +42,32 @@ export function OnboardingWizard({
   const [name, setName] = useState(initialName?.trim() ?? "")
   const [level, setLevel] = useState<Level>("beginner")
   const [goals, setGoals] = useState<string[]>([])
+  const [weightUnit, setWeightUnit] = useState<"kg" | "lb">("kg")
+  const [bodyWeightStr, setBodyWeightStr] = useState<string>("")
   const [saving, setSaving] = useState(false)
+  const [clipPassphraseOpen, setClipPassphraseOpen] = useState(false)
 
-  const steps = [
-    { key: "welcome", label: "Welcome" },
-    { key: "name", label: "Name" },
-    { key: "level", label: "Level" },
-    { key: "goals", label: "Goals" },
-  ] as const
+  const showClipProtect = coachClipsCloudFeatureFlag() && isClipEncryptionEnabledEnv()
+  const steps = useMemo(
+    () =>
+      showClipProtect
+        ? [
+            { key: "welcome", label: "Welcome" },
+            { key: "name", label: "Name" },
+            { key: "level", label: "Level" },
+            { key: "goals", label: "Goals" },
+            { key: "weight", label: "Weight" },
+            { key: "clip", label: "Clip privacy" },
+          ]
+        : [
+            { key: "welcome", label: "Welcome" },
+            { key: "name", label: "Name" },
+            { key: "level", label: "Level" },
+            { key: "goals", label: "Goals" },
+            { key: "weight", label: "Weight" },
+          ],
+    [showClipProtect],
+  )
   const progress = ((step + 1) / steps.length) * 100
 
   function toggleGoal(goal: string) {
@@ -52,11 +77,16 @@ export function OnboardingWizard({
   async function finish() {
     setSaving(true)
     try {
+      const num = Number.parseFloat(bodyWeightStr)
+      const validNum = Number.isFinite(num) && num > 0
+      const bodyWeightKg = validNum ? (weightUnit === "lb" ? num * 0.45359237 : num) : undefined
       await saveProfile({
         name: name.trim() || "Athlete",
         level,
         goals,
         onboarded: true,
+        bodyWeightKg,
+        weightUnit,
       })
       toast.success("You're all set!")
       onComplete()
@@ -84,46 +114,30 @@ export function OnboardingWizard({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
-      <header className="border-b border-border px-4 py-3">
+      <header className="border-b border-border bg-background px-4 py-4">
         <div className="mx-auto flex max-w-md items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <Heart className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-primary text-primary-foreground">
+            <Heart className="h-4 w-4" strokeWidth={2.5} aria-hidden />
           </div>
-          <div className="flex-1">
-            <div className="flex items-center justify-between">
-              <p className="text-typo-eyebrow font-bold uppercase tracking-wider text-muted-foreground">
-                {steps[step].label} · {step + 1}/{steps.length}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-typo-eyebrow font-bold uppercase tracking-[0.28em] text-foreground truncate">
+                {steps[step]?.label ?? ""} · {step + 1}/{steps.length}
               </p>
-              <div className="flex items-center gap-1" aria-hidden>
-                {steps.map((s, i) => (
-                  <span
-                    key={s.key}
-                    className={`h-1.5 rounded-full transition-all duration-300 ${
-                      i === step
-                        ? "w-4 bg-primary"
-                        : i < step
-                          ? "w-1.5 bg-primary/70"
-                          : "w-1.5 bg-muted"
-                    }`}
-                  />
-                ))}
-              </div>
             </div>
-            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-primary transition-all duration-500"
-                style={{ width: `${progress}%` }}
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(progress)}
+            <div className="relative mt-2 h-[3px] w-full overflow-hidden bg-foreground/10">
+              <motion.div
+                className="h-full bg-primary"
+                initial={{ width: "0%" }}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
               />
             </div>
           </div>
           <button
             type="button"
             onClick={skip}
-            className="text-xs font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded"
+            className="text-typo-eyebrow font-bold uppercase tracking-[0.22em] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded"
           >
             Skip
           </button>
@@ -134,34 +148,29 @@ export function OnboardingWizard({
         <div className="mx-auto max-w-md">
           <AnimatePresence mode="wait">
             <motion.div
-              key={steps[step].key}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.25 }}
+              key={`${steps[step]!.key}-${step}`}
+              variants={CINEMATIC.heroEnter}
+              initial="hidden"
+              animate="show"
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.22 }}
               className="space-y-6"
             >
               {step === 0 && (
-                <>
-                  <div className="flex justify-center">
-                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 ring-2 ring-primary/30">
-                      <Award className="h-10 w-10 text-primary" />
-                    </div>
+                <div className="space-y-6 rounded-lg border border-border bg-[color:var(--surface-stage)] px-5 py-8 text-[color:var(--surface-stage-fg)]">
+                  <div className="flex justify-center" aria-hidden>
+                    <Image src="/illustrations/onboarding-welcome.svg" alt="" width={96} height={96} className="h-24 w-24 opacity-95" />
                   </div>
-                  <div className="text-center">
-                    <h1
-                      className="text-3xl font-bold text-foreground"
-                      style={{ fontFamily: "var(--font-heading)" }}
-                    >
-                      Train with proof
-                    </h1>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      Thirty seconds to tune FitTrack Go around your goals — runs, form checks, and fair Arena duels.
-                    </p>
-                  </div>
-                  <ul className="space-y-2 text-sm text-muted-foreground">
+                  <StatDisplay
+                    tone="stage"
+                    size="lg"
+                    eyebrow="Welcome"
+                    value="Train with proof"
+                    secondary="Thirty seconds to tune FitTrack Go around your goals — runs, form checks, and fair Arena duels."
+                  />
+                  <ul className="space-y-2 text-sm text-[color:oklch(0.92_0_0/0.7)]">
                     <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary" /> Camera form checks on your device — pose never uploaded as video
+                      <Award className="h-4 w-4 shrink-0 text-primary" /> Camera form checks on your device — pose never uploaded as video
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="h-4 w-4 text-primary" /> Arena duels use the same rep-level scores as Coach Assist
@@ -170,29 +179,35 @@ export function OnboardingWizard({
                       <Check className="h-4 w-4 text-primary" /> GPS runs, library workouts, and optional wearables in one flow
                     </li>
                   </ul>
-                </>
+                </div>
               )}
 
               {step === 1 && (
                 <div className="space-y-3">
-                  <label htmlFor="onb-name" className="block text-sm font-semibold text-foreground">
+                  <p className="text-typo-eyebrow font-bold uppercase tracking-[0.3em] text-muted-foreground">Step 1</p>
+                  <label
+                    htmlFor="onb-name"
+                    className="block text-3xl font-bold uppercase leading-tight text-foreground"
+                    style={{ fontFamily: "var(--font-display), var(--font-heading)" }}
+                  >
                     What should we call you?
                   </label>
                   <input
                     id="onb-name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="First name"
+                    placeholder="FIRST NAME"
                     autoFocus
-                    className="w-full rounded-xl border border-border bg-card px-4 py-3 text-base text-foreground outline-none focus:border-primary"
+                    className="w-full rounded-lg border border-border bg-transparent px-4 py-3 text-base font-semibold text-foreground outline-none placeholder:text-muted-foreground placeholder:font-bold placeholder:uppercase placeholder:tracking-[0.18em] placeholder:text-xs focus:border-primary"
                   />
-                  <p className="text-xs text-muted-foreground">You can change this anytime from Profile.</p>
+                  <p className="text-typo-caption text-muted-foreground">You can change this anytime from Profile.</p>
                 </div>
               )}
 
               {step === 2 && (
                 <div className="space-y-3">
-                  <h2 className="text-lg font-semibold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
+                  <p className="text-typo-eyebrow font-bold uppercase tracking-[0.3em] text-muted-foreground">Step 2</p>
+                  <h2 className="text-3xl font-bold uppercase leading-tight text-foreground" style={{ fontFamily: "var(--font-display), var(--font-heading)" }}>
                     Your current level
                   </h2>
                   <div className="space-y-2">
@@ -200,11 +215,12 @@ export function OnboardingWizard({
                       <button
                         key={l.id}
                         type="button"
+                        aria-label={`Select fitness level ${l.label}`}
                         onClick={() => setLevel(l.id)}
-                        className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition-all active:scale-[0.99] ${
+                    className={`flex w-full items-center gap-3 rounded-lg border p-4 text-left transition-colors active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                           level === l.id
-                            ? "border-primary bg-primary/10 ring-2 ring-primary/40 shadow-[var(--shadow-card)]"
-                            : "border-border bg-card hover:bg-secondary/40"
+                            ? "border-primary bg-primary/10"
+                            : "border-border bg-background hover:bg-secondary/40"
                         }`}
                       >
                         <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${l.tintBg}`}>
@@ -223,22 +239,24 @@ export function OnboardingWizard({
 
               {step === 3 && (
                 <div className="space-y-3">
-                  <h2 className="text-lg font-semibold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
+                  <p className="text-typo-eyebrow font-bold uppercase tracking-[0.3em] text-muted-foreground">Step 3</p>
+                  <h2 className="text-3xl font-bold uppercase leading-tight text-foreground" style={{ fontFamily: "var(--font-display), var(--font-heading)" }}>
                     What are you working toward?
                   </h2>
-                  <p className="text-xs text-muted-foreground">Pick one or more. Skip to decide later.</p>
-                  <div className="grid grid-cols-2 gap-3">
+                  <p className="text-typo-caption text-muted-foreground">Pick one or more. Skip to decide later.</p>
+                  <div className="grid grid-cols-2 gap-2">
                     {GOAL_OPTIONS.map((g) => {
                       const selected = goals.includes(g)
                       return (
                         <button
                           key={g}
                           type="button"
+                          aria-label={`Toggle goal ${g}`}
                           onClick={() => toggleGoal(g)}
-                          className={`rounded-2xl border p-4 text-sm font-medium transition-all active:scale-[0.98] ${
+                          className={`rounded-lg border p-4 text-sm font-bold uppercase tracking-wide transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                             selected
-                              ? "border-primary bg-primary/10 text-primary ring-2 ring-primary/60 shadow-[var(--shadow-card)]"
-                              : "border-border bg-card text-foreground hover:bg-secondary/40"
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-background text-foreground hover:bg-secondary/40"
                           }`}
                         >
                           <span className="flex items-center justify-between gap-2">
@@ -254,10 +272,79 @@ export function OnboardingWizard({
                   </div>
                 </div>
               )}
+
+              {step === 4 && (
+                <div className="space-y-4">
+                  <p className="text-typo-eyebrow font-bold uppercase tracking-[0.3em] text-muted-foreground">Step 4</p>
+                  <h2 className="text-3xl font-bold uppercase leading-tight text-foreground" style={{ fontFamily: "var(--font-display), var(--font-heading)" }}>
+                    Your weight
+                  </h2>
+                  <p className="text-typo-caption text-muted-foreground">
+                    Optional. Used to make load-aware form scoring smarter (e.g. relax squat depth when you go heavy).
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      inputMode="decimal"
+                      placeholder={weightUnit === "kg" ? "e.g. 72" : "e.g. 158"}
+                      value={bodyWeightStr}
+                      onChange={(e) => setBodyWeightStr(e.target.value.replace(/[^0-9.]/g, ""))}
+                      className="flex-1 rounded-lg border border-border bg-transparent px-4 py-3 text-base font-semibold text-foreground placeholder:text-muted-foreground/60 placeholder:font-bold placeholder:uppercase placeholder:tracking-[0.18em] placeholder:text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    />
+                    <div className="flex rounded-lg border border-border bg-background p-1 text-xs font-bold">
+                      {(["kg", "lb"] as const).map((u) => (
+                        <button
+                          key={u}
+                          type="button"
+                          onClick={() => setWeightUnit(u)}
+                          className={`rounded-sm px-3 py-2 uppercase tracking-[0.18em] ${weightUnit === u ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                        >
+                          {u.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBodyWeightStr("")
+                      if (showClipProtect) setStep(5)
+                      else void finish()
+                    }}
+                    className="text-typo-eyebrow font-bold uppercase tracking-[0.22em] text-muted-foreground underline-offset-2 hover:underline hover:text-foreground"
+                  >
+                    Skip for now →
+                  </button>
+                </div>
+              )}
+
+              {step === 5 && showClipProtect && (
+                <div className="space-y-4">
+                  <p className="text-typo-eyebrow font-bold uppercase tracking-[0.3em] text-muted-foreground">
+                    Protect your clips
+                  </p>
+                  <div className="flex items-start gap-3 rounded-lg border border-border bg-secondary/25 p-4">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-background">
+                      <Lock className="h-5 w-5 text-primary" aria-hidden />
+                    </div>
+                    <div className="space-y-2 text-sm text-muted-foreground">
+                      <p className="text-base font-semibold text-foreground">Optional passphrase backup</p>
+                      <p>
+                        Coach clips you sync to the cloud can be encrypted. Set a passphrase to recover playback on another
+                        browser. You can skip and add this anytime from Profile.
+                      </p>
+                      <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setClipPassphraseOpen(true)}>
+                        Back up encryption key
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </AnimatePresence>
         </div>
       </main>
+
+      <PassphraseSetupDialog open={clipPassphraseOpen} onOpenChange={setClipPassphraseOpen} />
 
       <footer className="border-t border-border px-4 py-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto flex max-w-md items-center gap-2">
@@ -266,7 +353,7 @@ export function OnboardingWizard({
               type="button"
               onClick={() => setStep((s) => Math.max(0, s - 1))}
               disabled={saving}
-              className="rounded-xl border border-border bg-card px-4 py-3 text-sm font-medium text-foreground disabled:opacity-60"
+              className="rounded-lg border border-border bg-transparent px-4 py-3 text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-foreground disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               Back
             </button>
@@ -278,7 +365,7 @@ export function OnboardingWizard({
               else setStep((s) => s + 1)
             }}
             disabled={!canAdvance || saving}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground disabled:opacity-60 active:scale-[0.98]"
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary py-3 text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-primary-foreground disabled:opacity-60 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             {step >= steps.length - 1 ? (saving ? "Saving…" : "Let's go") : "Continue"}
             {step < steps.length - 1 && <ChevronRight className="h-4 w-4" />}

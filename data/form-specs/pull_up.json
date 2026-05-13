@@ -1,0 +1,33 @@
+{
+  "id": "pull_up",
+  "displayName": "Pull-up",
+  "category": "upper",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16],
+  "visibleFraction": 0.67,
+  "positiveLine": "Clean pull — chin clears with control",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 70 } },
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 158 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 70 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 158 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "pull_up.full_lockout",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "metric": "elbow_angle_avg", "op": "<", "value": 155 },
+      "feedback": "Fully extend at the bottom of every rep",
+      "breakdown": { "label": "Bottom lockout", "format": "angle", "metric": "elbow_angle_avg", "detail": "Hang to dead arms", "region": "arms" }
+    },
+    {
+      "id": "pull_up.top_range",
+      "region": "arms",
+      "penalty": 12,
+      "when": { "metric": "elbow_angle_avg", "op": ">=", "value": 95 },
+      "feedback": "Pull until chin is over the bar",
+      "breakdown": { "label": "Top range", "format": "angle", "metric": "elbow_angle_avg", "detail": "Chin over bar", "region": "arms" }
+    }
+  ]
+}

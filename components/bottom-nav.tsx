@@ -1,34 +1,26 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import { Home, MapPin, Dumbbell, ScanLine, Trophy, User } from "lucide-react"
 import { useLocale } from "@/components/locale-provider"
+import { pulse } from "@/lib/haptics"
 
-/** Each tab maps to a metric tint used for the active highlight. */
+/**
+ * NRC-style flush bottom bar: edge-to-edge, hairline top border,
+ * a single Volt underline indicator that slides between active tabs.
+ * Drops per-tab color tinting in favor of mono icons + Volt active state.
+ */
 const navItems = [
-  { icon: Home, labelKey: "nav.home", id: "home", tint: "primary" },
-  { icon: MapPin, labelKey: "nav.run", id: "run", tint: "metric-run" },
-  { icon: Dumbbell, labelKey: "nav.exercises", id: "exercises", tint: "metric-move" },
-  { icon: ScanLine, labelKey: "nav.coach", id: "ai-coach", tint: "metric-coach" },
-  { icon: Trophy, labelKey: "nav.arena", id: "arena", tint: "metric-streak" },
-  { icon: User, labelKey: "nav.profile", id: "profile", tint: "metric-profile" },
+  { icon: Home, labelKey: "nav.home", id: "home" },
+  { icon: MapPin, labelKey: "nav.run", id: "run" },
+  { icon: Dumbbell, labelKey: "nav.exercises", id: "exercises" },
+  { icon: ScanLine, labelKey: "nav.coach", id: "ai-coach" },
+  { icon: Trophy, labelKey: "nav.arena", id: "arena" },
+  { icon: User, labelKey: "nav.profile", id: "profile" },
 ] as const
 
 export type TabId = (typeof navItems)[number]["id"]
-
-/**
- * Map each tab's tint to the static Tailwind classes it needs. Tailwind cannot
- * safelist `bg-${tint}/25` from a runtime string, so we resolve to full
- * classnames up-front (keeps JIT + tree-shaking happy).
- */
-const tintClasses = {
-  primary: { bg: "bg-primary/25", text: "text-primary" },
-  "metric-run": { bg: "bg-metric-run/25", text: "text-metric-run" },
-  "metric-move": { bg: "bg-metric-move/25", text: "text-metric-move" },
-  "metric-coach": { bg: "bg-metric-coach/25", text: "text-metric-coach" },
-  "metric-streak": { bg: "bg-metric-streak/25", text: "text-metric-streak" },
-  "metric-profile": { bg: "bg-metric-profile/25", text: "text-metric-profile" },
-} as const
 
 export function BottomNav({
   activeTab,
@@ -39,72 +31,76 @@ export function BottomNav({
 }) {
   const { t } = useLocale()
   const prefersReducedMotion = useReducedMotion()
+  const [compactInactiveLabels, setCompactInactiveLabels] = useState(false)
+
+  useEffect(() => {
+    const read = () => {
+      try {
+        setCompactInactiveLabels(typeof localStorage !== "undefined" && localStorage.getItem("ft-bottom-nav-tutored") === "1")
+      } catch {
+        setCompactInactiveLabels(false)
+      }
+    }
+    read()
+    if (typeof window !== "undefined") {
+      window.addEventListener("ft-bottom-nav-tutored", read)
+      return () => window.removeEventListener("ft-bottom-nav-tutored", read)
+    }
+  }, [])
   const activeIndex = Math.max(
     0,
     navItems.findIndex((item) => item.id === activeTab)
   )
-  const activeItem = navItems[activeIndex]
-  const activeTint = tintClasses[activeItem.tint]
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
-      <div className="mx-auto max-w-lg px-4 pb-2 pointer-events-auto">
-        <div className="relative rounded-full border border-border/80 bg-background/55 p-1.5 shadow-[var(--shadow-nav)] backdrop-blur-2xl dark:border-white/10 dark:bg-background/50">
-          <div className="pointer-events-none absolute inset-y-1.5 left-1.5 right-1.5 overflow-hidden rounded-full">
-            <motion.div
-              className={`h-full w-1/6 rounded-full ${activeTint.bg}`}
-              animate={{ x: `${activeIndex * 100}%` }}
-              transition={
-                prefersReducedMotion
-                  ? { duration: 0 }
-                  : { type: "spring", stiffness: 420, damping: 32, mass: 0.7 }
-              }
-            />
-          </div>
-          <div className="relative grid grid-cols-6 gap-0">
-            {navItems.map((item) => {
-              const isActive = activeTab === item.id
-              const label = t(item.labelKey)
-              const activeText = tintClasses[item.tint].text
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  data-testid={`nav-tab-${item.id}`}
-                  onClick={() => {
-                    try {
-                      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-                        navigator.vibrate(6)
-                      }
-                    } catch {
-                      /* ignore */
-                    }
-                    onTabChange(item.id)
-                  }}
-                  className={`relative z-[1] flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-full py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-                    isActive ? activeText : "text-muted-foreground"
-                  }`}
-                  aria-label={label}
-                  title={label}
-                >
-                  <item.icon
-                    className={`h-5 w-5 transition-transform duration-200 ease-out ${
-                      isActive ? "scale-110" : "scale-100 opacity-80"
-                    }`}
-                    strokeWidth={isActive ? 2.5 : 2}
-                  />
-                  <span
-                    className={`text-typo-micro max-w-[4.5rem] truncate font-bold uppercase tracking-[0.08em] leading-none ${
-                      isActive ? activeText : "text-muted-foreground opacity-60"
-                    }`}
-                  >
-                    {label}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
+    <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-background">
+      <div className="relative mx-auto grid max-w-lg grid-cols-6 gap-0 px-1">
+        {/* Top Volt indicator pill that slides under the active tab. */}
+        <div className="pointer-events-none absolute inset-x-1 top-0 h-0.5 overflow-hidden">
+          <motion.div
+            className="h-full w-1/6 bg-primary"
+            animate={{ x: `${activeIndex * 100}%` }}
+            transition={
+              prefersReducedMotion
+                ? { duration: 0 }
+                : { type: "spring", stiffness: 420, damping: 32, mass: 0.7 }
+            }
+          />
         </div>
+        {navItems.map((item) => {
+          const isActive = activeTab === item.id
+          const label = t(item.labelKey)
+          return (
+            <button
+              key={item.id}
+              type="button"
+              data-testid={`nav-tab-${item.id}`}
+              onClick={() => {
+                pulse("tick")
+                onTabChange(item.id)
+              }}
+              className={`relative z-[1] flex min-h-[52px] flex-col items-center justify-center gap-0.5 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${
+                isActive ? "text-foreground" : "text-muted-foreground"
+              }`}
+              aria-label={label}
+              title={label}
+            >
+              <item.icon
+                className={`h-5 w-5 transition-transform duration-200 ease-out ${
+                  isActive ? "scale-110" : "scale-100"
+                }`}
+                strokeWidth={isActive ? 2.4 : 1.8}
+              />
+              <span
+                className={`text-typo-micro max-w-[4.5rem] truncate font-bold uppercase tracking-[0.18em] leading-none motion-reduce:transition-none ${
+                  isActive ? "text-foreground" : "text-muted-foreground"
+                } ${compactInactiveLabels && !isActive ? "sr-only" : ""}`}
+              >
+                {label}
+              </span>
+            </button>
+          )
+        })}
       </div>
       <div className="h-safe-area-inset-bottom pointer-events-none" />
     </nav>

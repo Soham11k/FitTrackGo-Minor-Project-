@@ -1,0 +1,21 @@
+{
+  "id": "side_plank",
+  "displayName": "Side Plank",
+  "category": "core",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 23, 24, 25, 26],
+  "visibleFraction": 0.67,
+  "positiveLine": "Strong side plank — hips driven up high",
+  "repPattern": "hold",
+  "phases": [ { "name": "top", "always": true } ],
+  "rules": [
+    {
+      "id": "side_plank.hip_drop",
+      "region": "core",
+      "penalty": 12,
+      "when": { "metric": "body_line_deviation", "op": ">=", "value": 18 },
+      "feedback": "Drive the hip up — long line from head to feet",
+      "breakdown": { "label": "Hip height", "format": "boolean", "okLabel": "High", "failLabel": "Sagging", "region": "core" }
+    }
+  ]
+}

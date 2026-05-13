@@ -8,7 +8,7 @@ import type { TabId } from "@/components/bottom-nav"
 import { RingGauge } from "@/components/ring-gauge"
 import { MetricTrendMini } from "@/components/metric-trend-mini"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { cn } from "@/lib/utils"
+import { computeReadiness } from "@/lib/readiness"
 import { Button } from "@/components/ui/button"
 import {
   Empty,
@@ -18,6 +18,8 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
+import { cn } from "@/lib/utils"
+import { useLocale } from "@/components/locale-provider"
 
 type LivePayload = {
   ok?: boolean
@@ -85,6 +87,7 @@ function BleHeartRatePanel({
   ble: ReturnType<typeof useBleHeartRate>
   className?: string
 }) {
+  const { t } = useLocale()
   if (!ble.supported) return null
   return (
     <div
@@ -95,9 +98,7 @@ function BleHeartRatePanel({
     >
       <p className="text-typo-eyebrow leading-snug text-muted-foreground">
         <Bluetooth className="mr-1 inline h-3.5 w-3.5 align-text-bottom text-primary" aria-hidden />
-        Live HR from this phone over <strong className="text-foreground">Bluetooth</strong> (standard BLE chest straps and
-        sensors). Fitbit watches normally sync through the Fitbit app and{" "}
-        <strong className="text-foreground">cloud</strong>—most won&apos;t pair here.
+        {t("wearable.bleIntro")}
       </p>
       {ble.status === "connected" ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -111,7 +112,7 @@ function BleHeartRatePanel({
             onClick={() => void ble.disconnect()}
             className="ml-auto rounded-lg border border-border px-2 py-1 text-typo-eyebrow font-semibold text-foreground hover:bg-muted"
           >
-            Disconnect
+            {t("wearable.disconnect")}
           </button>
         </div>
       ) : (
@@ -122,7 +123,7 @@ function BleHeartRatePanel({
           className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-primary/90 px-3 py-2 text-typo-eyebrow font-bold uppercase tracking-wide text-primary-foreground disabled:opacity-60"
         >
           <Bluetooth className="h-3.5 w-3.5" aria-hidden />
-          {ble.status === "connecting" ? "Pairing…" : "Pair Bluetooth HR"}
+          {ble.status === "connecting" ? t("wearable.pairing") : t("wearable.pairBluetoothHr")}
         </button>
       )}
       {ble.error && <p className="mt-1.5 text-typo-eyebrow text-destructive">{ble.error}</p>}
@@ -133,10 +134,14 @@ function BleHeartRatePanel({
 export function WearableLiveHome({
   onNavigate,
   paused = false,
+  sessionsLast7d = 0,
 }: {
   onNavigate: (tab: TabId) => void
   paused?: boolean
+  /** Sessions logged in rolling 7d (dash + readiness load). */
+  sessionsLast7d?: number
 }) {
+  const { t } = useLocale()
   const [data, setData] = useState<LivePayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [sheet, setSheet] = useState<null | "heart" | "spo2">(null)
@@ -213,6 +218,22 @@ export function WearableLiveHome({
   }, [paused, fetchLive])
 
   useEffect(() => {
+    if (paused || !data?.connected || data?.error) return
+    let cancelled = false
+    void fetch(`/api/wearables/history?limit=45`, { credentials: "include" })
+      .then(async (r) => {
+        const j = (await r.json()) as { rows?: HistoryRow[] }
+        if (!cancelled) setHistRows(Array.isArray(j.rows) ? j.rows : [])
+      })
+      .catch(() => {
+        if (!cancelled) setHistRows([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [paused, data?.connected, data?.error])
+
+  useEffect(() => {
     if (!sheet) return
     let cancelled = false
     setHistLoading(true)
@@ -273,7 +294,7 @@ export function WearableLiveHome({
       <section className="rounded-3xl border border-border/80 bg-card/50 p-4 backdrop-blur-xl shadow-[var(--shadow-card)] animate-fade-in-up animate-stagger-2 dark:border-white/10">
         <h2 className="mb-2 flex items-center gap-2 text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-muted-foreground">
           <Bluetooth className="h-4 w-4 text-primary" />
-          Live HR (Bluetooth)
+          {t("wearable.liveHrBluetooth")}
         </h2>
         <BleHeartRatePanel ble={ble} />
       </section>
@@ -284,7 +305,7 @@ export function WearableLiveHome({
     return (
       <div className="space-y-2 animate-fade-in-up animate-stagger-2">
         <section className="rounded-2xl border border-border bg-card p-4 text-xs text-muted-foreground">
-          Wearables: {data.error}
+          {t("wearable.errorPrefix")} {data.error}
         </section>
         <BleHeartRatePanel ble={ble} />
       </div>
@@ -304,14 +325,14 @@ export function WearableLiveHome({
                 className="h-24 w-24 opacity-90"
               />
             </EmptyMedia>
-            <EmptyTitle className="text-foreground">Vitals need a link</EmptyTitle>
+            <EmptyTitle className="text-foreground">{t("wearable.vitalsNeedLink")}</EmptyTitle>
             <EmptyDescription>
-              Connect Fitbit in Profile to pull resting heart rate and nightly SpO₂ summaries into Home.
+              {t("wearable.vitalsNeedLinkDesc")}
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
             <Button type="button" className="w-full max-w-xs rounded-2xl" onClick={() => onNavigate("profile")}>
-              Go to Profile
+              {t("wearable.goProfile")}
             </Button>
           </EmptyContent>
         </Empty>
@@ -322,17 +343,17 @@ export function WearableLiveHome({
 
   const heartLabel =
     data.heartSource === "intraday_1min"
-      ? "Heart rate"
+      ? t("wearable.label.heartRate")
       : data.heartSource === "resting_daily"
-        ? "Resting HR (daily)"
+        ? t("wearable.label.restingHrDaily")
         : data.heartSource === "resting_series"
-          ? "Resting HR (recent)"
+          ? t("wearable.label.restingHrRecent")
           : data.heartSource === "cached"
-            ? "Resting HR (synced)"
-            : "Heart rate"
+            ? t("wearable.label.restingHrSynced")
+            : t("wearable.label.heartRate")
 
   const displayHeartBpm = ble.bpm ?? data.heartBpm
-  const heartLabelResolved = ble.bpm != null ? "Live HR (Bluetooth)" : heartLabel
+  const heartLabelResolved = ble.bpm != null ? t("wearable.liveHrBluetooth") : heartLabel
 
   // Zone-based fill: % of heart-rate reserve used. 0 at rest, 100 at max.
   const heartZonePct =
@@ -364,13 +385,27 @@ export function WearableLiveHome({
   const maxHistHr = Math.max(1, ...heartHistory.map((r) => r.resting_heart_rate ?? 0))
   const maxHistSpo2 = Math.max(1, ...spo2History.map((r) => Number(r.spo2_avg_pct) || 0))
 
+  const restingSeries = [...heartHistory]
+    .reverse()
+    .map((r) => r.resting_heart_rate!)
+    .filter((n) => typeof n === "number" && Number.isFinite(n) && n > 0)
+  const latestResting = heartHistory[0]?.resting_heart_rate ?? null
+  const spo2Series = spo2History.map((r) => Number(r.spo2_avg_pct)).filter((n) => Number.isFinite(n) && n > 0)
+
+  const readiness = computeReadiness({
+    restingSeries,
+    latestResting,
+    spo2Series,
+    sessionsLast7d,
+  })
+
   return (
     <>
       <section className="rounded-3xl border border-border/80 bg-card/50 p-4 space-y-3 backdrop-blur-xl shadow-[var(--shadow-card)] animate-fade-in-up animate-stagger-2 transition-shadow hover:shadow-md dark:border-white/10">
         <div className="flex items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-muted-foreground">
             <Watch className="h-4 w-4 text-primary" />
-            Vitals
+            {t("wearable.vitalsTitle")}
             <span
               className="relative flex h-2 w-2"
               title="Refreshes about every 8 seconds"
@@ -380,8 +415,21 @@ export function WearableLiveHome({
               <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
             </span>
           </h2>
-          <span className="text-typo-micro font-semibold uppercase tracking-wider text-muted-foreground/80">Tap · graph</span>
+          <span className="text-typo-micro font-semibold uppercase tracking-wider text-muted-foreground/80">{t("wearable.tapGraph")}</span>
         </div>
+
+        <div className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/12 via-card/25 to-card p-4 shadow-sm">
+          <p className="text-typo-eyebrow font-bold uppercase tracking-[0.22em] text-primary">{t("wearable.readiness")}</p>
+          <p className="text-typo-micro text-muted-foreground">{t("wearable.readinessDisclaimer")}</p>
+          <p
+            className="mt-2 text-4xl font-bold tabular-nums text-foreground"
+            style={{ fontFamily: "var(--font-heading)" }}
+          >
+            {readiness.score}
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{readiness.hint}</p>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <button
             type="button"

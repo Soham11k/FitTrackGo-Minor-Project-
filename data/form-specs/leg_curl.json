@@ -1,0 +1,25 @@
+{
+  "id": "leg_curl",
+  "displayName": "Leg Curl",
+  "category": "lower",
+  "loadType": "external",
+  "requiredLandmarks": [23, 24, 25, 26, 27, 28],
+  "visibleFraction": 0.67,
+  "positiveLine": "Strong curl — squeeze the hamstrings",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "knee_angle_avg", "op": "<", "value": 70 } },
+    { "name": "top", "enterWhen": { "metric": "knee_angle_avg", "op": ">", "value": 165 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "knee_angle_avg", "op": ">=", "value": 70 }, { "metric": "knee_angle_avg", "op": "<=", "value": 165 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "leg_curl.range",
+      "region": "legs",
+      "penalty": 12,
+      "when": { "metric": "knee_angle_avg", "op": ">=", "value": 100 },
+      "feedback": "Curl until heels reach the glutes",
+      "breakdown": { "label": "Knee angle", "format": "angle", "metric": "knee_angle_avg", "region": "legs" }
+    }
+  ]
+}

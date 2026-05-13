@@ -1,0 +1,24 @@
+{
+  "id": "leg_extension",
+  "displayName": "Leg Extension",
+  "category": "lower",
+  "loadType": "external",
+  "requiredLandmarks": [23, 24, 25, 26, 27, 28],
+  "visibleFraction": 0.67,
+  "positiveLine": "Clean extension — full contraction at the top",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "knee_angle_avg", "op": ">", "value": 165 } },
+    { "name": "bottom", "enterWhen": { "metric": "knee_angle_avg", "op": "<", "value": 95 } }
+  ],
+  "rules": [
+    {
+      "id": "leg_extension.range",
+      "region": "legs",
+      "penalty": 12,
+      "when": { "metric": "knee_angle_avg", "op": "<", "value": 160 },
+      "feedback": "Extend fully at the top",
+      "breakdown": { "label": "Knee angle", "format": "angle", "metric": "knee_angle_avg", "region": "legs" }
+    }
+  ]
+}

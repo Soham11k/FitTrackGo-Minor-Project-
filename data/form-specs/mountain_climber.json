@@ -1,0 +1,24 @@
+{
+  "id": "mountain_climber",
+  "displayName": "Mountain Climber",
+  "category": "cardio",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 15, 16, 23, 24, 25, 26],
+  "visibleFraction": 0.7,
+  "positiveLine": "Quick, controlled drive — hips stay level",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "knee_angle_min", "op": "<", "value": 90 } },
+    { "name": "bottom", "enterWhen": { "metric": "knee_angle_min", "op": ">", "value": 150 } }
+  ],
+  "rules": [
+    {
+      "id": "mountain_climber.hip_line",
+      "region": "core",
+      "penalty": 10,
+      "when": { "metric": "body_line_deviation", "op": ">=", "value": 18 },
+      "feedback": "Keep the hips level — don't pike up",
+      "breakdown": { "label": "Body line", "format": "boolean", "okLabel": "Straight", "failLabel": "Piking", "region": "core" }
+    }
+  ]
+}

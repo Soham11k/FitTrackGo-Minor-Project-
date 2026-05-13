@@ -1,0 +1,34 @@
+{
+  "id": "bench_press",
+  "displayName": "Bench Press",
+  "category": "upper",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16],
+  "visibleFraction": 0.67,
+  "positiveLine": "Strong press — even bar path",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 90 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 160 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 90 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 160 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "bench_press.depth",
+      "region": "arms",
+      "penalty": 12,
+      "loadRelax": { "perXBodyweight": 1.0, "addThresholdDeg": 6 },
+      "when": { "metric": "elbow_angle_avg", "op": ">=", "value": 105 },
+      "feedback": "Lower the bar to the chest — full range",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "detail": "~90° at the chest", "region": "arms" }
+    },
+    {
+      "id": "bench_press.symmetry",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "metric": "elbow_symmetry_diff", "op": ">=", "value": 18 },
+      "feedback": "Press evenly — bar level across the chest",
+      "breakdown": { "label": "Symmetry", "format": "boolean", "okLabel": "Even", "failLabel": "Adjust", "region": "arms" }
+    }
+  ]
+}

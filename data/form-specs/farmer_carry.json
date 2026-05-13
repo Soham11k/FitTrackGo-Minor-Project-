@@ -1,0 +1,21 @@
+{
+  "id": "farmer_carry",
+  "displayName": "Farmer Carry",
+  "category": "compound",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 23, 24],
+  "visibleFraction": 0.6,
+  "positiveLine": "Tall posture — chest proud, shoulders packed",
+  "repPattern": "hold",
+  "phases": [ { "name": "top", "always": true } ],
+  "rules": [
+    {
+      "id": "farmer_carry.posture",
+      "region": "torso",
+      "penalty": 10,
+      "when": { "metric": "body_line_deviation", "op": ">=", "value": 20 },
+      "feedback": "Stand tall — shoulders over hips over ankles",
+      "breakdown": { "label": "Posture", "format": "boolean", "okLabel": "Tall", "failLabel": "Leaning", "region": "torso" }
+    }
+  ]
+}

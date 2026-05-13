@@ -67,6 +67,7 @@ function resolveDevProxySupabaseTarget() {
 }
 
 const buildForAndroid = process.env.BUILD_FOR_ANDROID === '1'
+const staticExport = buildForAndroid
 const securityHeaders = [
   { key: 'X-DNS-Prefetch-Control', value: 'on' },
   { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
@@ -107,7 +108,8 @@ const nextConfig = {
     ignoreBuildErrors: false,
   },
   images: {
-    unoptimized: true,
+    // Static / Capacitor export cannot rely on Next's image optimizer.
+    unoptimized: staticExport,
   },
   /** Dev-only: browser hits same-origin `/__supabase-dev-proxy/*`, Next forwards to real Supabase (fixes local ENOTFOUND / Failed to fetch). */
   async rewrites() {

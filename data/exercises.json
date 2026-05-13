@@ -197,5 +197,24 @@
       { "name": "Child's pose", "duration": "2 min", "reps": "Hold" },
       { "name": "Cool down", "duration": "1 min", "reps": "Deep breathing" }
     ]
+  },
+  {
+    "id": 11,
+    "title": "Hinge & pulls",
+    "category": "strength",
+    "durationMin": 35,
+    "duration": "35 min",
+    "calories": 310,
+    "difficulty": "Intermediate",
+    "exercises": 11,
+    "rating": 4.7,
+    "steps": [
+      { "name": "Warm up", "duration": "5 min", "reps": "Cat-cow, hip hinges, thoracic rotations" },
+      { "name": "Romanian deadlifts", "duration": "45 sec", "reps": "10 × 3 — side angle for camera" },
+      { "name": "Conventional deadlifts", "duration": "45 sec", "reps": "6 × 3 — light to moderate load" },
+      { "name": "Squats", "duration": "40 sec", "reps": "12 × 2 — contrast triple extension" },
+      { "name": "Row or pull", "duration": "45 sec", "reps": "10 × 3 — posterior chain balance" },
+      { "name": "Cooldown", "duration": "5 min", "reps": "Hamstring & glute stretches" }
+    ]
   }
 ]

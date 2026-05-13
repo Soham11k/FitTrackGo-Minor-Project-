@@ -1,0 +1,50 @@
+{
+  "id": "deadlift",
+  "displayName": "Conventional Deadlift",
+  "category": "compound",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 15, 16, 23, 24, 25, 26, 27, 28],
+  "visibleFraction": 0.72,
+  "positiveLine": "Solid pull — hinge depth and path on point",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "all": [ { "metric": "hip_hinge_avg", "op": "<", "value": 98 }, { "metric": "knee_angle_avg", "op": "<", "value": 148 } ] } },
+    { "name": "top", "enterWhen": { "all": [ { "metric": "hip_hinge_avg", "op": ">", "value": 154 }, { "metric": "knee_angle_avg", "op": ">", "value": 158 } ] } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "hip_hinge_avg", "op": ">=", "value": 98 }, { "metric": "hip_hinge_avg", "op": "<=", "value": 154 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "deadlift.neutral_back",
+      "region": "torso",
+      "penalty": 14,
+      "when": { "any": [ { "metric": "hip_hinge_avg", "op": "<=", "value": 35 }, { "metric": "hip_hinge_avg", "op": ">=", "value": 118 } ] },
+      "feedback": "Brace your core and keep a neutral spine through the hinge",
+      "breakdown": { "label": "Hip hinge", "format": "angle", "metric": "hip_hinge_avg", "detail": "Hinge hips, chest proud", "region": "legs" }
+    },
+    {
+      "id": "deadlift.bar_path",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "metric": "bar_drift_x", "op": ">=", "value": 0.072 },
+      "feedback": "Keep the pull close — bar over mid-foot",
+      "breakdown": { "label": "Bar path", "format": "boolean", "okLabel": "Over mid-foot", "failLabel": "Drift", "detail": "Hands over mid-foot (camera proxy)", "region": "arms" }
+    },
+    {
+      "id": "deadlift.knee_angle",
+      "region": "legs",
+      "penalty": 12,
+      "loadRelax": { "perXBodyweight": 1.0, "addThresholdDeg": 6 },
+      "when": { "any": [ { "metric": "knee_angle_avg", "op": "<=", "value": 98 }, { "metric": "knee_angle_avg", "op": ">=", "value": 155 } ] },
+      "feedback": "Deadlift is a hinge — don't turn it into a squat or lock knees too early",
+      "breakdown": { "label": "Knee angle", "format": "angle", "metric": "knee_angle_avg", "detail": "Moderate bend — not a squat", "region": "legs" }
+    },
+    {
+      "id": "deadlift.symmetry",
+      "region": "legs",
+      "penalty": 6,
+      "when": { "metric": "knee_symmetry_diff", "op": ">=", "value": 18 },
+      "feedback": "Balance load evenly between legs",
+      "breakdown": { "label": "Symmetry", "format": "boolean", "okLabel": "Even", "failLabel": "Adjust", "region": "legs" }
+    }
+  ]
+}

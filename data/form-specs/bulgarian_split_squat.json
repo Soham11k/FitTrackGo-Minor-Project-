@@ -1,0 +1,26 @@
+{
+  "id": "bulgarian_split_squat",
+  "displayName": "Bulgarian Split Squat",
+  "category": "lower",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 23, 24, 25, 26, 27, 28],
+  "visibleFraction": 0.75,
+  "positiveLine": "Strong rear-foot elevated split — controlled depth",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "knee_angle_min", "op": "<", "value": 95 } },
+    { "name": "top", "enterWhen": { "metric": "knee_angle_min", "op": ">", "value": 150 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "knee_angle_min", "op": ">=", "value": 95 }, { "metric": "knee_angle_min", "op": "<=", "value": 150 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "bulgarian_split_squat.front_knee",
+      "region": "legs",
+      "penalty": 12,
+      "loadRelax": { "perXBodyweight": 0.5, "addThresholdDeg": 6 },
+      "when": { "any": [ { "metric": "knee_angle_min", "op": "<=", "value": 80 }, { "metric": "knee_angle_min", "op": ">=", "value": 100 } ] },
+      "feedback": "Front thigh parallel; vertical shin",
+      "breakdown": { "label": "Front knee", "format": "angle", "metric": "knee_angle_min", "region": "legs" }
+    }
+  ]
+}

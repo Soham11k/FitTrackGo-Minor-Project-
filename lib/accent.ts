@@ -1,8 +1,9 @@
 export const ACCENT_KEY = "fittrackgo_accent"
 
-export type AccentId = "green" | "blue" | "purple" | "orange" | "rose"
+export type AccentId = "volt" | "green" | "blue" | "purple" | "orange" | "rose"
 
 export const ACCENT_OPTIONS: { id: AccentId; name: string; lightHex: string }[] = [
+  { id: "volt", name: "Volt", lightHex: "#CDFF00" },
   { id: "green", name: "Green", lightHex: "#22c55e" },
   { id: "blue", name: "Blue", lightHex: "#3b82f6" },
   { id: "purple", name: "Purple", lightHex: "#a855f7" },
@@ -11,10 +12,10 @@ export const ACCENT_OPTIONS: { id: AccentId; name: string; lightHex: string }[] 
 ]
 
 export function getStoredAccent(): AccentId {
-  if (typeof window === "undefined") return "green"
+  if (typeof window === "undefined") return "volt"
   const stored = localStorage.getItem(ACCENT_KEY)
   if (stored && ACCENT_OPTIONS.some((o) => o.id === stored)) return stored as AccentId
-  return "green"
+  return "volt"
 }
 
 export function setStoredAccent(accent: AccentId): void {

@@ -1,0 +1,53 @@
+{
+  "id": "pushup",
+  "displayName": "Push-up",
+  "category": "upper",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16, 23, 24],
+  "visibleFraction": 0.75,
+  "positiveLine": "Solid push-up — body line and elbow position good",
+  "repPattern": "top_bottom_top",
+  "hudAngles": [
+    { "name": "Left elbow", "joints": ["left_shoulder", "left_elbow", "left_wrist"], "primary": true },
+    { "name": "Right elbow", "joints": ["right_shoulder", "right_elbow", "right_wrist"] }
+  ],
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 95 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 158 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 95 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 158 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "pushup.body_line",
+      "region": "torso",
+      "penalty": 15,
+      "when": { "metric": "body_line_deviation", "op": ">=", "value": 16 },
+      "feedback": "Keep a straight line from head to heels",
+      "breakdown": { "label": "Body line", "format": "boolean", "okLabel": "Straight", "failLabel": "Adjust", "detail": "Head to heels in line", "region": "torso" }
+    },
+    {
+      "id": "pushup.no_sag",
+      "region": "core",
+      "penalty": 12,
+      "when": { "any": [ { "metric": "hip_sag_y", "op": ">=", "value": 0.09 }, { "metric": "shoulder_hip_y_delta", "op": ">=", "value": 0.12 } ] },
+      "feedback": "Engage core and glutes to prevent hip sag",
+      "breakdown": { "label": "Hip position", "format": "boolean", "okLabel": "Level", "failLabel": "Sagging", "detail": "Hips level with shoulders", "region": "core" }
+    },
+    {
+      "id": "pushup.elbow_angle",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "any": [ { "metric": "elbow_angle_avg", "op": "<=", "value": 70 }, { "metric": "elbow_angle_avg", "op": ">=", "value": 100 } ] },
+      "feedback": "Elbows at ~45° from body, don't flare",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "detail": "~90° at bottom", "region": "arms" }
+    },
+    {
+      "id": "pushup.no_flare",
+      "region": "arms",
+      "penalty": 8,
+      "when": { "metric": "elbow_flare_ratio", "op": ">=", "value": 1.5 },
+      "feedback": "Keep elbows closer to body, don't flare out",
+      "breakdown": { "label": "Elbow flare", "format": "boolean", "okLabel": "Good", "failLabel": "Wide", "detail": "Elbows ~45° from body", "region": "arms" }
+    }
+  ]
+}

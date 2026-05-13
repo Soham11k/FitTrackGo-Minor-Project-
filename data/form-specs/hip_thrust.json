@@ -1,0 +1,24 @@
+{
+  "id": "hip_thrust",
+  "displayName": "Hip Thrust",
+  "category": "lower",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 23, 24, 25, 26],
+  "visibleFraction": 0.67,
+  "positiveLine": "Strong thrust — full lockout at the top",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "hip_hinge_avg", "op": ">", "value": 165 } },
+    { "name": "bottom", "enterWhen": { "metric": "hip_hinge_avg", "op": "<", "value": 100 } }
+  ],
+  "rules": [
+    {
+      "id": "hip_thrust.lockout",
+      "region": "legs",
+      "penalty": 12,
+      "when": { "metric": "hip_hinge_avg", "op": "<", "value": 160 },
+      "feedback": "Drive hips through to full lockout",
+      "breakdown": { "label": "Hip extension", "format": "angle", "metric": "hip_hinge_avg", "region": "legs" }
+    }
+  ]
+}

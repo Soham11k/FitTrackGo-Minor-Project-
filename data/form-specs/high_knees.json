@@ -1,0 +1,24 @@
+{
+  "id": "high_knees",
+  "displayName": "High Knees",
+  "category": "cardio",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 23, 24, 25, 26, 27, 28],
+  "visibleFraction": 0.75,
+  "positiveLine": "Strong drive — keep the pace",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "top", "enterWhen": { "metric": "knee_y_avg", "op": "<", "value": 0.45 } },
+    { "name": "bottom", "enterWhen": { "metric": "knee_y_avg", "op": ">", "value": 0.6 } }
+  ],
+  "rules": [
+    {
+      "id": "high_knees.drive",
+      "region": "legs",
+      "penalty": 10,
+      "when": { "metric": "knee_y_avg", "op": ">=", "value": 0.62 },
+      "feedback": "Drive knees up toward chest",
+      "breakdown": { "label": "Knee drive", "format": "boolean", "okLabel": "Good", "failLabel": "Drive up", "detail": "Knees toward chest", "region": "legs" }
+    }
+  ]
+}

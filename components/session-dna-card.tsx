@@ -1,9 +1,10 @@
 "use client"
 
-import { useRef } from "react"
 import { Share2, Download } from "lucide-react"
+import { toast } from "sonner"
 import { RingGauge } from "@/components/ring-gauge"
 import { cn } from "@/lib/utils"
+import { composeCoachShareFile } from "@/lib/share-card"
 
 export interface SessionDnaProps {
   exercise: string
@@ -29,8 +30,6 @@ export function SessionDnaCard({
   verifiedMovement,
   faceVerifiedSession,
 }: SessionDnaProps) {
-  const cardRef = useRef<HTMLDivElement>(null)
-
   const avgRep = repScores.length
     ? Math.round(repScores.reduce((a, b) => a + b, 0) / repScores.length)
     : score
@@ -38,60 +37,54 @@ export function SessionDnaCard({
   async function shareSummary() {
     const text = `FitTrack Go — ${exercise}: ${reps} reps (${effectiveReps.toFixed(1)} effective) · ${score}% form${verifiedMovement ? " · Verified movement" : ""}`
     try {
+      const file = await composeCoachShareFile({
+        exercise,
+        reps,
+        score,
+        effectiveReps,
+        repScores,
+        verifiedMovement,
+        faceVerifiedSession,
+      })
+      if (file && navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ title: "My coach session", text, files: [file] })
+        return
+      }
       if (navigator.share) {
         await navigator.share({ title: "My coach session", text })
         return
       }
-    } catch { /* user cancel */ }
+    } catch {
+      /* user cancel */
+    }
     try {
       await navigator.clipboard.writeText(text)
-    } catch { /* noop */ }
+      toast.success("Copied session summary")
+    } catch {
+      /* noop */
+    }
   }
 
-  function downloadPng() {
-    const el = cardRef.current
-    if (!el) return
-    // Canvas export (no extra dependency)
-    const w = 340
-    const h = 200
-    const canvas = document.createElement("canvas")
-    canvas.width = w * 2
-    canvas.height = h * 2
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-    ctx.scale(2, 2)
-    const hue = (score / 100) * 120
-    ctx.fillStyle = `hsl(${hue}, 40%, 12%)`
-    ctx.fillRect(0, 0, w, h)
-    ctx.strokeStyle = `hsl(${hue}, 70%, 55%)`
-    ctx.lineWidth = 2
-    ctx.strokeRect(8, 8, w - 16, h - 16)
-    ctx.fillStyle = "#fff"
-    ctx.font = "bold 16px system-ui"
-    ctx.fillText("Session DNA", 20, 32)
-    ctx.font = "13px system-ui"
-    ctx.fillStyle = "rgba(255,255,255,0.85)"
-    ctx.fillText(exercise, 20, 54)
-    ctx.fillText(`Reps ${reps} · Effective ${effectiveReps.toFixed(1)}`, 20, 74)
-    ctx.fillText(`Form ${score}% · Avg rep ${avgRep}%`, 20, 94)
-    const flags = [
-      verifiedMovement ? "Verified movement" : null,
-      faceVerifiedSession ? "Face-verified" : null,
-    ].filter(Boolean).join(" · ")
-    if (flags) ctx.fillText(flags, 20, 114)
-
-    const maxBar = Math.max(...repScores, 1)
-    const barW = (w - 40) / Math.max(repScores.length, 1)
-    repScores.slice(0, 24).forEach((s, i) => {
-      const bh = ((s / maxBar) * 56) | 0
-      ctx.fillStyle = `hsl(${(s / 100) * 120}, 70%, 50%)`
-      ctx.fillRect(20 + i * barW, 170 - bh, Math.max(2, barW - 2), bh)
+  async function downloadPng() {
+    const file = await composeCoachShareFile({
+      exercise,
+      reps,
+      score,
+      effectiveReps,
+      repScores,
+      verifiedMovement,
+      faceVerifiedSession,
     })
-
+    if (!file) {
+      toast.error("Could not render share card")
+      return
+    }
+    const url = URL.createObjectURL(file)
     const a = document.createElement("a")
-    a.download = `fittrack-session-${Date.now()}.png`
-    a.href = canvas.toDataURL("image/png")
+    a.download = file.name
+    a.href = url
     a.click()
+    URL.revokeObjectURL(url)
   }
 
   const scoreTint =
@@ -110,13 +103,13 @@ export function SessionDnaCard({
   const scoreTextClass = ringSize >= 108 ? "text-4xl font-bold tabular-nums" : "text-3xl font-bold tabular-nums"
 
   return (
-    <div ref={cardRef} className={cn("rounded-2xl border border-border bg-card p-4 space-y-4 shadow-[var(--shadow-card)]", className)}>
+    <div className={cn("rounded-2xl border border-border bg-card p-4 space-y-4 shadow-[var(--shadow-card)]", className)}>
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-foreground">Session DNA</h3>
         <div className="flex gap-1">
           <button
             type="button"
-            onClick={shareSummary}
+            onClick={() => void shareSummary()}
             className="p-2 rounded-lg bg-secondary text-secondary-foreground active:scale-95 transition-transform"
             aria-label="Share summary"
           >
@@ -124,7 +117,7 @@ export function SessionDnaCard({
           </button>
           <button
             type="button"
-            onClick={downloadPng}
+            onClick={() => void downloadPng()}
             className="p-2 rounded-lg bg-secondary text-secondary-foreground active:scale-95 transition-transform"
             aria-label="Download card image"
           >

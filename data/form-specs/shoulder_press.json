@@ -1,0 +1,33 @@
+{
+  "id": "shoulder_press",
+  "displayName": "Shoulder Press",
+  "category": "upper",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16],
+  "visibleFraction": 0.67,
+  "positiveLine": "Strong press — symmetry and control",
+  "repPattern": "bottom_top_bottom",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 95 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 165 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 95 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 165 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "shoulder_press.extend",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "metric": "elbow_angle_avg", "op": "<=", "value": 60 },
+      "feedback": "Press fully overhead — lock out at the top",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "detail": "Extend overhead", "region": "arms" }
+    },
+    {
+      "id": "shoulder_press.symmetry",
+      "region": "arms",
+      "penalty": 12,
+      "when": { "metric": "elbow_symmetry_diff", "op": ">=", "value": 15 },
+      "feedback": "Press evenly — both arms together",
+      "breakdown": { "label": "Symmetry", "format": "boolean", "okLabel": "Even", "failLabel": "Adjust", "region": "arms" }
+    }
+  ]
+}

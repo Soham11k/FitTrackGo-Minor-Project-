@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef, useId } from "react"
+import Image from "next/image"
 import type { AuthChangeEvent } from "@supabase/supabase-js"
 import { toast } from "sonner"
 import { Trophy, Shield, Swords, Sparkles, Globe, Info, Flame } from "lucide-react"
@@ -27,6 +28,9 @@ import {
 } from "@/lib/duels-supabase"
 import type { TabId } from "@/components/bottom-nav"
 import { Button } from "@/components/ui/button"
+import { CinematicStage } from "@/components/ui/cinematic-stage"
+import { PbSticker } from "@/components/ui/pb-sticker"
+import { StatDisplay } from "@/components/ui/stat-display"
 import {
   Empty,
   EmptyContent,
@@ -315,18 +319,25 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
 
   return (
     <div className="flex flex-col gap-6 px-4 pt-4 pb-28 max-w-lg mx-auto">
-      <header>
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2" style={{ fontFamily: "var(--font-heading)" }}>
-          <Trophy className="h-7 w-7 text-primary" />
-          Arena
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Form-weighted scoring and verified sessions — challenge friends with the same composite metric you earn in Coach Assist.
-        </p>
-      </header>
+      <CinematicStage
+        vignette
+        className="rounded-2xl border border-border p-5 shadow-[var(--shadow-card)] text-[color:var(--surface-stage-fg)]"
+      >
+        <p className="text-eyebrow-mega text-[color:oklch(0.92_0_0/0.5)]">Arena</p>
+        <StatDisplay
+          tone="stage"
+          size="lg"
+          eyebrow="Compete fairly"
+          value="Form duels"
+          secondary="Form-weighted scoring and verified sessions — challenge friends with the same composite metric you earn in Coach Assist."
+          icon={<Trophy className="h-8 w-8 text-[color:var(--primary)]" />}
+          className="mt-3 text-start"
+          contentClassName="justify-start"
+        />
+      </CinematicStage>
 
       <section
-        className="rounded-2xl border border-metric-streak/30 bg-metric-streak/5 p-3 text-xs text-muted-foreground leading-relaxed shadow-sm"
+        className="rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground leading-relaxed volt-edge"
         aria-label="Why Arena is different"
       >
         <p className="font-semibold text-foreground">Hero duels</p>
@@ -369,23 +380,24 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
           </Sheet>
         </div>
         <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-xl bg-metric-coach/10 py-3">
-            <div className="text-2xl font-bold tabular-nums text-metric-coach">{verifiedSessions}</div>
-            <div className="mt-0.5 text-typo-eyebrow font-bold uppercase tracking-[0.12em] text-muted-foreground">
-              Verified
-            </div>
+          <div className="rounded-xl bg-metric-coach/10 py-3 px-1">
+            <StatDisplay eyebrow="Verified" value={verifiedSessions} valueClassName="text-metric-coach tabular-nums" size="md" />
           </div>
-          <div className="rounded-xl bg-metric-move/10 py-3">
-            <div className="text-2xl font-bold tabular-nums text-metric-move">{totalEffective.toFixed(0)}</div>
-            <div className="mt-0.5 text-typo-eyebrow font-bold uppercase tracking-[0.12em] text-muted-foreground">
-              Eff. reps
-            </div>
+          <div className="rounded-xl bg-metric-move/10 py-3 px-1">
+            <StatDisplay
+              eyebrow="Eff. reps"
+              value={totalEffective.toFixed(0)}
+              valueClassName="text-metric-move tabular-nums"
+              size="md"
+            />
           </div>
-          <div className="rounded-xl bg-metric-streak/10 py-3">
-            <div className="text-2xl font-bold tabular-nums text-metric-streak">{Math.max(verifiedStreak, standardStreak)}</div>
-            <div className="mt-0.5 text-typo-eyebrow font-bold uppercase tracking-[0.12em] text-muted-foreground">
-              Day streak
-            </div>
+          <div className="rounded-xl bg-metric-streak/10 py-3 px-1">
+            <StatDisplay
+              eyebrow="Day streak"
+              value={Math.max(verifiedStreak, standardStreak)}
+              valueClassName="text-metric-streak tabular-nums"
+              size="md"
+            />
           </div>
         </div>
         <div className="flex items-center justify-between pt-1 text-typo-caption text-muted-foreground">
@@ -410,10 +422,11 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
           <Empty className="rounded-2xl border border-dashed border-border/70 bg-muted/15 py-8 text-chart-4">
             <EmptyHeader className="max-w-md">
               <EmptyMedia>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/illustrations/coach-sessions-empty.svg"
+                <Image
+                  src="/illustrations/arena-empty.svg"
                   alt=""
+                  width={96}
+                  height={96}
                   className="h-24 w-24 opacity-90"
                 />
               </EmptyMedia>
@@ -444,8 +457,14 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-lg font-bold tabular-nums text-metric-coach">{composite.toFixed(1)}</div>
-                  <div className="text-typo-eyebrow font-bold uppercase tracking-[0.12em] text-muted-foreground">pts</div>
+                  <StatDisplay
+                    className="text-end"
+                    contentClassName="justify-end"
+                    value={composite.toFixed(1)}
+                    unit="pts"
+                    valueClassName="text-metric-coach tabular-nums"
+                    size="md"
+                  />
                 </div>
               </li>
             ))}
@@ -484,12 +503,12 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
           <button
             type="button"
             onClick={() => void onCreateDuel()}
-            className="rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground"
+            className="rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             Create duel code
           </button>
           {code && (
-            <p className="text-center text-lg font-mono font-bold tracking-widest text-primary py-2">{code}</p>
+            <p className="rounded-lg border border-primary/40 bg-primary/10 py-3 text-center text-2xl font-mono font-bold tracking-[0.3em] text-primary">{code}</p>
           )}
           <div className="flex gap-2 items-end pt-2">
             <div className="flex-1 space-y-1.5">
@@ -504,12 +523,24 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
                 autoComplete="off"
               />
             </div>
-            <button type="button" onClick={() => void onJoin()} className="shrink-0 rounded-xl bg-secondary px-4 py-2.5 text-sm font-medium mb-px">
+            <button type="button" onClick={() => void onJoin()} className="shrink-0 rounded-xl bg-secondary px-4 py-2.5 text-sm font-medium mb-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background">
               Join
             </button>
           </div>
         </div>
-        {duels.length > 0 && (
+        {duels.length === 0 ? (
+          <Empty className="rounded-2xl border border-dashed border-border/70 bg-muted/15 py-6">
+            <EmptyHeader className="max-w-md">
+              <EmptyMedia>
+                <Image src="/illustrations/arena-duel-empty.svg" alt="" width={80} height={80} className="h-20 w-20 opacity-90" />
+              </EmptyMedia>
+              <EmptyTitle className="text-foreground">No active duels yet</EmptyTitle>
+              <EmptyDescription>
+                Create a code and share it — or join a friend with their duel code. Same scoring as Coach Assist.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
           <ul className="space-y-2 pt-2 border-t border-border">
             {duels.slice(0, 5).map((d) => {
               const showChallenger =
@@ -522,7 +553,7 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
                 !d.settled && d.opponentName && (showChallenger || showOpponent)
 
               return (
-                <li key={d.id} className="text-typo-caption rounded-lg bg-secondary/30 px-2 py-2 space-y-1">
+                <li key={d.id} className="text-typo-caption space-y-2 rounded-2xl border border-border/80 bg-card px-4 py-3 shadow-[var(--shadow-card)]">
                   <div className="font-medium text-foreground">{d.exercise} · {d.code}</div>
                   <div className="text-muted-foreground">
                     {d.challengerName}: {d.challengerScore ?? "—"} vs {d.opponentName ?? "?"}: {d.opponentScore ?? "—"}
@@ -551,15 +582,30 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
                   )}
                   {d.settled && d.challengerScore != null && d.opponentScore != null && (
                     <>
-                      <div className="mt-1 -mx-2 flex items-center gap-2 rounded-lg bg-metric-streak/15 px-3 py-2">
-                        <Trophy className="h-5 w-5 shrink-0 text-metric-streak" />
+                      <div className="relative mt-1 -mx-2 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2">
+                        <Trophy className="h-5 w-5 shrink-0 text-primary" />
                         <div className="flex-1 min-w-0">
-                          <div className="text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-metric-streak">
-                            Winner
-                          </div>
-                          <div className="truncate text-2xl font-bold text-foreground">
-                            {d.challengerScore >= d.opponentScore ? d.challengerName : d.opponentName}
-                          </div>
+                          <StatDisplay
+                            className="text-start"
+                            contentClassName="justify-start flex-nowrap gap-2"
+                            eyebrow="Winner"
+                            eyebrowClassName="text-metric-streak tracking-[0.14em]"
+                            size="lg"
+                            value={
+                              (d.challengerScore ?? 0) >= (d.opponentScore ?? 0)
+                                ? d.challengerName
+                                : d.opponentName ?? "Opponent"
+                            }
+                            valueClassName="truncate text-foreground"
+                          />
+                          {(() => {
+                            const winSession = latestCoachSessionForExercise(sessions, d.exercise)
+                            return winSession && (winSession.score ?? 0) >= VERIFIED_FORM_MIN ? (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <PbSticker variant="pb-form-score" className="rotate-0 text-typo-micro" />
+                              </div>
+                            ) : null
+                          })()}
                         </div>
                       </div>
                       {(() => {
