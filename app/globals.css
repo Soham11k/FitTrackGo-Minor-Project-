@@ -462,10 +462,11 @@
   animation: score-roll 0.3s ease-out;
 }
 
-/* AI Coach: feedback card slide-in */
+/* AI Coach: feedback nudge (no opacity — avoids invisible text when reduced-motion
+   short-circuits animations or when the node remounts every frame). */
 @keyframes feedback-slide {
-  0% { transform: translateX(12px); opacity: 0; }
-  100% { transform: translateX(0); opacity: 1; }
+  0% { transform: translateX(10px); }
+  100% { transform: translateX(0); }
 }
 .animate-feedback-slide {
   animation: feedback-slide 0.35s ease-out forwards;
@@ -594,6 +595,11 @@
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
+  }
+  .animate-feedback-slide {
+    opacity: 1 !important;
+    transform: none !important;
+    animation: none !important;
   }
 }
 

@@ -480,6 +480,9 @@ export function analyzeForm(lm: Landmark[], exercise: ExerciseId, opts: AnalyzeF
   if (trackingQuality !== undefined && trackingQuality < 0.42) {
     feedback.unshift("Track quality is low — stay centered and add light for a truer score.")
   }
+  if (!feedback.some((x) => String(x).trim())) {
+    feedback.push("Hold steady — we're tracking your form.")
+  }
   return {
     feedback,
     isGoodForm: finalScore >= 80,

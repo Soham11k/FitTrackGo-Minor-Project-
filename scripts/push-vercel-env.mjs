@@ -35,7 +35,7 @@ function parseDotEnv(raw) {
 }
 
 function runVercelEnvAdd(name, environment, value, flags) {
-  const args = ["vercel@53.4.0", "env", "add", name, environment, "--value", value, "--yes", "--force", ...flags]
+  const args = ["vercel@54.0.0", "env", "add", name, environment, "--value", value, "--yes", "--force", ...flags]
   const r = spawnSync("npx", args, { cwd: root, stdio: "inherit", env: process.env })
   if (r.status !== 0) {
     console.error(`Failed: vercel env add ${name} ${environment}`)

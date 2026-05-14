@@ -181,7 +181,6 @@ export function AICoach({
     typeof window !== "undefined" ? getCoachA11yPrefs() : { hapticOnRep: true, announceReps: true, reduceMotion: false, highContrastVideo: false }
   )
   const [repBounce, setRepBounce] = useState(false)
-  const [feedbackKey, setFeedbackKey] = useState(0)
   const prevFormGoodRef = useRef(true)
   const displayedScoreRef = useRef(0)
   const goalReachedAnnouncedRef = useRef(false)
@@ -898,20 +897,6 @@ export function AICoach({
           setScore(displayRes.score)
           setBreakdown(displayRes.breakdown)
 
-          if (!exerciseBodyOk) {
-            setLiveFeedback("Get your full body in frame so the coach can see you.")
-          } else if (hasEnrollment && !match) {
-            setLiveFeedback("Face not recognized — only your enrolled face counts reps. Hold steady for a moment.")
-          } else if (hasEnrollment && match && !ckOk) {
-            setLiveFeedback("Look toward the camera so your face is clearly visible.")
-          } else {
-            const newFb = res.feedback[0] ?? "Good form."
-            setLiveFeedback(prev => {
-              if (prev !== newFb) setFeedbackKey(k => k + 1)
-              return newFb
-            })
-          }
-
           // Only require that the relevant body parts are visible; don't double‑gate by generic visibility count
           const enoughVisible = exerciseBodyOk
           const phase = enoughVisible ? getRepPhase(result.landmarks, exercise, false) : "idle"
@@ -1100,6 +1085,24 @@ export function AICoach({
             f.segmentPairs ?? []
           ) as [number, number][]
 
+          const primaryFb =
+            res.feedback.map((s) => String(s).trim()).find(Boolean) ?? "Good form."
+          let nextLive: string
+          if (!exerciseBodyOk) {
+            nextLive = "Get your full body in frame so the coach can see you."
+          } else if (hasEnrollment && !match) {
+            nextLive =
+              "Face not recognized — only your enrolled face counts reps. Hold steady for a moment."
+          } else if (hasEnrollment && match && !ckOk) {
+            nextLive = "Look toward the camera so your face is clearly visible."
+          } else if (exerciseBodyOk && faults.length > 0) {
+            const worst = faults.find((f) => f.severity === "severe") ?? faults[0]
+            nextLive = worst?.cue?.trim() || primaryFb
+          } else {
+            nextLive = primaryFb
+          }
+          setLiveFeedback(nextLive)
+
           clipRecorderRef.current?.tick(
             video,
             result.landmarks as LandmarkPoint[],
@@ -1124,8 +1127,6 @@ export function AICoach({
               mirror: false,
               pulse: Math.sin(performance.now() / 200) * 0.5 + 0.5,
             })
-            const worst = faults.find(f => f.severity === "severe") ?? faults[0]
-            if (worst && liveFeedback !== worst.cue) setLiveFeedback(worst.cue)
           }
           return
         } else {
@@ -1135,12 +1136,10 @@ export function AICoach({
           bottomFrameCountRef.current = 0
           topFrameCountRef.current = 0
           ctx.clearRect(0, 0, cw, ch)
-          const feedbackMsg = poseReady 
-            ? "Position yourself in frame to start detection." 
+          const feedbackMsg = poseReady
+            ? "Position yourself in frame to start detection."
             : "Initializing pose detection..."
-          if (liveFeedback !== feedbackMsg && Math.random() < 0.1) {
-            setLiveFeedback(feedbackMsg)
-          }
+          setLiveFeedback(feedbackMsg)
           return
         }
       } else if (video && useCamera) {
@@ -1790,8 +1789,10 @@ export function AICoach({
               <Zap className="h-4 w-4 text-primary" aria-hidden />
               <span className="text-sm font-semibold text-foreground">Live feedback</span>
             </div>
-            <p key={feedbackKey} className="animate-feedback-slide text-sm text-muted-foreground">
-              {liveFeedback}
+            <p
+              className={`text-sm text-muted-foreground min-h-[1.25rem] ${!a11yPrefs.reduceMotion ? "animate-feedback-slide" : ""}`}
+            >
+              {liveFeedback.trim() ? liveFeedback : "Hold steady — we're tracking your form."}
             </p>
           </div>
           {selectedExercise && (

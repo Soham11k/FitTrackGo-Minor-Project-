@@ -113,6 +113,10 @@ export function analyzeSpec(spec: FormSpec, lm: Landmark[], opts: AnalyzeOptions
     feedback.unshift("Track quality is low — stay centered and add light for a truer score.")
   }
 
+  if (!feedback.some((x) => String(x).trim())) {
+    feedback.push(spec.positiveLine?.trim() || "Hold steady — we're tracking your form.")
+  }
+
   return {
     feedback,
     isGoodForm: finalScore >= 80,
