@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback, useLayoutEffect } from "react"
 import { Camera, ScanLine, Loader2 } from "lucide-react"
+import { useReducedMotion } from "framer-motion"
 import {
   initPoseDetection,
   detectPose,
@@ -11,14 +12,18 @@ import {
   type EnvironmentAssessment,
   type LandmarkPoint,
 } from "@/lib/pose-detection"
-import type { ExerciseId } from "@/lib/form-analysis"
+import { drawCueFocusOverlay } from "@/lib/coach-vision/canvas-highlight"
+import type { HighlightSpec } from "@/lib/coach-vision/cue-resolver"
+import { useCueFocusOptional } from "@/components/coach/cue-focus-context"
+import type { Landmark } from "@/lib/form-analysis"
+import { COACH_FRAME_INTERVAL_MS } from "@/lib/pose-config"
 
 type PreviewMode = "off" | "loading" | "on" | "error"
 
 const NEUTRAL_FORM_SCORE = 85
 
-export function ExerciseBodyPreview(props: { exerciseId?: ExerciseId | null }) {
-  const { exerciseId = null } = props
+export function ExerciseBodyPreview(props: { exerciseId?: string | null; autoEnable?: boolean }) {
+  const { exerciseId = null, autoEnable = false } = props
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -26,9 +31,9 @@ export function ExerciseBodyPreview(props: { exerciseId?: ExerciseId | null }) {
   const runningRef = useRef(false)
   const lastTimeRef = useRef(0)
   /** Latest coach exercise for assessEnvironment — ref avoids re-subscribing RAF when id changes while mode is "off" or while streaming. */
-  const exerciseIdRef = useRef<ExerciseId | null>(exerciseId)
+  const exerciseIdRef = useRef<string | null>(exerciseId)
 
-  const [mode, setMode] = useState<PreviewMode>("off")
+  const [mode, setMode] = useState<PreviewMode>(autoEnable ? "loading" : "off")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [bodySummary, setBodySummary] = useState<string | null>(null)
   const [envAssessment, setEnvAssessment] = useState<EnvironmentAssessment | null>(null)
@@ -53,6 +58,13 @@ export function ExerciseBodyPreview(props: { exerciseId?: ExerciseId | null }) {
     setBodySummary(null)
     setEnvAssessment(null)
   }, [])
+
+  const reducedMotion = useReducedMotion()
+  const cueCtx = useCueFocusOptional()
+  const cueHighlightRef = useRef<HighlightSpec | null>(null)
+  useEffect(() => {
+    cueHighlightRef.current = cueCtx?.highlight ?? null
+  }, [cueCtx?.highlight])
 
   useEffect(() => {
     exerciseIdRef.current = exerciseId
@@ -164,7 +176,7 @@ export function ExerciseBodyPreview(props: { exerciseId?: ExerciseId | null }) {
       const delta = timestamp - lastTimeRef.current
       const isVideoReady =
         video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0
-      const minDelta = isVideoReady ? 1000 / 30 : 1000 / 60
+      const minDelta = isVideoReady ? COACH_FRAME_INTERVAL_MS : 1000 / 60
       if (delta < minDelta) return
       lastTimeRef.current = timestamp
 
@@ -196,7 +208,7 @@ export function ExerciseBodyPreview(props: { exerciseId?: ExerciseId | null }) {
       cw = canvas.width
       ch = canvas.height
 
-      const result = detectPose(video, timestamp)
+      const result = detectPose(video, timestamp, { skipHands: true })
       ctx.clearRect(0, 0, cw, ch)
 
       if (result?.landmarks?.length) {
@@ -219,10 +231,24 @@ export function ExerciseBodyPreview(props: { exerciseId?: ExerciseId | null }) {
             : env
         )
 
-        drawSkeleton(ctx, lm, cw, ch, true, {
-          left: result.leftHandLandmarks,
-          right: result.rightHandLandmarks,
-        }, NEUTRAL_FORM_SCORE)
+        const focused = cueHighlightRef.current
+        const faultSegmentPairs = focused?.kind === "improve" ? focused.segmentPairs : []
+        drawSkeleton(
+          ctx,
+          lm,
+          cw,
+          ch,
+          true,
+          {
+            left: result.leftHandLandmarks,
+            right: result.rightHandLandmarks,
+          },
+          NEUTRAL_FORM_SCORE,
+          faultSegmentPairs,
+        )
+        if (focused) {
+          drawCueFocusOverlay(ctx, lm as unknown as Landmark[], focused, cw, ch, !!reducedMotion)
+        }
       } else {
         setBodySummary((prev) => (prev === null ? prev : null))
         const env = assessEnvironment([], timestamp, exerciseIdRef.current ?? undefined)

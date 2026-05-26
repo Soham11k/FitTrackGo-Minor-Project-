@@ -35,6 +35,15 @@ export function getAICoachIdForStep(stepName: string): ExerciseId | null {
  * exist as FormSpec JSON files.
  */
 const STEP_NAME_TO_SPEC: { pattern: RegExp; id: string }[] = [
+  // Push-up variants before generic pushup.
+  { pattern: /incline\s+push[\s-]*up|push[\s-]*up[^\n]*incline|incline\s+pushup/i, id: "pushup_incline" },
+  { pattern: /diamond\s+push[\s-]*up|push[\s-]*up[^\n]*diamond|diamond\s+pushup/i, id: "pushup_diamond" },
+  { pattern: /wide\s+push[\s-]*up|push[\s-]*up[^\n]*wide|wide\s+pushup|wide-grip\s+push/i, id: "pushup_wide" },
+  {
+    pattern: /knee\s+push[\s-]*up|push[\s-]*up[^\n]*knee|knee\s+pushup|on\s+knees\s+push|girl\s*push/i,
+    id: "pushup_knee",
+  },
+  { pattern: /push\s*up|pushup/i, id: "pushup" },
   // Specific compound / hybrid lifts first.
   { pattern: /incline\s+bench\s*press/i, id: "incline_bench_press" },
   { pattern: /bench\s*press/i, id: "bench_press" },
@@ -49,7 +58,26 @@ const STEP_NAME_TO_SPEC: { pattern: RegExp; id: string }[] = [
   { pattern: /chin[- ]?up/i, id: "chin_up" },
   { pattern: /bench\s*dip/i, id: "bench_dip" },
   { pattern: /tricep\s*dip|^dip\b/i, id: "dip" },
-  { pattern: /overhead\s*tricep|skull\s*crusher|tricep\s*extension/i, id: "overhead_tricep_extension" },
+  {
+    pattern:
+      /triceps?\s*push[\s-]*down|rope[^\n]{0,28}push[\s-]*down|cable[^\n]{0,28}push[\s-]*down|push[\s-]*down[^\n]{0,40}(?:tricep|cable|rope)/i,
+    id: "tricep_pushdown",
+  },
+  { pattern: /tricep\s*kickback|triceps\s*kickback/i, id: "tricep_kickback" },
+  {
+    pattern: /concentration\s*curl/i,
+    id: "concentration_curl",
+  },
+  { pattern: /preacher\s*curl/i, id: "preacher_curl" },
+  {
+    pattern: /incline\s+dumbbell\s*curl|incline\s*(db|d\.b\.)\s*curl|curl[^\n]*incline\s*dumbbell/i,
+    id: "incline_dumbbell_curl",
+  },
+  {
+    pattern: /cable\s*(bicep|biceps)?\s*curl|curl[^\n]*(cable|stack)|standing\s*cable\s*curl/i,
+    id: "cable_bicep_curl",
+  },
+  { pattern: /overhead\s*tricep|skull\s*crusher|tricep\s*extension|triceps\s*extension/i, id: "overhead_tricep_extension" },
   { pattern: /hammer\s*curl/i, id: "hammer_curl" },
   { pattern: /lateral\s*raise|side\s*raise/i, id: "lateral_raise" },
   { pattern: /front\s*raise/i, id: "front_raise" },

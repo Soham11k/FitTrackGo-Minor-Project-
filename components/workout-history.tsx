@@ -10,7 +10,6 @@ import {
   Dumbbell,
   RefreshCw,
   AlertTriangle,
-  Loader2,
   Download,
   Timer,
   Gauge,
@@ -44,15 +43,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useLocale } from "@/components/locale-provider"
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty"
-import { Skeleton } from "@/components/ui/skeleton"
+import { EditorialEmpty } from "@/components/brand/editorial-empty"
+import { InlineScreenSkeleton } from "@/components/brand/inline-screen-skeleton"
 
 type HistoryItem = {
   type: "workout" | "run" | "coach"
@@ -225,21 +217,12 @@ export function WorkoutHistory({
       </div>
       <div className="px-4 py-4 space-y-3">
         {loading ? (
-          <div className="space-y-3" aria-busy="true" aria-label="Loading activity history">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4">
-                <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
-                <div className="flex min-w-0 flex-1 flex-col gap-2">
-                  <Skeleton className="h-3.5 w-28 rounded-md" />
-                  <Skeleton className="h-3 w-48 max-w-full rounded-md" />
-                </div>
-                <Skeleton className="h-3 w-10 shrink-0 rounded" />
-              </div>
-            ))}
-            <p className="sr-only">
-              <Loader2 className="inline h-3 w-3 animate-spin" /> Loading
-            </p>
-          </div>
+          <InlineScreenSkeleton
+            label="Loading history…"
+            hint="Gathering your runs, workouts, and Coach sessions."
+            layout="list"
+            className="border-0 bg-transparent p-0 shadow-none"
+          />
         ) : error ? (
           <div
             role="alert"
@@ -257,45 +240,43 @@ export function WorkoutHistory({
             </button>
           </div>
         ) : items.length === 0 ? (
-          <Empty className="rounded-3xl border border-dashed border-border/80 bg-card/40 py-10 text-primary shadow-[var(--shadow-card)]">
-            <EmptyHeader>
-              <EmptyMedia>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/illustrations/history-empty.svg"
-                  alt=""
-                  className="h-[7rem] w-[7rem] opacity-90"
-                />
-              </EmptyMedia>
-              <EmptyTitle className="text-foreground">No activity logged yet</EmptyTitle>
-              <EmptyDescription>
-                Your runs, workouts, and Coach Assist sets will timeline here automatically after you finish.
-              </EmptyDescription>
-            </EmptyHeader>
-            <EmptyContent className="max-w-none flex-row flex-wrap justify-center gap-2 pt-2">
-              <Button
-                type="button"
-                className="rounded-full"
-                onClick={() => {
-                  onNavigate?.("run")
-                  onBack()
-                }}
-              >
-                Track a run
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-full border-primary/35 bg-background/80"
-                onClick={() => {
-                  onNavigate?.("exercises")
-                  onBack()
-                }}
-              >
-                Browse workouts
-              </Button>
-            </EmptyContent>
-          </Empty>
+          <EditorialEmpty
+            title="No activity logged yet"
+            description="Your runs, workouts, and Coach Assist sets will timeline here automatically after you finish."
+            media={
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src="/illustrations/history-empty.svg"
+                alt=""
+                className="h-[7rem] w-[7rem] opacity-90"
+              />
+            }
+            secondary={
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button
+                  type="button"
+                  className="rounded-full"
+                  onClick={() => {
+                    onNavigate?.("run")
+                    onBack()
+                  }}
+                >
+                  Track a run
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-full border-primary/35 bg-background/80"
+                  onClick={() => {
+                    onNavigate?.("exercises")
+                    onBack()
+                  }}
+                >
+                  Browse workouts
+                </Button>
+              </div>
+            }
+          />
         ) : (
           items.map((item, i) => {
             const style = TYPE_STYLE[item.type]

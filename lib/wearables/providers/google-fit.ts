@@ -79,9 +79,10 @@ export const googleFitAdapter: WearableProviderAdapter = {
     }
   },
 
-  async fetchDailySummary(accessToken, date): Promise<ProviderDailyMetrics | null> {
-    const startMs = Date.parse(`${date}T00:00:00Z`)
-    const endMs = startMs + 24 * 60 * 60 * 1000
+  async fetchDailySummary(accessToken, date, bounds?: { startMs: number; endMs: number }): Promise<ProviderDailyMetrics | null> {
+    const startMs =
+      bounds != null ? bounds.startMs : Date.parse(`${date}T00:00:00.000Z`)
+    const endMs = bounds != null ? bounds.endMs : startMs + 24 * 60 * 60 * 1000
     const res = await fetch(AGG_URL, {
       method: "POST",
       headers: {

@@ -105,6 +105,17 @@ describe("form-engine analyzeSpec", () => {
     })
     expect(r.loadDegraded).toBeFalsy()
   })
+
+  it("loads and runs shallow analyze for new push-up variant specs", () => {
+    for (const id of ["pushup_wide", "pushup_diamond", "pushup_knee", "pushup_incline"] as const) {
+      const spec = loadSpec(id)!
+      const lm = makeLandmarks()
+      const r = analyzeSpec(spec, lm)
+      expect(r.score).toBeGreaterThanOrEqual(0)
+      expect(r.score).toBeLessThanOrEqual(100)
+      expect(Array.isArray(r.feedback)).toBe(true)
+    }
+  })
 })
 
 describe("form-engine getSpecRepPhase", () => {

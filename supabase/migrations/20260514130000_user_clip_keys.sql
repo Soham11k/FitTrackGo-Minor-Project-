@@ -1,4 +1,4 @@
-CREATE TABLE user_clip_keys (
+CREATE TABLE IF NOT EXISTS user_clip_keys (
   user_id uuid PRIMARY KEY REFERENCES auth.users (id) ON DELETE CASCADE,
   wrapped_key bytea NOT NULL,
   salt bytea NOT NULL,
@@ -10,14 +10,17 @@ CREATE TABLE user_clip_keys (
 
 ALTER TABLE user_clip_keys ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "user_clip_keys_select_own" ON user_clip_keys;
 CREATE POLICY "user_clip_keys_select_own"
   ON user_clip_keys FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "user_clip_keys_insert_own" ON user_clip_keys;
 CREATE POLICY "user_clip_keys_insert_own"
   ON user_clip_keys FOR INSERT TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "user_clip_keys_update_own" ON user_clip_keys;
 CREATE POLICY "user_clip_keys_update_own"
   ON user_clip_keys FOR UPDATE TO authenticated
   USING (auth.uid() = user_id);

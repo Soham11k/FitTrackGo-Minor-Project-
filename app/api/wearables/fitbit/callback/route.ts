@@ -8,19 +8,13 @@ import {
   isFitbitConfigured,
 } from "@/lib/wearables/fitbit"
 import { persistTokens } from "@/lib/wearables/sync-fitbit"
+import { resolveWearableOAuthRedirectBase } from "@/lib/wearables/app-origin"
 
 const STATE_COOKIE = "fitbit_oauth_state"
 
-function appOrigin(): string {
-  const u = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "")
-  if (u) return u
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
-  return "http://localhost:3000"
-}
-
 export async function GET(request: Request) {
-  const origin = appOrigin()
-  const fail = (code: string) => NextResponse.redirect(new URL(`/?fitbit_oauth=${code}`, origin))
+  const appBase = resolveWearableOAuthRedirectBase(request.url)
+  const fail = (code: string) => NextResponse.redirect(new URL(`/?fitbit_oauth=${code}`, appBase))
 
   if (!isFitbitConfigured()) return fail("server")
 
@@ -72,7 +66,7 @@ export async function GET(request: Request) {
     return fail("db")
   }
 
-  const res = NextResponse.redirect(new URL("/?fitbit_oauth=ok", origin))
+  const res = NextResponse.redirect(new URL("/?fitbit_oauth=ok", appBase))
   res.cookies.set(STATE_COOKIE, "", { path: "/", maxAge: 0 })
   return res
 }

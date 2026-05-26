@@ -13,6 +13,8 @@ export type TodayTripleRingProps = {
   activeMinGoal: number
   sessions: number
   sessionGoal: number
+  /** Shown under Move goal line (e.g. Google Fit steps). */
+  moveFootnote?: string | null
   className?: string
 }
 
@@ -24,6 +26,7 @@ export function TodayTripleRing({
   activeMinGoal,
   sessions,
   sessionGoal,
+  moveFootnote,
   className,
 }: TodayTripleRingProps) {
   const reduce = useReducedMotion() ?? false
@@ -50,6 +53,9 @@ export function TodayTripleRing({
           </span>
         </RingGauge>
         <span className="text-typo-caption text-muted-foreground tabular-nums">/ {calorieGoal} cal</span>
+        {moveFootnote ? (
+          <span className="max-w-[10rem] text-center text-typo-micro leading-tight text-muted-foreground">{moveFootnote}</span>
+        ) : null}
       </div>
       <div className="flex min-w-[5.5rem] flex-1 flex-col items-center gap-1">
         <span className="text-typo-micro font-bold uppercase tracking-wider text-muted-foreground">Exercise</span>

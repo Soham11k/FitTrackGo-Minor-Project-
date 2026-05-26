@@ -3,7 +3,7 @@
  *   - authorizeUrl(state): OAuth init
  *   - exchangeCode(code): redeem code for tokens
  *   - refreshTokens(refreshToken): refresh
- *   - fetchDailySummary(accessToken, date): normalized metrics
+ *   - fetchDailySummary(accessToken, date, opts?): normalized metrics
  *   - fetchLive(accessToken): optional current-state snapshot
  *
  * The unified storage schema is `wearable_daily_metrics(user_id, date,
@@ -63,7 +63,8 @@ export interface WearableProviderAdapter {
   refreshTokens: (refreshToken: string) => Promise<ProviderTokens>
   fetchDailySummary: (
     accessToken: string,
-    date: string
+    date: string,
+    opts?: { startMs: number; endMs: number }
   ) => Promise<ProviderDailyMetrics | null>
   fetchLive?: (accessToken: string, date: string) => Promise<LiveSnapshot | null>
 }

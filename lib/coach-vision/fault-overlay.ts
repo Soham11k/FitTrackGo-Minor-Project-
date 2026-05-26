@@ -199,3 +199,93 @@ function roundRect(
   ctx.arcTo(x, y, x + w, y, r)
   ctx.closePath()
 }
+
+const POSITIVE_COLOR = "rgba(34, 197, 94, 0.95)"
+const POSITIVE_GLOW = "rgba(34, 197, 94, 0.35)"
+
+/** Draw a single focused fault (user tapped one improve cue). */
+export function renderFocusedFault(
+  ctx: CanvasRenderingContext2D,
+  landmarks: Landmark[],
+  fault: FormFault,
+  opts: OverlayOptions
+): void {
+  renderFaults(ctx, landmarks, [fault], opts)
+}
+
+/** Green highlight on segments for positive "what went well" cues. */
+export function renderPositiveHighlight(
+  ctx: CanvasRenderingContext2D,
+  landmarks: Landmark[],
+  segmentPairs: [number, number][],
+  opts: OverlayOptions
+): void {
+  if (!segmentPairs.length || !landmarks?.length) return
+
+  const { width, height, mirror = false, pulse = 0 } = opts
+  const vis = (i: number) => landmarks[i]?.visibility ?? 1
+
+  const project = (i: number): [number, number] | null => {
+    const lm = landmarks[i]
+    if (!lm) return null
+    const x = mirror ? (1 - lm.x) * width : lm.x * width
+    const y = lm.y * height
+    return [x, y]
+  }
+
+  const baseWidth = 6 + pulse * 1.5
+  ctx.lineCap = "round"
+  ctx.lineJoin = "round"
+
+  for (const [a, b] of segmentPairs) {
+    if (vis(a) < MIN_VIS_SEGMENT || vis(b) < MIN_VIS_SEGMENT) continue
+    const pa = project(a)
+    const pb = project(b)
+    if (!pa || !pb) continue
+
+    ctx.strokeStyle = POSITIVE_GLOW
+    ctx.lineWidth = baseWidth + 8
+    ctx.beginPath()
+    ctx.moveTo(pa[0], pa[1])
+    ctx.lineTo(pb[0], pb[1])
+    ctx.stroke()
+
+    ctx.strokeStyle = POSITIVE_COLOR
+    ctx.lineWidth = baseWidth
+    ctx.beginPath()
+    ctx.moveTo(pa[0], pa[1])
+    ctx.lineTo(pb[0], pb[1])
+    ctx.stroke()
+  }
+}
+
+/** Apply focused highlight from resolver spec on a canvas. */
+export function renderHighlightSpec(
+  ctx: CanvasRenderingContext2D,
+  landmarks: Landmark[],
+  spec: {
+    kind: "improve" | "good"
+    segmentPairs: [number, number][]
+    fault?: FormFault
+  },
+  opts: OverlayOptions
+): void {
+  if (spec.kind === "good") {
+    renderPositiveHighlight(ctx, landmarks, spec.segmentPairs, opts)
+    return
+  }
+  if (spec.fault) {
+    renderFocusedFault(ctx, landmarks, spec.fault, opts)
+    return
+  }
+  const synthetic: FormFault = {
+    id: "focused.generic",
+    label: "Focus",
+    cue: "",
+    region: "torso",
+    severity: "moderate",
+    landmarkIndices: [],
+    segmentPairs: spec.segmentPairs,
+  }
+  renderFocusedFault(ctx, landmarks, synthetic, opts)
+}

@@ -73,6 +73,11 @@ export const MAX_COVERAGE_PERCENT = 95
 /** Minimum FPS before warning the user about performance */
 export const MIN_ACCEPTABLE_FPS = 15
 
+/** Target pose loop rate for live coach / workout camera (ms between frames). */
+export const COACH_TARGET_FPS = 45
+
+export const COACH_FRAME_INTERVAL_MS = 1000 / COACH_TARGET_FPS
+
 /** FPS measurement window (number of frames to average over) */
 export const FPS_WINDOW_SIZE = 30
 
@@ -90,6 +95,10 @@ export const FRONT_VIEW_SHOULDER_RATIO = 0.12
 export const RECOMMENDED_CAMERA_ANGLE: Record<string, "front" | "side" | "either"> = {
   squat: "front",
   pushup: "side",
+  pushup_wide: "side",
+  pushup_diamond: "side",
+  pushup_knee: "side",
+  pushup_incline: "side",
   plank: "side",
   lunge: "either",
   bicep_curl: "front",

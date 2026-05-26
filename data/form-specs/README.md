@@ -49,3 +49,26 @@ When drafting a new spec with an LLM, feed it this template:
 
 Always run `vitest run lib/form-engine` after adding a spec to confirm
 the registry loads and the catalog test passes.
+
+## User custom exercises (in-app)
+
+End users can describe a movement in **AI Coach → Create custom exercise**.
+The server generates a `FormSpec` via OpenAI, validates it, and stores it in
+`user_custom_exercises`. At login / Coach tab focus, specs merge into the
+runtime registry (`registerUserSpec`) — no change to `registry.ts` imports.
+
+Custom ids use `custom_<slug>_<suffix>`. Coach sessions store
+`exercise_spec_id` for replay fidelity.
+
+Developer-built specs (this folder) remain the source of truth for shipped
+movements; promote a popular user spec by copying JSON here and registering
+it in `registry.ts` + `coach-exercise-catalog.ts`.
+
+## Variant movements (e.g. push-up grips)
+
+Clone an existing spec (for example [`pushup.json`](pushup.json)), change the
+`id` and `displayName`, then tune thresholds on shared metrics such as
+`wrist_spread_x`, `elbow_flare_ratio`, and `elbow_angle_avg` in
+[`lib/form-engine/metrics.ts`](../../lib/form-engine/metrics.ts). Register the new file in
+[`lib/form-engine/registry.ts`](../../lib/form-engine/registry.ts) and add the `specId` under the right family in
+[`lib/coach-exercise-catalog.ts`](../../lib/coach-exercise-catalog.ts).

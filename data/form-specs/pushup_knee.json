@@ -1,0 +1,53 @@
+{
+  "id": "pushup_knee",
+  "displayName": "Knee push-up",
+  "category": "upper",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16, 23, 24],
+  "visibleFraction": 0.75,
+  "positiveLine": "Nice knee push-up — straight line from knees through shoulders",
+  "repPattern": "top_bottom_top",
+  "hudAngles": [
+    { "name": "Left elbow", "joints": ["left_shoulder", "left_elbow", "left_wrist"], "primary": true },
+    { "name": "Right elbow", "joints": ["right_shoulder", "right_elbow", "right_wrist"] }
+  ],
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 95 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 158 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 95 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 158 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "pushup_knee.body_line",
+      "region": "torso",
+      "penalty": 14,
+      "when": { "metric": "body_line_deviation", "op": ">=", "value": 22 },
+      "feedback": "Straight line from knees to shoulders — don’t hinge at hips",
+      "breakdown": { "label": "Body line", "format": "boolean", "okLabel": "Straight", "failLabel": "Broken", "detail": "Knees–hips–shoulders", "region": "torso" }
+    },
+    {
+      "id": "pushup_knee.hip_pike",
+      "region": "core",
+      "penalty": 12,
+      "when": { "metric": "hip_sag_y", "op": "<=", "value": -0.08 },
+      "feedback": "Don’t pike — drop hips so shoulders stay over hands",
+      "breakdown": { "label": "Hip height", "format": "boolean", "okLabel": "Neutral", "failLabel": "Piked", "detail": "Avoid sticking hips up", "region": "core" }
+    },
+    {
+      "id": "pushup_knee.elbow_angle",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "any": [ { "metric": "elbow_angle_avg", "op": "<=", "value": 70 }, { "metric": "elbow_angle_avg", "op": ">=", "value": 100 } ] },
+      "feedback": "Lower until elbows bend about 90°",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "detail": "Comfortable depth", "region": "arms" }
+    },
+    {
+      "id": "pushup_knee.no_flare",
+      "region": "arms",
+      "penalty": 8,
+      "when": { "metric": "elbow_flare_ratio", "op": ">=", "value": 1.55 },
+      "feedback": "Keep elbows slightly angled back, not wide butterfly wings",
+      "breakdown": { "label": "Elbow flare", "format": "boolean", "okLabel": "Good", "failLabel": "Wide", "detail": "~45° from torso", "region": "arms" }
+    }
+  ]
+}

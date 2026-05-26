@@ -1,6 +1,4 @@
 import type { Metadata, Viewport } from 'next'
-import { appendFileSync, mkdirSync } from "node:fs"
-import { join } from "node:path"
 import { headers } from 'next/headers'
 import { Inter, Space_Grotesk, Bebas_Neue } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
@@ -10,6 +8,7 @@ import { LocaleProvider } from '@/components/locale-provider'
 import { Toaster } from '@/components/ui/sonner'
 import { ObservabilityInit } from '@/components/observability-init'
 import { MediapipeConsoleBootstrap } from '@/components/mediapipe-console-bootstrap'
+import { AuthListenerHostFix } from '@/components/auth-listener-host-fix'
 import { SyncRunner } from '@/components/sync-runner'
 import { siteConfig } from '@/lib/data'
 import { alternatesLanguagesForPath, hrefForLocale } from '@/lib/locale-href'
@@ -58,7 +57,6 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title,
     description: siteConfig.tagline + ' Track runs, master exercises with AI body detection, and crush your fitness goals.',
-    generator: 'v0.app',
     manifest: '/manifest.json',
     metadataBase,
     alternates: {
@@ -96,29 +94,6 @@ export async function generateMetadata(): Promise<Metadata> {
 
 const buildForAndroidStatic = process.env.BUILD_FOR_ANDROID === "1"
 
-// #region agent log (module init — avoids render-time side effects in RootLayout)
-if (process.env.NODE_ENV === "development" && !buildForAndroidStatic) {
-  try {
-    const dirPath = join(process.cwd(), ".cursor")
-    mkdirSync(dirPath, { recursive: true })
-    appendFileSync(
-      join(dirPath, "debug-35ceb6.log"),
-      `${JSON.stringify({
-        sessionId: "35ceb6",
-        hypothesisId: "H-PING",
-        runId: "layout-module-eval",
-        message: "layout.tsx module evaluated (Node)",
-        NODE_ENV: process.env.NODE_ENV,
-        ts: Date.now(),
-      })}\n`
-    )
-    console.warn("[fittrack-debug-35ceb6-ping] root-layout-module-eval")
-  } catch (err) {
-    console.warn("[fittrack-debug-35ceb6-ping-err]", err)
-  }
-}
-// #endregion
-
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -140,6 +115,15 @@ export default async function RootLayout({
     >
       {/* Fixed full-viewport UIs do not grow body; min-h-dvh keeps the document (and a11y tree) non-zero height. */}
       <body className="min-h-dvh font-sans antialiased overflow-x-hidden">
+        {/* Dev: 0.0.0.0 vs localhost are different cookie origins — normalize before auth runs. */}
+        <script
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{
+            __html:
+              '(function(){try{var h=location.hostname;if(h==="0.0.0.0"||h==="[::]"||h==="::"){var u=new URL(location.href);u.hostname="localhost";location.replace(u.toString());}}catch(_){}})();',
+          }}
+        />
         {/* Earliest inline hook: must stay aligned with lib/mediapipe-console-noise.ts `isIgnorableMediapipeBrowserNoise`. */}
         <script
           nonce={nonce}
@@ -161,6 +145,7 @@ export default async function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <AccentProvider>
           <LocaleProvider>
+          <AuthListenerHostFix />
           <SyncRunner />
           <ObservabilityInit />
           <MediapipeConsoleBootstrap />

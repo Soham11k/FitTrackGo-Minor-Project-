@@ -15,9 +15,11 @@ function weekStartMonday(d = new Date()): Date {
 export function computeWeeklyRunKmImpact(
   priorRuns: Pick<RunRecord, "completedAt" | "distance">[],
   newRunKm?: number,
+  /** Anchor “today” for week boundaries (tests); defaults to now. */
+  asOf: Date = new Date(),
 ): { thisWeekKm: number; lastWeekKm: number; deltaPctVsLastWeek: number } {
-  const now = Date.now()
-  const thisMonday = weekStartMonday().getTime()
+  const now = asOf.getTime()
+  const thisMonday = weekStartMonday(asOf).getTime()
   const lastMonday = thisMonday - 7 * 86400000
   const lastEnd = thisMonday
 

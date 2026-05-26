@@ -1,7 +1,7 @@
 /**
  * Per-rep pose snapshots at bottom/top for form reports and session comparison.
  */
-import type { Landmark, ExerciseId, AnalyzeFormOptions } from "@/lib/form-analysis"
+import type { Landmark, AnalyzeFormOptions, CoachExerciseId } from "@/lib/form-analysis"
 import { analyzeForm } from "@/lib/form-analysis"
 import { computeJointAngles } from "@/lib/coach-vision/hud-metrics"
 
@@ -26,7 +26,7 @@ export type RepTracesJson = RepTracePair[]
 /** Build a snapshot for the current landmarks (angles + textual faults from analyzeForm feedback). */
 export function captureRepTrace(
   lm: Landmark[],
-  exercise: ExerciseId,
+  exercise: CoachExerciseId,
   phase: RepTracePhase,
   opts: AnalyzeFormOptions = {},
 ): RepTrace {

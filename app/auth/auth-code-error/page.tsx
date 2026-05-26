@@ -18,10 +18,43 @@ function AuthCodeErrorContent() {
       const code = searchParams.get("code")
       const error = searchParams.get("error")
       const errorDescription = searchParams.get("error_description")
+      const errorCode = searchParams.get("error_code")
+
+      const decodedDescription = errorDescription
+        ? (() => {
+            try {
+              return decodeURIComponent(errorDescription.replace(/\+/g, " "))
+            } catch {
+              return errorDescription.replace(/\+/g, " ")
+            }
+          })()
+        : null
 
       if (error) {
         setStatus("error")
-        setMessage(errorDescription || error || "Authentication failed")
+        const normalizedDesc = (decodedDescription ?? "").trim()
+        const base = normalizedDesc || error || "Authentication failed"
+        const pkceMissing =
+          /PKCECodeVerifierMissing|pkce.*code verifier not found/i.test(
+            `${error}${normalizedDesc}`
+          )
+        const otpStale =
+          errorCode === "otp_expired" ||
+          /\botp_expired\b/i.test(`${error}|${normalizedDesc}`) ||
+          /invalid\s+or\s+has\s+expired/i.test(normalizedDesc)
+
+        if (otpStale && !pkceMissing) {
+          setMessage(
+            `${base}\n\nThis usually means the confirmation link expired or was already used. Request a fresh link from the login screen and open it within a few minutes in the same browser where you started sign-in.\n\nDev tip: if you use \"next dev -H 0.0.0.0\", browse at http://localhost:3000 (not 0.0.0.0) so magic links and cookies share one origin — and ensure that exact localhost URL is in Supabase Authentication → URL configuration → Redirect URLs.`
+          )
+          return
+        }
+
+        setMessage(
+          pkceMissing
+            ? `${base}\n\nTip: Use the confirmation link on the same device and browser where you started sign-up or sign-in. In Supabase → Authentication → URL configuration, ensure your redirect URLs include the exact origin you use locally (including http://0.0.0.0:PORT vs http://localhost:PORT if you mix them).`
+            : base
+        )
         return
       }
 
@@ -30,7 +63,15 @@ function AuthCodeErrorContent() {
           const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
           if (exchangeError) {
             setStatus("error")
-            setMessage(exchangeError.message || "Failed to verify email")
+            const pkceMissing =
+              /PKCECodeVerifierMissing|pkce.*code verifier not found/i.test(
+                `${exchangeError.name ?? ""}${exchangeError.message ?? ""}`
+              )
+            setMessage(
+              pkceMissing
+                ? `${exchangeError.message || "Failed to verify email"}\n\nTip: Open the confirmation link in the same browser where you requested it, or request a new verification email.`
+                : exchangeError.message || "Failed to verify email"
+            )
           } else {
             setStatus("success")
             setMessage("Email verified successfully! Redirecting...")
@@ -66,7 +107,7 @@ function AuthCodeErrorContent() {
             {status === "success" && "Email Verified!"}
             {status === "error" && "Verification Failed"}
           </h1>
-          <p className="text-sm text-muted-foreground">{message}</p>
+          <p className="whitespace-pre-line text-sm text-muted-foreground">{message}</p>
         </div>
 
         {status === "error" && (

@@ -110,6 +110,7 @@ export interface Database {
           effective_reps: number | null
           verified_movement: boolean
           face_verified_session: boolean
+          exercise_spec_id: string | null
           completed_at: string
           created_at: string
         }
@@ -123,10 +124,36 @@ export interface Database {
           effective_reps?: number | null
           verified_movement?: boolean
           face_verified_session?: boolean
+          exercise_spec_id?: string | null
           completed_at?: string
           created_at?: string
         }
         Update: Partial<Database["public"]["Tables"]["coach_sessions"]["Insert"]>
+      }
+      user_custom_exercises: {
+        Row: {
+          id: string
+          user_id: string
+          spec_id: string
+          display_name: string
+          description: string
+          form_spec: Json
+          camera_note: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          spec_id: string
+          display_name: string
+          description?: string
+          form_spec: Json
+          camera_note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Database["public"]["Tables"]["user_custom_exercises"]["Insert"]>
       }
       favorites: {
         Row: {
@@ -411,6 +438,20 @@ export interface Database {
     }
     Views: Record<string, never>
     Functions: {
+      ensure_own_profile_bootstrap: {
+        Args: {
+          p_name: string
+          p_level: string
+          p_goals: string[]
+          p_join_date: string
+          p_onboarded: boolean
+        }
+        Returns: undefined
+      }
+      sync_own_profile_name: {
+        Args: { p_name: string }
+        Returns: undefined
+      }
       join_form_duel: {
         Args: { p_code: string; p_opponent_name: string }
         Returns: Database["public"]["Tables"]["form_duels"]["Row"]

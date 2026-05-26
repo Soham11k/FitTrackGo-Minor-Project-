@@ -26,6 +26,7 @@ export function BodyWeightRow({
   }, [profile?.bodyWeightKg, profile?.weightUnit])
 
   const display = useMemo(() => formatLoad(profile?.bodyWeightKg, profile?.weightUnit ?? "kg"), [profile?.bodyWeightKg, profile?.weightUnit])
+  const hasWeight = profile?.bodyWeightKg !== undefined && profile.bodyWeightKg > 0
 
   async function save() {
     const num = Number.parseFloat(input)
@@ -47,20 +48,36 @@ export function BodyWeightRow({
   if (!editing) {
     return (
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-muted-foreground">Body weight</span>
-          <button onClick={() => setEditing(true)} className="text-xs text-primary hover:underline">Edit</button>
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-typo-eyebrow font-bold uppercase tracking-[0.14em] text-muted-foreground">Body weight</p>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="shrink-0 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/5"
+          >
+            {hasWeight ? "Edit" : "Add"}
+          </button>
         </div>
-        <div className="text-sm text-foreground tabular-nums">{display}</div>
-        <p className="mt-1 text-[11px] text-muted-foreground">Used for load-aware form scoring.</p>
+        {hasWeight ? (
+          <p className="mt-2 text-sm font-semibold tabular-nums text-foreground">{display}</p>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="mt-2 w-full rounded-lg border border-dashed border-primary/40 bg-primary/5 px-3 py-2.5 text-xs font-medium text-primary"
+          >
+            Add body weight for load-aware scoring
+          </button>
+        )}
+        <p className="mt-1.5 text-[11px] text-muted-foreground">Used for load-aware form scoring in Coach Assist.</p>
       </div>
     )
   }
 
   return (
     <div>
-      <div className="mb-2 text-xs text-muted-foreground">Body weight</div>
-      <div className="flex items-center gap-2">
+      <p className="text-typo-eyebrow font-bold uppercase tracking-[0.14em] text-muted-foreground">Body weight</p>
+      <div className="mt-2 flex items-center gap-2">
         <input
           inputMode="decimal"
           value={input}
@@ -82,8 +99,12 @@ export function BodyWeightRow({
         </div>
       </div>
       <div className="mt-2 flex gap-2">
-        <button onClick={save} className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">Save</button>
-        <button onClick={() => setEditing(false)} className="rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">Cancel</button>
+        <button onClick={save} className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">
+          Save
+        </button>
+        <button onClick={() => setEditing(false)} className="rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
+          Cancel
+        </button>
       </div>
     </div>
   )

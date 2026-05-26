@@ -74,6 +74,10 @@ export async function openaiVisionChatJson(opts: {
   model: "gpt-4o-mini" | "gpt-4o"
   messages: VisionMessage[]
   maxTokens: number
+  /** Default 0.4 */
+  temperature?: number
+  /** When set, ask the API for JSON-only output (recommended for structured clip reviews). */
+  responseFormatJson?: boolean
 }): Promise<string> {
   const res = await fetch(`${OPENAI_BASE}/chat/completions`, {
     method: "POST",
@@ -82,7 +86,8 @@ export async function openaiVisionChatJson(opts: {
       model: opts.model,
       messages: opts.messages,
       max_tokens: opts.maxTokens,
-      temperature: 0.4,
+      temperature: opts.temperature ?? 0.4,
+      ...(opts.responseFormatJson ? { response_format: { type: "json_object" as const } } : {}),
     }),
   })
   if (!res.ok) {

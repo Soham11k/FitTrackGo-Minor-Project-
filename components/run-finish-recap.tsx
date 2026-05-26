@@ -2,9 +2,9 @@
 
 import { useMemo, useState, useEffect } from "react"
 import { motion, useReducedMotion } from "framer-motion"
-import { MapPin, Share2, Check, Map } from "lucide-react"
+import { Share2, Check, Map } from "lucide-react"
+import { MetricGrid, MetricTile } from "@/components/brand/metric-panel"
 import { Button } from "@/components/ui/button"
-import { StatDisplay } from "@/components/ui/stat-display"
 import { CelebrationBurst } from "@/components/ui/celebration-burst"
 import { PbSticker } from "@/components/ui/pb-sticker"
 import { toast } from "sonner"
@@ -191,11 +191,11 @@ export function RunFinishRecap({
       aria-modal="true"
       aria-labelledby="run-finish-title"
     >
-      <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: "var(--surface-stage-hairline)" }}>
-        <div className="flex items-center gap-2">
-          <MapPin className="h-5 w-5 text-primary" aria-hidden />
-          <h2 id="run-finish-title" className="text-base font-bold text-[color:var(--surface-stage-fg)]" style={{ fontFamily: "var(--font-heading)" }}>
-            {t("run.saved.title")}
+      <div className="flex items-center justify-between px-4 py-3">
+        <div>
+          <p className="text-sm text-white/55">{dateLabel}</p>
+          <h2 id="run-finish-title" className="text-xl font-bold text-[color:var(--surface-stage-fg)]" style={{ fontFamily: "var(--font-heading)" }}>
+            Run saved
           </h2>
         </div>
         <Button
@@ -211,7 +211,39 @@ export function RunFinishRecap({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-safe pb-28 pt-4">
         <div className="relative mx-auto max-w-lg">
-          <div className="relative aspect-[16/10] w-full overflow-hidden rounded-lg border bg-black/40" style={{ borderColor: "var(--surface-stage-hairline)" }}>
+          <p className="text-sm text-white/55">{dateLabel}</p>
+          <h3 className="mt-1 text-lg font-semibold text-[color:var(--surface-stage-fg)]" style={{ fontFamily: "var(--font-heading)" }}>
+            {t("run.saved.title")}
+          </h3>
+          <div className="my-5 h-px bg-[color:var(--surface-stage-hairline)]" />
+
+          <div className="relative mx-auto flex flex-col items-start gap-1">
+            {burstOn ? <CelebrationBurst className="absolute -top-4 right-0" /> : null}
+            {pbResult ? <PbSticker variant={pbResult.variant} className="relative z-[1] mb-2" /> : null}
+            <motion.div
+              className="relative z-[2] w-full"
+              variants={statStaggerParent}
+              initial={reduceMotion ? false : "hidden"}
+              animate={reduceMotion ? "show" : statsPhase === "show" ? "show" : "hidden"}
+            >
+              <motion.div variants={CINEMATIC.statReveal}>
+                <p className="text-sm text-white/55">{t("run.stat.distance")}</p>
+                <p className="text-5xl font-bold tabular-nums text-[color:var(--surface-stage-fg)]" style={{ fontFamily: "var(--font-heading)" }}>
+                  {distanceKm.toFixed(2)}
+                  <span className="ml-2 text-lg font-semibold text-white/55">km</span>
+                </p>
+              </motion.div>
+              <motion.div variants={CINEMATIC.statReveal} className="mt-6">
+                <MetricGrid cols={3}>
+                  <MetricTile tone="stage" label={t("run.stat.pace")} value={pacePerKm} unit="/km" />
+                  <MetricTile tone="stage" label={t("run.stat.time")} value={formatDur(durationSec)} />
+                  <MetricTile tone="stage" label={t("run.stat.energy")} value={String(calories)} unit="kcal" />
+                </MetricGrid>
+              </motion.div>
+            </motion.div>
+          </div>
+
+          <div className="relative mt-8 aspect-[16/10] w-full overflow-hidden rounded-2xl border bg-black/40" style={{ borderColor: "var(--surface-stage-hairline)" }}>
             {d ? (
               <svg viewBox="0 0 100 100" className="h-full w-full" aria-hidden>
                 <motion.path
@@ -237,33 +269,6 @@ export function RunFinishRecap({
                 {t("run.saved.noTrail")}
               </div>
             )}
-          </div>
-
-          <div className="relative mx-auto mt-6 flex flex-col items-center gap-3">
-            {burstOn ? <CelebrationBurst className="-translate-y-2" /> : null}
-            {pbResult ? <PbSticker variant={pbResult.variant} className="relative z-[1]" /> : null}
-            <motion.div
-              className="relative z-[2] flex w-full flex-col items-center"
-              variants={statStaggerParent}
-              initial={reduceMotion ? false : "hidden"}
-              animate={reduceMotion ? "show" : statsPhase === "show" ? "show" : "hidden"}
-            >
-              <motion.div variants={CINEMATIC.statReveal} className="w-full">
-                <StatDisplay
-                  tone="stage"
-                  eyebrow={t("run.stat.pace")}
-                  value={pacePerKm}
-                  unit="/km"
-                  size="lg"
-                  layoutId="run-stat-pace"
-                />
-              </motion.div>
-              <motion.div variants={CINEMATIC.statReveal} className="mt-8 grid w-full grid-cols-3 gap-3 border-t pt-6" style={{ borderColor: "var(--surface-stage-hairline)" }}>
-                <StatDisplay tone="stage" eyebrow={t("run.stat.distance")} value={distanceKm.toFixed(2)} unit="km" size="md" layoutId="run-stat-distance" />
-                <StatDisplay tone="stage" eyebrow={t("run.stat.time")} value={formatDur(durationSec)} size="md" layoutId="run-stat-time" />
-                <StatDisplay tone="stage" eyebrow={t("run.stat.energy")} value={String(calories)} unit="kcal" size="md" />
-              </motion.div>
-            </motion.div>
           </div>
 
           <div className="mt-8">

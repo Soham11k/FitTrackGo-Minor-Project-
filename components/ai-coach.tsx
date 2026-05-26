@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
-import { motion } from "framer-motion"
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
+import Link from "next/link"
 import {
   Camera,
   ScanLine,
@@ -28,16 +29,18 @@ import {
   Crosshair,
   User,
   X,
-  Trophy,
-  Home,
+  GripVertical,
+  Columns2,
+  Swords,
+  Sparkles,
 } from "lucide-react"
 import { initPoseDetection, detectPose, drawSkeleton, getBodyScanDetail, assessEnvironment, getDetectionQuality, type EnvironmentAssessment } from "@/lib/pose-detection"
+import { COACH_FRAME_INTERVAL_MS } from "@/lib/pose-config"
 import {
   analyzeForm,
   getRepPhase,
   hasEnoughVisibilityForExercise,
   EXERCISE_TIPS,
-  type ExerciseId,
   type FormBreakdown,
   type FormResult,
   type Landmark,
@@ -45,6 +48,8 @@ import {
 } from "@/lib/form-analysis"
 import { detectFaults } from "@/lib/coach-vision/faults"
 import { renderFaults } from "@/lib/coach-vision/fault-overlay"
+import { drawCueFocusOverlay } from "@/lib/coach-vision/canvas-highlight"
+import type { HighlightSpec } from "@/lib/coach-vision/cue-resolver"
 import { skeletonAnim } from "@/lib/skeleton-animations"
 import { addCoachSession, formatErr, getCoachSessions } from "@/lib/store-supabase"
 import { isNetworkError } from "@/lib/network-status"
@@ -82,9 +87,11 @@ import { detectFall, resetFallDetection } from "@/lib/fall-detection"
 import { playFallAlarm, stopFallAlarm } from "@/lib/alarm-sound"
 import { AICoachLlmPanel } from "@/components/ai-coach-llm-panel"
 import { consumeAICoachIntent } from "@/lib/ai-coach-intent"
+import { saveCoachPickerSnapshot, loadCoachPickerSnapshot } from "@/lib/coach-picker-snapshot"
 import { topCuesFromBreakdown } from "@/lib/coach-session-cues"
 import { CoachRepTimeline } from "@/components/coach-rep-timeline"
 import { captureRepTrace, aggregateTopFaults, type RepTracePair } from "@/lib/rep-trace"
+import { mergeFaultsFromTrace } from "@/lib/ai-coach/rep-feedback-local"
 import { CoachSetRecorder } from "@/lib/coach-replay/recorder"
 import { isCoachReplayLocalEnabled } from "@/lib/coach-replay/prefs"
 import { saveCoachReplayPackage, linkCoachReplayToSession } from "@/lib/coach-replay/store"
@@ -92,24 +99,54 @@ import { uploadCoachClipIfEnabled } from "@/lib/coach-clips-supabase"
 import { isCoachMidsetTipsEnabled } from "@/lib/coach-midset-tips"
 import { CoachFinishShareBar } from "@/components/coach-finish-recap"
 import { CoachReplaySheet } from "@/components/coach-replay-sheet"
+import { CueFocusProvider } from "@/components/coach/cue-focus-context"
+import { InteractiveCue } from "@/components/coach/interactive-cue"
 import type { TabId } from "@/components/bottom-nav"
 import { StatDisplay } from "@/components/ui/stat-display"
 import { CelebrationBurst } from "@/components/ui/celebration-burst"
 import { MotionCelebrate } from "@/components/motion-celebrate"
 import { CINEMATIC, staggerChildren } from "@/lib/motion"
 import { MobilityCoach } from "@/components/mobility-coach"
-
+import { agentDebugLog } from "@/lib/debug-agent-log"
+import {
+  COACH_EXERCISE_FAMILIES,
+  MY_EXERCISES_FAMILY_ID,
+  customExercisesToFamily,
+  findCustomVariantBySpecId,
+  findVariantBySpecId,
+  getDisplayNameForSpec,
+  getCoachFamily,
+  type CustomExercisePickerItem,
+} from "@/lib/coach-exercise-catalog"
+import { CustomExerciseBuilder } from "@/components/custom-exercise-builder"
+import { hydrateUserCustomExercises } from "@/lib/custom-exercises/store"
+import type { UserCustomExercise } from "@/lib/custom-exercises/types"
+import type { CoachRecord } from "@/lib/store"
+import { setArenaDuelExerciseLabel } from "@/lib/arena-duel-intent"
+import { CompareSessionsPanel } from "@/components/compare-sessions-sheet"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Button } from "@/components/ui/button"
+import { ExerciseBodyPreview } from "@/components/exercise-body-preview"
+import { ScreenTitle } from "@/components/brand/screen-title"
+import { CinematicStage } from "@/components/ui/cinematic-stage"
+import { FittrackLogoMark } from "@/components/fittrack-logo-mark"
 const POSTURE_PENALTY_THRESHOLD = 75
 const POSTURE_PENALTY_NO_ACCUM_THRESHOLD = 85
 /** Require this many consecutive frames at top before a rep can complete (reduces single-frame noise). */
 const MIN_TOP_FRAMES_FOR_REP = 2
 const EMERGENCY_NUMBER = "911"
 
-/** Good-form badge: avoid "Good form" while resting at idle for rep-based exercises; respect tracking reliability. */
-function goodFormBadge(exercise: ExerciseId, phase: RepPhase, res: FormResult): boolean {
+/** Session % form: average of completed reps, not the last live frame (often 0 when you stop moving). */
+function sessionFormScore(repScores: number[], liveScore: number): number {
+  if (repScores.length === 0) return Math.round(liveScore)
+  return Math.round(repScores.reduce((a, b) => a + b, 0) / repScores.length)
+}
+
+function goodFormBadge(exercise: string, phase: RepPhase, res: FormResult): boolean {
   if (!res.isGoodForm) return false
   if (res.trackingReliability !== undefined && res.trackingReliability < 0.48) return false
-  if (exercise === "plank") return true
+  if (exercise === "plank" || exercise === "side_plank") return true
   if (exercise === "jumping_jacks" || exercise === "high_knees") return true
   return phase !== "idle"
 }
@@ -118,38 +155,37 @@ type DetectionState = "select" | "setup" | "enrolling" | "detecting" | "feedback
 
 export function AICoach({
   focusMode = false,
+  guestMode = false,
   onExitFocus,
   onNavigate,
+  onRequestSignIn,
 }: {
   focusMode?: boolean
+  guestMode?: boolean
   onExitFocus?: () => void
   onNavigate?: (tab: TabId) => void
+  /** Guest funnel: saves Session DNA in the cloud once the user authenticates */
+  onRequestSignIn?: () => void
 } = {}) {
   const { locale, t } = useLocale()
-  const availableExercises = useMemo(
-    (): { id: ExerciseId; name: string; description: string; icon: typeof Dumbbell; gradient: string }[] => [
-      { id: "squat", name: "Squats", description: "AI checks depth, knee alignment, and back posture", icon: Dumbbell, gradient: "from-primary/30 to-primary/10" },
-      { id: "pushup", name: "Push Ups", description: "Track elbow angle, body alignment, and range of motion", icon: Activity, gradient: "from-destructive/20 to-chart-2/20" },
-      { id: "plank", name: "Plank Hold", description: "Monitor hip alignment and shoulder positioning", icon: Shield, gradient: "from-chart-2/30 to-chart-4/20" },
-      { id: "lunge", name: "Lunges", description: "Analyze step depth, knee tracking, and balance", icon: Flame, gradient: "from-chart-4/30 to-destructive/20" },
-      { id: "deadlift", name: t("coach.deadlift.name"), description: t("coach.deadlift.desc"), icon: Weight, gradient: "from-chart-4/35 to-muted/25" },
-      { id: "rdl", name: t("coach.rdl.name"), description: t("coach.rdl.desc"), icon: Weight, gradient: "from-primary/35 to-muted/25" },
-      { id: "bicep_curl", name: "Bicep Curls", description: "Full range and elbow control, no swinging", icon: BicepsFlexed, gradient: "from-primary/25 to-chart-2/20" },
-      { id: "shoulder_press", name: "Shoulder Press", description: "Symmetry and overhead extension", icon: CircleDot, gradient: "from-chart-2/25 to-chart-4/20" },
-      { id: "jumping_jacks", name: "Jumping Jacks", description: "Full arm and leg spread, steady rhythm", icon: Move, gradient: "from-chart-4/25 to-primary/20" },
-      { id: "high_knees", name: "High Knees", description: "Knee drive and quick feet", icon: Footprints, gradient: "from-destructive/20 to-chart-2/20" },
-      { id: "crunch", name: "Crunches", description: "Controlled curl, shoulders off floor", icon: LayoutList, gradient: "from-chart-2/30 to-primary/15" },
-    ],
-    [t]
-  )
+  const reduceMotion = useReducedMotion() ?? false
 
-  const [selectedExercise, setSelectedExercise] = useState<ExerciseId | null>(null)
+  const [coachPickerStep, setCoachPickerStep] = useState<"families" | "variants">("families")
+  const [selectedFamilyId, setSelectedFamilyId] = useState<string | null>(null)
+  const [selectedSpecId, setSelectedSpecId] = useState<string | null>(null)
+  const [customExercises, setCustomExercises] = useState<UserCustomExercise[]>([])
+  const [customBuilderOpen, setCustomBuilderOpen] = useState(false)
   const [score, setScore] = useState(0)
   const [reps, setReps] = useState(0)
   const [repScores, setRepScores] = useState<number[]>([])
   const [feedback, setFeedback] = useState<string[]>([])
   const [breakdown, setBreakdown] = useState<FormBreakdown[]>([])
   const [recapBreakdown, setRecapBreakdown] = useState<FormBreakdown[]>([])
+  const [cueHighlight, setCueHighlight] = useState<HighlightSpec | null>(null)
+  const cueHighlightRef = useRef<HighlightSpec | null>(null)
+  useEffect(() => {
+    cueHighlightRef.current = cueHighlight
+  }, [cueHighlight])
   const [selectedRecapRep, setSelectedRecapRep] = useState<number | null>(null)
   const [liveFeedback, setLiveFeedback] = useState("Position yourself in frame to start.")
   const [isGoodForm, setIsGoodForm] = useState(true)
@@ -170,6 +206,9 @@ export function AICoach({
     sessionId: null,
     clipId: null,
   })
+  const [compareOpen, setCompareOpen] = useState(false)
+  const [compareBaseline, setCompareBaseline] = useState<CoachRecord | null>(null)
+  const [compareCurrent, setCompareCurrent] = useState<CoachRecord | null>(null)
   const [recapIsPr, setRecapIsPr] = useState(false)
   const [sessionCelebrateBurst, setSessionCelebrateBurst] = useState(false)
   const [loadKg, setLoadKg] = useState<number | undefined>(undefined)
@@ -215,20 +254,205 @@ export function AICoach({
   const aiTipServerEnabledRef = useRef(false)
   const lastMidsetTipAtRef = useRef(0)
   const lastRepScoreWindowRef = useRef<number[]>([])
+  /** Debug: throttle live-feedback path logs per hypothesis (session `2a41e9`). */
+  const liveFbDebugLastMsByHRef = useRef<Record<string, number>>({})
+  const lastEnvUiAtRef = useRef(0)
+  const envUiCacheRef = useRef<EnvironmentAssessment | null>(null)
+  const lastLiveFeedbackRef = useRef("")
+  const commitLiveFeedbackRef = useRef<(msg: string) => void>(() => {})
+  commitLiveFeedbackRef.current = (msg: string) => {
+    const t = msg.trim()
+    if (!t) return
+    if (lastLiveFeedbackRef.current === t) return
+    lastLiveFeedbackRef.current = t
+    setLiveFeedback(t)
+  }
+  /** Pose ready flag read inside RAF without listing `poseReady` on the detecting effect (avoids camera teardown/restart). */
+  const poseReadyRef = useRef(poseReady)
+  poseReadyRef.current = poseReady
 
-  const exerciseName = selectedExercise ? (availableExercises.find((e) => e.id === selectedExercise)?.name ?? "") : ""
+  const customPickerItems = useMemo<CustomExercisePickerItem[]>(
+    () =>
+      customExercises.map((e) => ({
+        specId: e.specId,
+        displayName: e.displayName,
+        description: e.description,
+        cameraNote: e.cameraNote,
+      })),
+    [customExercises],
+  )
+
+  const pickerFamilies = useMemo(() => {
+    const mine = customExercisesToFamily(customPickerItems)
+    return mine ? [...COACH_EXERCISE_FAMILIES, mine] : COACH_EXERCISE_FAMILIES
+  }, [customPickerItems])
+
+  const catalogCtx = useMemo(() => {
+    if (!selectedSpecId) return undefined
+    return findVariantBySpecId(selectedSpecId) ?? findCustomVariantBySpecId(selectedSpecId, customPickerItems)
+  }, [selectedSpecId, customPickerItems])
+
+  const activePickerVariants = useMemo(() => {
+    if (selectedFamilyId === MY_EXERCISES_FAMILY_ID) {
+      return customExercisesToFamily(customPickerItems)?.variants ?? []
+    }
+    return selectedFamilyId ? (getCoachFamily(selectedFamilyId)?.variants ?? []) : []
+  }, [selectedFamilyId, customPickerItems])
+
+  const resolvedExerciseTips = useMemo(() => {
+    if (!selectedSpecId) return []
+    const found = findVariantBySpecId(selectedSpecId)
+    const key = found?.family.tipsKey
+    const base = key ? (EXERCISE_TIPS[key] ?? []) : []
+    const extra = found?.variant.tips ?? []
+    return [...extra, ...base]
+  }, [selectedSpecId])
+
+  const baseExerciseName = selectedSpecId ? getDisplayNameForSpec(selectedSpecId) : ""
+  const exerciseName =
+    selectedSpecId === "deadlift"
+      ? t("coach.deadlift.name")
+      : selectedSpecId === "rdl"
+        ? t("coach.rdl.name")
+        : baseExerciseName
+
+  const coachLivePrimary = useMemo(() => {
+    const trimmed = liveFeedback.trim()
+    if (trimmed) return trimmed
+    if (resolvedExerciseTips.length > 0) {
+      return resolvedExerciseTips[0] ?? "Hold steady — we're tracking your form."
+    }
+    return "Position yourself in frame to start."
+  }, [liveFeedback, resolvedExerciseTips])
+
+  const coachSetupTips = useMemo(() => resolvedExerciseTips.slice(0, 3), [resolvedExerciseTips])
+
+  const coachLiveBreakdownHints = useMemo(
+    () => breakdown.filter((b) => !b.ok).slice(0, 2),
+    [breakdown],
+  )
 
   /** Resolve the FormSpec for the active exercise, if one exists. */
   const coachLoadSpec = (id: string) => (coachHasSpec(id) ? coachLoadSpecRaw(id) ?? null : null)
 
+  const handleOpenCompareSheet = useCallback(async () => {
+    if (!sessionDna) {
+      toast.error("Finish a coached set before comparing.")
+      return
+    }
+    const tracesSnapshot =
+      repTracesRef.current.length > 0
+        ? (JSON.parse(JSON.stringify(repTracesRef.current)) as RepTracePair[])
+        : undefined
+    const currentSynth: CoachRecord = {
+      id: finishShareSessionId ?? "local-recap-pending",
+      exercise: exerciseName,
+      reps: sessionDna.reps,
+      score: sessionDna.score,
+      repScores: [...sessionDna.repScores],
+      completedAt: new Date().toISOString(),
+      repTraces: tracesSnapshot,
+      effectiveReps: sessionDna.effectiveReps,
+      verifiedMovement: sessionDna.verifiedMovement,
+      faceVerifiedSession: sessionDna.faceVerifiedSession,
+    }
+    try {
+      const rows = await getCoachSessions()
+      const exKey = exerciseName.trim().toLowerCase()
+      const excluded = finishShareSessionId
+      const baseline =
+        rows.find(
+          (s) =>
+            s.exercise.trim().toLowerCase() === exKey &&
+            (!excluded || s.id !== excluded) &&
+            s.id !== currentSynth.id,
+        ) ?? null
+      setCompareCurrent(currentSynth)
+      setCompareBaseline(baseline)
+      setCompareOpen(true)
+      if (!baseline) {
+        toast.message("Save one more coached set for this movement to unlock joint deltas.", { duration: 3500 })
+      }
+    } catch (e) {
+      console.warn(e)
+      toast.error("Could not load sessions to compare.")
+    }
+  }, [exerciseName, finishShareSessionId, sessionDna])
+
   useEffect(() => {
-    const intent = consumeAICoachIntent()
-    if (!intent?.exerciseId) return
-    const known = availableExercises.some((e) => e.id === intent.exerciseId)
-    if (!known) return
-    setSelectedExercise(intent.exerciseId)
-    setState("setup")
-  }, [availableExercises])
+    if (state === "select" && !guestMode) {
+      void hydrateUserCustomExercises().then(setCustomExercises).catch(() => {})
+    }
+  }, [state, guestMode])
+
+  useEffect(() => {
+    void (async () => {
+      let pickerItems: CustomExercisePickerItem[] = []
+      if (!guestMode) {
+        try {
+          const exercises = await hydrateUserCustomExercises()
+          setCustomExercises(exercises)
+          pickerItems = exercises.map((e) => ({
+            specId: e.specId,
+            displayName: e.displayName,
+            description: e.description,
+            cameraNote: e.cameraNote,
+          }))
+        } catch {
+          /* registry may still have built-ins */
+        }
+      }
+
+      const intent = consumeAICoachIntent()
+      if (intent) {
+        if (intent.openMobility) {
+          setCoachTrack("mobility")
+          return
+        }
+        if (intent.openCustomExerciseBuilder) {
+          setCustomBuilderOpen(true)
+          return
+        }
+
+        const specId = intent.exerciseId
+        if (specId && coachHasSpec(specId)) {
+          const found = findVariantBySpecId(specId) ?? findCustomVariantBySpecId(specId, pickerItems)
+          setSelectedFamilyId(found?.family.id ?? (specId.startsWith("custom_") ? MY_EXERCISES_FAMILY_ID : null))
+          setSelectedSpecId(specId)
+          setCoachPickerStep(found ? "variants" : "families")
+          setState("setup")
+          return
+        }
+      }
+
+      const snap = loadCoachPickerSnapshot()
+      if (!snap) return
+      if (snap.coachPickerStep === "variants" && !snap.selectedFamilyId) {
+        setCoachPickerStep("families")
+        setCoachTrack(snap.coachTrack)
+        return
+      }
+      setCoachTrack(snap.coachTrack)
+      setCoachPickerStep(snap.coachPickerStep)
+      setSelectedFamilyId(snap.selectedFamilyId)
+    })()
+  }, [guestMode])
+
+
+  useEffect(() => {
+    if (state !== "select") return
+    saveCoachPickerSnapshot({
+      coachTrack,
+      coachPickerStep,
+      selectedFamilyId,
+    })
+  }, [state, coachTrack, coachPickerStep, selectedFamilyId])
+
+
+  const handleOpenArenaFromRecap = useCallback(() => {
+    setArenaDuelExerciseLabel(exerciseName)
+    onNavigate?.("arena")
+  }, [exerciseName, onNavigate])
 
   // Pull body weight + unit preference from the local profile cache on mount.
   useEffect(() => {
@@ -248,13 +472,25 @@ export function AICoach({
     setA11yPrefs(getCoachA11yPrefs())
   }, [])
 
-  const handleSelectExercise = (id: string) => {
-    setSelectedExercise(id as ExerciseId)
+  const handleSelectFamily = (familyId: string) => {
+    setSelectedFamilyId(familyId)
+    setSelectedSpecId(null)
+    setCoachPickerStep("variants")
+  }
+
+  const handlePickerBackToFamilies = () => {
+    setCoachPickerStep("families")
+    setSelectedFamilyId(null)
+    setSelectedSpecId(null)
+  }
+
+  const handleSelectVariant = (specId: string) => {
+    setSelectedSpecId(specId)
     setLoadKg(undefined)
     void (async () => {
       try {
         const mod = await import("@/lib/weight/load-history")
-        const last = mod.getLastLoadKg(id)
+        const last = mod.getLastLoadKg(specId)
         if (last !== undefined) setLoadKg(last)
       } catch {
         /* ignore */
@@ -263,12 +499,25 @@ export function AICoach({
     setState("setup")
   }
 
+  const handleSetupBack = () => {
+    setState("select")
+    setSelectedSpecId(null)
+    setLoadKg(undefined)
+    if (selectedFamilyId) {
+      setCoachPickerStep("variants")
+    } else {
+      setCoachPickerStep("families")
+    }
+  }
+
   const handleStartDetection = useCallback(() => {
     setScore(100)
     setReps(0)
     setRepScores([])
     setFeedback([])
     setBreakdown([])
+    lastLiveFeedbackRef.current = ""
+    setLiveFeedback("Position yourself in frame to start.")
     setRecapBreakdown([])
     setSelectedRecapRep(null)
     repScoreStatsRef.current = { sum: 0, w: 0, min: null }
@@ -277,7 +526,7 @@ export function AICoach({
     bottomFrameCountRef.current = 0
     bottomWasHeldRef.current = false
     topFrameCountRef.current = 0
-    getRepPhase([], selectedExercise || "squat", true)
+    getRepPhase([], selectedSpecId || "squat", true)
     lastRepAtRef.current = 0
     lastVoiceAtRef.current = 0
     repCountForVoiceRef.current = 0
@@ -329,7 +578,7 @@ export function AICoach({
       }
       requestAnimationFrame(boot)
     }
-  }, [selectedExercise])
+  }, [selectedSpecId])
 
   const handleFinish = useCallback(async () => {
     stopFallAlarm()
@@ -350,6 +599,8 @@ export function AICoach({
     }
 
     const finalFeedback = feedback.length > 0 ? feedback : ["Great effort! Keep practicing for even better form."]
+    const sessionScore = sessionFormScore(repScores, score)
+    setScore(sessionScore)
     setRecapBreakdown([...breakdown])
     setSelectedRecapRep(repScores.length > 0 ? repScores.length - 1 : null)
     setFeedback(finalFeedback)
@@ -358,7 +609,7 @@ export function AICoach({
     setReplayTarget({ sessionId: null, clipId: null })
     setSessionCelebrateBurst(false)
 
-    if (selectedExercise && (reps > 0 || score > 0)) {
+    if (selectedSpecId && (reps > 0 || sessionScore > 0)) {
       let prevBestScore = 0
       try {
         const priorSessions = await getCoachSessions()
@@ -372,7 +623,7 @@ export function AICoach({
       } catch {
         prevBestScore = 0
       }
-      const rounded = Math.round(score)
+      const rounded = sessionScore
       const eff = effectiveRepCount(reps, repScores, rounded)
       const verified = isVerifiedMovement(repScores, rounded)
       const faceOk = faceVerifiedSessionRef.current
@@ -402,11 +653,12 @@ export function AICoach({
           faceVerifiedSession: faceOk,
           loadKg,
           volumeKg,
+          exerciseSpecId: selectedSpecId ?? undefined,
         })
-        if (selectedExercise && loadKg !== undefined && reps > 0) {
+        if (selectedSpecId && loadKg !== undefined && reps > 0) {
           try {
             const mod = await import("@/lib/weight/load-history")
-            mod.recordSet(selectedExercise, { loadKg, reps })
+            mod.recordSet(selectedSpecId, { loadKg, reps })
           } catch {
             /* non-blocking */
           }
@@ -448,7 +700,7 @@ export function AICoach({
           await saveCoachReplayPackage({
             clipId: clipIdCaptured,
             sessionId: insertedIdLocal,
-            exerciseId: selectedExercise,
+            exerciseId: selectedSpecId,
             exerciseLabel: exerciseName,
             durationMs: clipPack.durationMs,
             blob: clipPack.blob,
@@ -475,7 +727,7 @@ export function AICoach({
       setSessionDna(null)
       setRecapIsPr(false)
     }
-  }, [selectedExercise, exerciseName, reps, score, repScores, feedback, breakdown, loadKg])
+  }, [selectedSpecId, exerciseName, reps, score, repScores, feedback, breakdown, loadKg])
 
   const handleReset = useCallback(() => {
     if (streamRef.current) {
@@ -488,7 +740,9 @@ export function AICoach({
     setReplayOpen(false)
     setReplayTarget({ sessionId: null, clipId: null })
     setState("select")
-    setSelectedExercise(null)
+    setCoachPickerStep("families")
+    setSelectedFamilyId(null)
+    setSelectedSpecId(null)
     setScore(0)
     setReps(0)
     setTargetReps(0)
@@ -728,14 +982,8 @@ export function AICoach({
 
   // Detecting: camera stream and pose loop
   useEffect(() => {
-    if (state !== "detecting" || !selectedExercise) return
+    if (state !== "detecting" || !selectedSpecId) return
     if (detectingStartedAtRef.current === 0) detectingStartedAtRef.current = Date.now()
-    const video = videoRef.current
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
 
     let stream: MediaStream | null = null
     const startCamera = () => {
@@ -750,12 +998,14 @@ export function AICoach({
       }).then((s) => {
         stream = s
         streamRef.current = s
-        if (video) {
-          video.srcObject = s
-          video.play().catch(() => {})
-          // Set video dimensions for better canvas rendering
-          // Keep canvas at fixed 640x480 so skeleton coords stay consistent
+        const attachToVideo = () => {
+          const v = videoRef.current
+          if (!v) return
+          v.srcObject = s
+          void v.play().catch(() => {})
         }
+        attachToVideo()
+        requestAnimationFrame(attachToVideo)
       }).catch(() => {
         setUseCamera(false)
         setLiveFeedback("Camera denied or unavailable — using simulated form. Reps and tips still work.")
@@ -769,14 +1019,52 @@ export function AICoach({
     let running = true
     let simScore = 85
     let simGood = true
-    const exercise = selectedExercise
+    const exercise = selectedSpecId
+
+    const dbgLiveFbPath = (hypothesisId: string, data: Record<string, unknown>) => {
+      const t = Date.now()
+      const prev = liveFbDebugLastMsByHRef.current[hypothesisId] ?? 0
+      if (t - prev < 2000) return
+      liveFbDebugLastMsByHRef.current[hypothesisId] = t
+      // #region agent log
+      agentDebugLog({
+        sessionId: "2a41e9",
+        location: "components/ai-coach.tsx:runDetection",
+        message: "live feedback detection path",
+        hypothesisId,
+        data,
+        timestamp: t,
+      })
+      // #endregion
+    }
+
+    // #region agent log
+    agentDebugLog({
+      sessionId: "2a41e9",
+      location: "components/ai-coach.tsx:detecting-effect",
+      message: "detecting pose loop mounted",
+      hypothesisId: "H4",
+      data: { exercise, useCamera, videoRefAtMount: !!videoRef.current, runId: "v3-pose-dep-fix" },
+      timestamp: Date.now(),
+    })
+    // #endregion
 
     const runDetection = (timestamp: number) => {
       if (!running) return
       animRef.current = requestAnimationFrame(runDetection)
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+      const video = videoRef.current
+      const liveStream = streamRef.current
+      if (useCamera && video && liveStream && video.srcObject !== liveStream) {
+        video.srcObject = liveStream
+        void video.play().catch(() => {})
+      }
       const delta = timestamp - lastTime
       const isVideoReady = Boolean(useCamera && video && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0)
-      const minDelta = isVideoReady ? 1000 / 30 : 1000 / 60
+      const minDelta = isVideoReady ? COACH_FRAME_INTERVAL_MS : 1000 / 60
       if (delta < minDelta) return
       lastTime = timestamp
 
@@ -812,7 +1100,7 @@ export function AICoach({
         cw = canvas.width
         ch = canvas.height
         
-        const result = detectPose(video, timestamp)
+        const result = detectPose(video, timestamp, { skipHands: true })
         if (result?.landmarks?.length) {
           const lm = result.landmarks as LandmarkPoint[]
           const centered = isInCenter(lm)
@@ -869,10 +1157,23 @@ export function AICoach({
           const scan = getBodyScanDetail(result.landmarks)
           if (scan) {
             const readable = scan.summary.replace(/leftArm|rightArm/g, "arms").replace(/leftLeg|rightLeg/g, "legs").replace(/, arms, arms/g, ", arms").replace(/, legs, legs/g, ", legs")
-            setBodyScanSummary(readable)
+            setBodyScanSummary((prev) => (prev === readable ? prev : readable))
           }
           const env = assessEnvironment(result.landmarks, timestamp, exercise)
-          setEnvAssessment(env)
+          const envUiAt = performance.now()
+          const envChanged =
+            !envUiCacheRef.current ||
+            envUiCacheRef.current.fps !== env.fps ||
+            envUiCacheRef.current.fpsLow !== env.fpsLow ||
+            envUiCacheRef.current.suggestion !== env.suggestion ||
+            envUiCacheRef.current.tooFar !== env.tooFar ||
+            envUiCacheRef.current.tooClose !== env.tooClose ||
+            Math.round((envUiCacheRef.current.quality ?? 0) * 100) !== Math.round(env.quality * 100)
+          if (envChanged && envUiAt - lastEnvUiAtRef.current >= 250) {
+            lastEnvUiAtRef.current = envUiAt
+            envUiCacheRef.current = env
+            setEnvAssessment(env)
+          }
           const worldLm = (result.worldLandmarks ?? undefined) as Landmark[] | undefined
           const traceOpts = {
             world: worldLm && worldLm.length >= 33 ? worldLm : undefined,
@@ -1077,7 +1378,7 @@ export function AICoach({
           // Detect form faults for per-segment red highlighting
           const { faults } = detectFaults(
             result.landmarks as unknown as Landmark[],
-            exercise as ExerciseId,
+            exercise,
             displayRes,
             worldLm && worldLm.length >= 33 ? worldLm : undefined
           )
@@ -1101,7 +1402,16 @@ export function AICoach({
           } else {
             nextLive = primaryFb
           }
-          setLiveFeedback(nextLive)
+          dbgLiveFbPath("H2", {
+            branch: "landmarks",
+            exerciseBodyOk,
+            nextLivePreview: nextLive.slice(0, 80),
+            primaryFbPreview: primaryFb.slice(0, 80),
+            faultsLen: faults.length,
+            poseReady: poseReadyRef.current,
+            runId: "v3-pose-dep-fix",
+          })
+          commitLiveFeedbackRef.current(nextLive)
 
           clipRecorderRef.current?.tick(
             video,
@@ -1113,13 +1423,17 @@ export function AICoach({
 
           ctx.clearRect(0, 0, cw, ch)
           skeletonAnim.drawScanSweep(ctx, cw, ch, result.landmarks)
+          const focused = cueHighlightRef.current
+          const overlayFaultSegmentPairs = focused?.kind === "improve" ? focused.segmentPairs : []
           drawSkeleton(ctx, result.landmarks, cw, ch, displayRes.isGoodForm, {
             left: result.leftHandLandmarks,
             right: result.rightHandLandmarks,
-          }, displayRes.score, faultSegmentPairs)
+          }, displayRes.score, overlayFaultSegmentPairs)
           skeletonAnim.draw(ctx, cw, ch, result.landmarks)
 
-          if (exerciseBodyOk && faults.length) {
+          if (focused) {
+            drawCueFocusOverlay(ctx, result.landmarks as unknown as Landmark[], focused, cw, ch, a11yPrefs.reduceMotion)
+          } else if (exerciseBodyOk && faults.length) {
             renderFaults(ctx, result.landmarks as unknown as Landmark[], faults, {
               width: cw,
               height: ch,
@@ -1136,14 +1450,33 @@ export function AICoach({
           bottomFrameCountRef.current = 0
           topFrameCountRef.current = 0
           ctx.clearRect(0, 0, cw, ch)
-          const feedbackMsg = poseReady
+          const feedbackMsg = poseReadyRef.current
             ? "Position yourself in frame to start detection."
             : "Initializing pose detection..."
-          setLiveFeedback(feedbackMsg)
+          dbgLiveFbPath("H3", {
+            branch: "video-ready-no-landmarks",
+            poseReady: poseReadyRef.current,
+            feedbackMsgPreview: feedbackMsg.slice(0, 80),
+            runId: "v3-pose-dep-fix",
+          })
+          commitLiveFeedbackRef.current(feedbackMsg)
           return
         }
       } else if (video && useCamera) {
         // Video not ready yet - just clear canvas
+        dbgLiveFbPath("H1", {
+          branch: "video-not-ready",
+          readyState: video.readyState,
+          vw: video.videoWidth,
+          vh: video.videoHeight,
+          poseReady: poseReadyRef.current,
+          runId: "v3-pose-dep-fix",
+        })
+        commitLiveFeedbackRef.current(
+          poseReadyRef.current
+            ? "Warming up camera — stay in frame. Coaching cues appear when the preview is ready."
+            : "Loading pose model and camera…",
+        )
         ctx.clearRect(0, 0, cw, ch)
         return
       }
@@ -1160,9 +1493,12 @@ export function AICoach({
           { label: "Back", value: simGood ? "Neutral" : "Adjust", ok: simGood },
           { label: "Depth", value: simGood ? "Good" : "Higher", ok: simGood },
         ])
-        setLiveFeedback(simGood ? "Looking good. Keep it up." : "Adjust form for better alignment.")
+        dbgLiveFbPath("H5", { branch: "simulated", simGood, runId: "v3-pose-dep-fix" })
+        commitLiveFeedbackRef.current(simGood ? "Looking good. Keep it up." : "Adjust form for better alignment.")
       } else {
         // Camera available but not ready - just clear
+        dbgLiveFbPath("H1", { branch: "no-video-ref-but-useCamera", poseReady: poseReadyRef.current, runId: "v3-pose-dep-fix" })
+        commitLiveFeedbackRef.current("Connecting to your camera…")
         ctx.clearRect(0, 0, cw, ch)
       }
     }
@@ -1174,8 +1510,9 @@ export function AICoach({
       cancelAnimationFrame(animRef.current)
       if (stream) stream.getTracks().forEach((t) => t.stop())
     }
+  // Pose readiness uses poseReadyRef inside RAF so we do NOT depend on `poseReady` here (that used to restart the loop and tear down the camera when the model finished loading).
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, selectedExercise, useCamera, poseReady])
+  }, [state, selectedSpecId, useCamera])
 
   const coachFocusBar =
     focusMode && onExitFocus ? (
@@ -1198,15 +1535,9 @@ export function AICoach({
         {coachTrack === "mobility" ? (
           <MobilityCoach onBack={() => setCoachTrack("strength")} />
         ) : (
-      <div className="flex flex-col gap-5 px-4 pt-4 pb-28">
-        <header>
-          <h1 className="text-2xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
-            AI Body Coach
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Real-time pose detection and form analysis for every rep
-          </p>
-        </header>
+      <div data-testid="screen-ai-coach" className="flex flex-col gap-4 px-4 pt-4 pb-28">
+        <ScreenTitle title="Coach" subtitle="Choose movement and start form tracking." />
+        <p className="text-xs leading-snug text-muted-foreground">{t("coach.privacyBanner")}</p>
         <div className="flex rounded-2xl border border-border bg-card p-1">
           <button
             type="button"
@@ -1223,65 +1554,101 @@ export function AICoach({
             Mobility
           </button>
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { icon: ScanLine, label: "Pose Detection", color: "bg-metric-coach/15 text-metric-coach" },
-            { icon: Target, label: "Form Score", color: "bg-metric-move/15 text-metric-move" },
-            { icon: Shield, label: "Injury Prevention", color: "bg-metric-streak/15 text-metric-streak" },
-          ].map((f) => (
-            <div key={f.label} className="flex flex-col items-center gap-2 rounded-2xl bg-card p-4 border border-border">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${f.color}`}>
-                <f.icon className="h-5 w-5" />
-              </div>
-              <span className="text-typo-eyebrow text-muted-foreground text-center">{f.label}</span>
-            </div>
-          ))}
-        </div>
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 to-chart-2/20 h-48 flex items-center justify-center">
-          <Camera className="h-16 w-16 text-primary/60" />
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
-          <div className="absolute bottom-0 left-0 right-0 p-5">
-            <h3 className="text-lg font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
-              AI-Powered Form Check
-            </h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              Real-time body tracking and rep-by-rep form scoring
-            </p>
-          </div>
-        </div>
-        <h2 className="text-sm font-semibold text-foreground">Choose Exercise</h2>
-        <motion.div
-          className="grid grid-cols-2 gap-3"
-          variants={staggerChildren(0.06, 0.05)}
-          initial="hidden"
-          animate="show"
-        >
-          {availableExercises.map((ex) => {
-            const Icon = ex.icon
-            return (
-              <motion.button
-                key={ex.id}
-                variants={CINEMATIC.statReveal}
-                type="button"
-                onClick={() => handleSelectExercise(ex.id)}
-                className="group flex min-h-[140px] flex-col items-start gap-3 rounded-lg border border-border bg-background p-4 text-left transition-colors hover:border-primary active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                <div className={`h-14 w-14 rounded-2xl bg-gradient-to-br ${ex.gradient} flex items-center justify-center shrink-0`}>
-                  <Icon className="h-7 w-7 text-white/90" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h3
-                    className="text-base font-bold text-foreground"
-                    style={{ fontFamily: "var(--font-heading)" }}
+        <h2 className="text-sm font-semibold text-foreground">
+          {coachPickerStep === "families" ? "Choose movement" : "Pick variation"}
+        </h2>
+        <AnimatePresence mode="wait">
+        {coachPickerStep === "variants" ? (
+          <motion.div
+            key="variants-wrap"
+            className="flex w-full flex-col gap-3"
+            initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+          >
+            <button
+              type="button"
+              onClick={handlePickerBackToFamilies}
+              className="flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ChevronRight className="h-4 w-4 rotate-180" />
+              All movements
+            </button>
+            <motion.div
+              key="variants-grid"
+              className="flex flex-col gap-2"
+              variants={staggerChildren(0.06, 0.05)}
+              initial={reduceMotion ? false : "hidden"}
+              animate="show"
+              exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
+            >
+              {activePickerVariants.map((v) => {
+                const fam = selectedFamilyId ? getCoachFamily(selectedFamilyId) : undefined
+                const variantTitle =
+                  v.specId === "deadlift" ? t("coach.deadlift.name") : v.specId === "rdl" ? t("coach.rdl.name") : v.name
+                return (
+                  <motion.button
+                    key={v.specId}
+                    variants={CINEMATIC.statReveal}
+                    type="button"
+                    onClick={() => handleSelectVariant(v.specId)}
+                    className="group relative flex min-h-[76px] items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left transition-colors hover:border-primary active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
-                    {ex.name}
-                  </h3>
-                  <p className="mt-1 line-clamp-2 text-typo-caption text-muted-foreground">{ex.description}</p>
-                </div>
-              </motion.button>
-            )
-          })}
-        </motion.div>
+                    <div className={`h-10 w-1.5 shrink-0 rounded-full bg-gradient-to-b ${fam?.gradient ?? "from-primary/60 to-primary/20"}`} />
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
+                        {variantTitle}
+                      </h3>
+                      <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{v.description}</p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  </motion.button>
+                )
+              })}
+            </motion.div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="families-grid"
+            className="flex flex-col gap-2"
+            variants={staggerChildren(0.06, 0.05)}
+            initial={reduceMotion ? false : "hidden"}
+            animate="show"
+            exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
+          >
+            <button
+              type="button"
+              onClick={() => setCustomBuilderOpen(true)}
+              className="flex min-h-[76px] items-center gap-3 rounded-xl border border-primary/35 bg-card px-4 py-3 text-left text-sm font-semibold text-primary transition-colors hover:border-primary/60"
+            >
+              <Sparkles className="h-4 w-4 shrink-0" />
+              <span className="flex-1">Create custom exercise</span>
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            {pickerFamilies.map((fam) => {
+              return (
+                <motion.button
+                  key={fam.id}
+                  variants={CINEMATIC.statReveal}
+                  type="button"
+                  onClick={() => handleSelectFamily(fam.id)}
+                  className="group flex min-h-[76px] items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left transition-colors hover:border-primary active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <div className={`h-10 w-1.5 shrink-0 rounded-full bg-gradient-to-b ${fam.gradient}`} />
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
+                      {fam.name}
+                    </h3>
+                    <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{fam.description}</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                </motion.button>
+              )
+            })}
+          </motion.div>
+        )}
+        </AnimatePresence>
       </div>
         )}
       </>
@@ -1289,40 +1656,48 @@ export function AICoach({
   }
 
   if (state === "setup") {
-    const exercise = availableExercises.find((e) => e.id === selectedExercise)
-    const tips = selectedExercise ? EXERCISE_TIPS[selectedExercise] ?? [] : []
-    const memoryTip = exercise ? getCoachMemoryTip(exercise.name) : null
-    const culturalExtras = selectedExercise ? getCulturalTipExtras(locale, selectedExercise) : []
-    const SetupIcon = exercise?.icon ?? Camera
-    const spec = selectedExercise ? coachLoadSpec(selectedExercise) : null
+    const family = catalogCtx?.family ?? (selectedFamilyId ? getCoachFamily(selectedFamilyId) : undefined)
+    const tips = resolvedExerciseTips
+    const memoryTip = exerciseName ? getCoachMemoryTip(exerciseName) : null
+    const culturalExtras = selectedSpecId ? getCulturalTipExtras(locale, selectedSpecId) : []
+    const spec = selectedSpecId ? coachLoadSpec(selectedSpecId) : null
     const showLoadChip = spec?.loadType === "external"
     return (
       <>
         {coachFocusBar}
       <div className="flex flex-col items-center gap-6 px-4 pt-8 pb-28">
         <button
-          onClick={handleReset}
+          type="button"
+          onClick={handleSetupBack}
           className="self-start flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ChevronRight className="h-4 w-4 rotate-180" />
           Back
         </button>
-        <div className={`flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br ${exercise?.gradient ?? "from-primary/15 to-primary/10"}`}>
-          <SetupIcon className="h-12 w-12 text-white/90" />
-        </div>
-        <div className="text-center">
+        <CinematicStage
+          className="w-full max-w-sm rounded-3xl border border-border/70 p-5"
+          brandMark={<FittrackLogoMark size={30} animated />}
+        >
           <h2 className="text-xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
-            {exercise?.name}
+            {exerciseName || "Exercise"}
           </h2>
-          <p className="mt-2 text-sm text-muted-foreground max-w-xs">
+          {catalogCtx?.variant.description ? (
+            <p className="mt-2 text-sm text-muted-foreground">{catalogCtx.variant.description}</p>
+          ) : null}
+          {catalogCtx?.variant.cameraNote ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground/80">Camera:</span> {catalogCtx.variant.cameraNote}
+            </p>
+          ) : null}
+          <p className="mt-2 text-sm text-muted-foreground">
             Position your full body in the camera frame. Stand 6–8 ft away for best detection.
           </p>
-        </div>
-        {showLoadChip && selectedExercise && (
+        </CinematicStage>
+        {showLoadChip && selectedSpecId && (
           <div className="flex flex-col items-center gap-2">
             <span className="text-typo-eyebrow font-semibold uppercase tracking-wide text-muted-foreground">Set load</span>
             <LoadChip
-              exerciseId={selectedExercise}
+              exerciseId={selectedSpecId}
               unit={weightUnitPref}
               value={loadKg}
               onChange={setLoadKg}
@@ -1476,6 +1851,11 @@ export function AICoach({
     return (
       <>
         {coachFocusBar}
+        <CueFocusProvider
+          exerciseId={selectedSpecId ?? "unknown"}
+          breakdown={breakdown}
+          onHighlightChange={setCueHighlight}
+        >
       <div className="flex min-h-[calc(100vh-80px)] flex-col pb-24 lg:flex-row lg:items-start lg:gap-4 lg:px-3 lg:pt-2">
         <div className="relative mx-2 mt-2 h-[78vh] min-h-[450px] max-h-[85vh] min-w-0 flex-1 overflow-hidden rounded-lg border-2 border-primary bg-secondary lg:mx-0 lg:mt-0">
           {useCamera && (
@@ -1764,19 +2144,21 @@ export function AICoach({
               <div className="text-xs font-semibold text-foreground mb-2">Live form breakdown</div>
               <div className="flex flex-wrap gap-2">
                 {breakdown.map((b, i) => (
-                  <div
-                    key={i}
-                    className={`rounded-lg px-2.5 py-1.5 text-typo-eyebrow font-medium transition-colors duration-300 ${b.ok ? "bg-primary/15 text-primary" : "bg-destructive/15 text-destructive"}`}
-                    title={b.detail}
-                  >
-                    {b.label}: {b.value}
-                  </div>
+                  <span key={i} title={b.detail} className="inline-flex">
+                    <InteractiveCue
+                      text={`${b.label} ${b.value}`}
+                      kind={b.ok ? "good" : "improve"}
+                      className={`mx-0 rounded-lg px-2.5 py-1.5 text-typo-eyebrow font-medium transition-colors duration-300 ${
+                        b.ok ? "bg-primary/15 text-primary" : "bg-destructive/15 text-destructive"
+                      }`}
+                    />
+                  </span>
                 ))}
               </div>
             </div>
           )}
           <div
-            className="overflow-hidden rounded-xl border border-border bg-card p-4"
+            className="rounded-xl border border-border bg-card p-4"
             role="status"
             aria-live="polite"
             aria-atomic="true"
@@ -1789,22 +2171,53 @@ export function AICoach({
               <Zap className="h-4 w-4 text-primary" aria-hidden />
               <span className="text-sm font-semibold text-foreground">Live feedback</span>
             </div>
-            <p
-              className={`text-sm text-muted-foreground min-h-[1.25rem] ${!a11yPrefs.reduceMotion ? "animate-feedback-slide" : ""}`}
-            >
-              {liveFeedback.trim() ? liveFeedback : "Hold steady — we're tracking your form."}
+            <p key={coachLivePrimary} className="text-base font-medium leading-snug text-foreground min-h-[2.5rem]">
+              {coachLivePrimary}
             </p>
+            {coachLiveBreakdownHints.length > 0 ? (
+              <ul className="mt-2 space-y-1 border-t border-border pt-2">
+                {coachLiveBreakdownHints.map((b, i) => (
+                  <InteractiveCue
+                    key={`${b.label}-${i}`}
+                    as="li"
+                    kind="improve"
+                    text={`${b.label}: ${b.value}${b.detail ? ` — ${b.detail}` : ""}`}
+                    className="text-sm text-destructive mx-0"
+                  />
+                ))}
+              </ul>
+            ) : null}
+            {envAssessment?.fpsLow ? (
+              <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+                Low frame rate — move closer, add light, or close other apps for clearer cues.
+              </p>
+            ) : null}
+            {bodyScanSummary && !/leg|ankle|knee|foot|arm/i.test(bodyScanSummary) ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Step back so your <strong className="text-foreground">full body</strong> (hips, knees, feet) is in frame — partial
+                body limits form scoring and rep counting.
+              </p>
+            ) : null}
+            {coachSetupTips.length > 0 ? (
+              <ul className="mt-2 space-y-1 border-t border-border/60 pt-2">
+                {coachSetupTips.map((tip) => (
+                  <li key={tip} className="text-xs text-muted-foreground leading-snug">
+                    • {tip}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
-          {selectedExercise && (
+          {selectedSpecId && (
             <AICoachLlmPanel
-              exerciseId={selectedExercise}
+              exerciseId={selectedSpecId}
               exerciseName={exerciseName}
               reps={reps}
               score={Math.round(score)}
               repScores={repScores}
               feedback={feedback}
               breakdown={breakdown}
-              exerciseTips={EXERCISE_TIPS[selectedExercise]}
+              exerciseTips={resolvedExerciseTips}
               sessionDnaSummary={null}
               repScoreStats={
                 repScores.length
@@ -1815,7 +2228,7 @@ export function AICoach({
                     }
                   : null
               }
-              liveCue={liveFeedback}
+              liveCue={coachLivePrimary}
               sessionPhase="live"
             />
           )}
@@ -1827,16 +2240,20 @@ export function AICoach({
           </button>
         </div>
       </div>
+        </CueFocusProvider>
       </>
     )
   }
 
-  const avgRepScore = repScores.length > 0 ? Math.round(repScores.reduce((a, b) => a + b, 0) / repScores.length) : score
+  const avgRepScore = sessionFormScore(repScores, score)
   const effLine =
     sessionDna != null
       ? `${sessionDna.effectiveReps.toFixed(1)} effective reps${sessionDna.verifiedMovement ? " · Verified" : ""}`
       : null
-  const recapCues = topCuesFromBreakdown(recapBreakdown.length ? recapBreakdown : breakdown, feedback, 4)
+  const traceCues = aggregateTopFaults(repTracesRef.current, 4)
+  const recapCues = traceCues.length
+    ? traceCues
+    : topCuesFromBreakdown(recapBreakdown.length ? recapBreakdown : breakdown, feedback, 4)
   return (
     <>
       {coachFocusBar}
@@ -1849,6 +2266,11 @@ export function AICoach({
           {reps} reps · {exerciseName}
           {effLine ? ` · ${effLine}` : ""}
         </p>
+        <p className="mx-auto max-w-sm pt-1 text-[11px] leading-snug text-muted-foreground">
+          <strong className="font-semibold text-foreground/80">Replay set</strong> and the saved video only appear after you finish with{" "}
+          <strong className="font-semibold text-foreground/80">at least one rep</strong>, camera preview on, and{" "}
+          <strong className="font-semibold text-foreground/80">Record coach set clips</strong> enabled in Profile → Settings.
+        </p>
       </div>
 
       {recapIsPr ? (
@@ -1859,9 +2281,10 @@ export function AICoach({
         </MotionCelebrate>
       ) : null}
 
+      <CueFocusProvider exerciseId={selectedSpecId ?? "unknown"} breakdown={recapBreakdown.length ? recapBreakdown : breakdown}>
       <div className="relative w-full max-w-sm overflow-hidden rounded-[1.35rem] border border-[color:var(--surface-stage-hairline)] bg-[color:var(--surface-stage)] px-5 py-10 shadow-xl">
         {sessionCelebrateBurst ? <CelebrationBurst className="-translate-y-4" /> : null}
-        <StatDisplay tone="stage" eyebrow="Form score" value={Math.round(score)} unit="%" size="lg" />
+        <StatDisplay tone="stage" eyebrow="Form score" value={sessionDna?.score ?? avgRepScore} unit="%" size="lg" />
         {recapCues.length > 0 ? (
           <div className="mt-8 space-y-3 border-t border-white/10 pt-8">
             <p className="text-typo-eyebrow font-bold uppercase tracking-[0.24em] text-white/50">Coach verdict</p>
@@ -1869,7 +2292,7 @@ export function AICoach({
               {recapCues.slice(0, 3).map((cue, idx) => (
                 <li key={idx} className="flex gap-2 text-base font-medium leading-snug text-[color:var(--surface-stage-fg)]">
                   <Target className="h-5 w-5 shrink-0 text-primary mt-0.5" aria-hidden />
-                  <span>{cue}</span>
+                  <InteractiveCue text={cue} kind="improve" className="mx-0 p-0 text-base font-medium leading-snug text-[color:var(--surface-stage-fg)]" />
                 </li>
               ))}
             </ul>
@@ -1913,9 +2336,16 @@ export function AICoach({
             selectedRep={selectedRecapRep}
             onRepSelect={(i) => setSelectedRecapRep(i)}
             label="Set recap · tap a rep"
+            repTraces={repTracesRef.current.length ? repTracesRef.current : undefined}
           />
         </div>
       )}
+      {selectedSpecId ? (
+        <div className="w-full max-w-sm">
+          <ExerciseBodyPreview exerciseId={selectedSpecId} autoEnable />
+        </div>
+      ) : null}
+      </CueFocusProvider>
       <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
         <div className="rounded-xl border border-border bg-card p-3">
           <StatDisplay size="md" eyebrow="Total reps" value={reps} />
@@ -1952,16 +2382,109 @@ export function AICoach({
           }
         />
       ) : null}
-      {(replayTarget.sessionId || replayTarget.clipId) && (
-        <button
-          type="button"
-          onClick={() => setReplayOpen(true)}
-          className="flex w-full max-w-sm items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 py-3 text-sm font-semibold text-primary transition-colors hover:bg-primary/15"
-        >
-          <Play className="h-4 w-4 shrink-0" aria-hidden />
-          Replay set
-        </button>
-      )}
+      {guestMode && sessionDna != null && reps > 0 ? (
+        <Alert className="w-full max-w-sm border-primary/35 bg-primary/5">
+          <Shield className="h-4 w-4 text-primary" aria-hidden />
+          <AlertTitle>Save Session DNA</AlertTitle>
+          <AlertDescription className="grid gap-3">
+            <p className="text-sm leading-snug">
+              Sessions stay on-device as a guest — sign up to persist proof in the cloud, share Session DNA cards, and run cross-device
+              Arena duels.
+            </p>
+            {onRequestSignIn ? (
+              <Button type="button" className="w-full" size="sm" onClick={() => onRequestSignIn()}>
+                Create free account / Sign in
+              </Button>
+            ) : null}
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {sessionDna != null && onNavigate ? (
+        <div className="flex w-full max-w-sm flex-col gap-2">
+          <p className="text-center text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-muted-foreground">
+            What&apos;s next
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              disabled={!(replayTarget.sessionId || replayTarget.clipId)}
+              onClick={() => setReplayOpen(true)}
+              title={
+                replayTarget.sessionId || replayTarget.clipId
+                  ? "Open clip & optional AI frame review"
+                  : "Replay needs a locally saved clip."
+              }
+              className={`flex min-h-[4.75rem] flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-center text-typo-eyebrow font-bold uppercase leading-tight tracking-tight transition-colors disabled:opacity-45 ${
+                replayTarget.sessionId || replayTarget.clipId
+                  ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
+                  : "border-border bg-secondary/35 text-muted-foreground"
+              }`}
+            >
+              <Play className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="text-[0.62rem] sm:text-[0.65rem]">Replay</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleOpenCompareSheet()}
+              disabled={sessionDna == null}
+              className="flex min-h-[4.75rem] flex-col items-center justify-center gap-1 rounded-xl border border-border bg-secondary/55 px-2 py-2 text-center text-typo-eyebrow font-bold uppercase leading-tight tracking-tight transition-colors hover:bg-secondary/75 disabled:opacity-45 dark:border-white/10"
+              title="Same-movement deltas vs your last saved session"
+            >
+              <Columns2 className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="text-[0.62rem] sm:text-[0.65rem]">Compare</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenArenaFromRecap()}
+              title="Opens Arena prefilled with this lift"
+              className="flex min-h-[4.75rem] flex-col items-center justify-center gap-1 rounded-xl border border-metric-streak/45 bg-metric-streak/10 px-2 py-2 text-center text-typo-eyebrow font-bold uppercase leading-tight tracking-tight transition-colors hover:bg-metric-streak/15 dark:border-white/10"
+            >
+              <Swords className="h-4 w-4 shrink-0 text-metric-streak" aria-hidden />
+              <span className="text-[0.62rem] sm:text-[0.65rem] text-foreground">Duel</span>
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate("home")}
+            className="text-xs font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+          >
+            Home &amp; wearable vitals →
+          </button>
+          {replayTarget.sessionId || replayTarget.clipId ? (
+            <p className="px-1 text-center text-[11px] leading-snug text-muted-foreground">
+              Inside Replay ·{" "}
+              <strong className="font-semibold text-foreground/90">Get AI review</strong> pulls key poses (needs{" "}
+              <code className="rounded bg-muted px-1">OPENAI_API_KEY</code> server-side).
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {sessionDna != null && !(replayTarget.sessionId || replayTarget.clipId) ? (
+        <p className="w-full max-w-sm text-center text-[11px] leading-snug text-muted-foreground px-2">
+          {isCoachReplayLocalEnabled() ? (
+            <>
+              {t("coach.noReplayClipBody")}{" "}
+              <Link
+                href="/privacy#coach-replay-and-ai"
+                className="font-semibold text-foreground/90 underline underline-offset-2 hover:text-foreground"
+              >
+                {t("coach.recapReplayPrivacyLink")}
+              </Link>
+              .
+            </>
+          ) : (
+            <>
+              Turn on <strong className="font-semibold">Record coach set clips</strong> under Profile → Settings to save your set video for replay and AI review.
+            </>
+          )}
+        </p>
+      ) : null}
+      {sessionDna == null && !(replayTarget.sessionId || replayTarget.clipId) ? (
+        <p className="w-full max-w-sm text-center text-[11px] leading-snug text-amber-700 dark:text-amber-300/90 px-2 rounded-lg border border-amber-500/25 bg-amber-500/10 py-2">
+          This recap has <strong className="font-semibold">0 reps</strong>, so nothing was saved and there is no replay clip. Start again, complete reps while the camera is on, then tap <strong className="font-semibold">End session</strong> —{" "}
+          <strong className="font-semibold">Replay set</strong> shows up when a clip was recorded.
+        </p>
+      ) : null}
       <div className="w-full max-w-sm space-y-2">
         <h3 className="text-sm font-semibold text-foreground">Coach feedback</h3>
         {feedback.map((item, i) => (
@@ -1971,16 +2494,16 @@ export function AICoach({
           </div>
         ))}
       </div>
-      {selectedExercise && (
+      {selectedSpecId && (
         <AICoachLlmPanel
-          exerciseId={selectedExercise}
+          exerciseId={selectedSpecId}
           exerciseName={exerciseName}
           reps={reps}
           score={Math.round(score)}
           repScores={repScores}
           feedback={feedback}
           breakdown={recapBreakdown.length ? recapBreakdown : breakdown}
-          exerciseTips={EXERCISE_TIPS[selectedExercise]}
+          exerciseTips={resolvedExerciseTips}
           sessionDnaSummary={
             sessionDna
               ? {
@@ -2002,32 +2525,6 @@ export function AICoach({
           sessionPhase="completed"
         />
       )}
-      {onNavigate && (
-        <div className="w-full max-w-sm space-y-2">
-          <h3 className="text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-muted-foreground">What&apos;s next</h3>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => onNavigate("arena")}
-              className="flex items-center justify-center gap-2 rounded-xl border border-metric-streak/35 bg-metric-streak/10 py-3 px-3 text-sm font-semibold text-foreground transition-colors hover:bg-metric-streak/15"
-            >
-              <Trophy className="h-4 w-4 text-metric-streak shrink-0" />
-              Arena duel
-            </button>
-            <button
-              type="button"
-              onClick={() => onNavigate("home")}
-              className="flex items-center justify-center gap-2 rounded-xl border border-border bg-secondary/50 py-3 px-3 text-sm font-medium text-foreground transition-colors hover:bg-secondary/70"
-            >
-              <Home className="h-4 w-4 shrink-0" />
-              Home &amp; wearables
-            </button>
-          </div>
-          <p className="text-typo-caption text-muted-foreground text-center">
-            Arena uses the same composite score as this session. Home shows recovery hints when Fitbit or BLE HR is connected.
-          </p>
-        </div>
-      )}
       <div className="flex gap-3 w-full max-w-sm">
         <button
           onClick={() => {
@@ -2036,6 +2533,9 @@ export function AICoach({
             activeClipIdRef.current = null
             setReplayOpen(false)
             setReplayTarget({ sessionId: null, clipId: null })
+            setCompareOpen(false)
+            setCompareBaseline(null)
+            setCompareCurrent(null)
             setSessionDna(null)
             setRecapIsPr(false)
             setFinishShareSessionId(null)
@@ -2060,13 +2560,62 @@ export function AICoach({
         </button>
       </div>
     </div>
+    <Sheet open={compareOpen} onOpenChange={setCompareOpen}>
+      <SheetContent side="bottom" className="max-h-[min(88vh,720px)] overflow-y-auto rounded-t-3xl">
+        <SheetHeader>
+          <SheetTitle>Compare sessions</SheetTitle>
+        </SheetHeader>
+        <div className="mt-4 px-4 pb-6">
+          {compareCurrent && compareBaseline ? (
+            <CompareSessionsPanel current={compareCurrent} baseline={compareBaseline} />
+          ) : compareCurrent && !compareBaseline ? (
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Add another saved Coach row for <strong className="text-foreground">{compareCurrent.exercise}</strong> to unlock
+              side-by-side joint deltas.
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Comparison data is unavailable for this recap yet.</p>
+          )}
+          <Button type="button" className="mt-5 w-full" variant="outline" size="sm" onClick={() => setCompareOpen(false)}>
+            Done
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+    <CustomExerciseBuilder
+      open={customBuilderOpen}
+      onOpenChange={setCustomBuilderOpen}
+      guestMode={guestMode}
+      onRequestSignIn={onRequestSignIn}
+      onSaved={(exercise) => {
+        setCustomExercises((prev) => {
+          const next = prev.filter((e) => e.specId !== exercise.specId)
+          return [exercise, ...next]
+        })
+      }}
+      onPractice={(specId) => {
+        setSelectedFamilyId(MY_EXERCISES_FAMILY_ID)
+        setSelectedSpecId(specId)
+        setCoachPickerStep("variants")
+        setState("setup")
+      }}
+    />
     <CoachReplaySheet
       open={replayOpen}
       onOpenChange={setReplayOpen}
       sessionId={replayTarget.sessionId}
       clipId={replayTarget.clipId}
       loadKg={loadKg}
-      reps={repScores.map((s, i) => ({ index: i, score: s, faults: [] }))}
+      repTraces={
+        repTracesRef.current.length > 0
+          ? (JSON.parse(JSON.stringify(repTracesRef.current)) as RepTracePair[])
+          : undefined
+      }
+      reps={repScores.map((s, i) => ({
+        index: i,
+        score: s,
+        faults: mergeFaultsFromTrace(repTracesRef.current.find((t) => t.rep === i + 1)),
+      }))}
     />
     </>
   )

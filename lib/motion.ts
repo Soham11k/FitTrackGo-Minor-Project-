@@ -92,6 +92,48 @@ export const CINEMATIC = {
   } satisfies Variants,
 } as const
 
+/** Bottom-nav tab content enter / exit (no transform on parent — safe for portaled overlays). */
+export const TAB_PAGE = {
+  enter: {
+    opacity: 0,
+    y: 10,
+    filter: "blur(4px)",
+  },
+  center: {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: { duration: DURATION.page, ease: [...EASE.cinematic] },
+  },
+  exit: {
+    opacity: 0,
+    y: -6,
+    filter: "blur(2px)",
+    transition: { duration: DURATION.fast, ease: [...EASE.smooth] },
+  },
+} as const satisfies Variants
+
+/** Logo hero intro (splash / login). */
+export const LOGO_INTRO = {
+  hidden: { opacity: 0, scale: 0.82, filter: "blur(8px)" },
+  show: {
+    opacity: 1,
+    scale: 1,
+    filter: "blur(0px)",
+    transition: { duration: DURATION.slow, ease: [...EASE.cinematic] },
+  },
+} as const satisfies Variants
+
+/** Staggered list / card children inside a tab. */
+export const LIST_ITEM = {
+  hidden: { opacity: 0, y: 14 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: DURATION.medium, ease: [...EASE.out] },
+  },
+} as const satisfies Variants
+
 /** Recharts bar/area enter; parent should disable after first paint via `isAnimationActive`. */
 export const CHART = {
   barEnterMs: 620,

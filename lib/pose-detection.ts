@@ -22,7 +22,6 @@ import {
   FRONT_VIEW_SHOULDER_RATIO,
   RECOMMENDED_CAMERA_ANGLE,
 } from "./pose-config"
-import type { ExerciseId } from "./form-analysis"
 import { withSuppressedMediapipeWasmWarn, ensureMediapipeWarnFilterInstalled } from "./mediapipe-console-noise"
 
 let landmarker: PoseLandmarker | null = null
@@ -307,7 +306,7 @@ function detectCameraAngle(landmarks: LandmarkPoint[]): CameraAngle {
   return "unknown"
 }
 
-export function assessEnvironment(landmarks: LandmarkPoint[], timestamp: number, exercise?: ExerciseId): EnvironmentAssessment {
+export function assessEnvironment(landmarks: LandmarkPoint[], timestamp: number, exercise?: string): EnvironmentAssessment {
   const fps = measureFps(timestamp)
   const fpsLow = fps < MIN_ACCEPTABLE_FPS
   const scan = getBodyScanDetail(landmarks)
@@ -344,50 +343,58 @@ export async function initPoseDetection(): Promise<boolean> {
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm"
       )
 
-      // Pose landmarker (Heavy with Lite fallback)
-      try {
-        landmarker = await PoseLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task",
-            delegate: "GPU",
-          },
-          runningMode: "VIDEO",
-          numPoses: 1,
-          minPoseDetectionConfidence: INITIAL_DETECTION_CONFIDENCE,
-          minPosePresenceConfidence: POSE_PRESENCE_CONFIDENCE,
-          minTrackingConfidence: TRACKING_CONFIDENCE,
-        })
-      } catch {
-        console.warn("Heavy pose model failed, using Lite")
-        landmarker = await PoseLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
-            delegate: "GPU",
-          },
-          runningMode: "VIDEO",
-          numPoses: 1,
-          minPoseDetectionConfidence: INITIAL_DETECTION_CONFIDENCE,
-          minPosePresenceConfidence: POSE_PRESENCE_CONFIDENCE,
-          minTrackingConfidence: TRACKING_CONFIDENCE,
-        })
-      }
+      const heavyPoseUrl =
+        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task"
+      const litePoseUrl =
+        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
+      const handModelUrl =
+        "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
 
-      // Hand landmarker — detect up to 2 hands for finger-level skeleton
-      try {
-        handLandmarker = await HandLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-            delegate: "GPU",
-          },
-          runningMode: "VIDEO",
-          numHands: 2,
-          minHandDetectionConfidence: 0.4,
-          minHandPresenceConfidence: 0.4,
-          minTrackingConfidence: 0.4,
-        })
-      } catch (e) {
-        console.warn("Hand landmarker init failed — fingers won't be drawn:", e)
-        handLandmarker = null
+      // Pose: prefer lite for frame rate, then heavy if lite fails (GPU→CPU each).
+      landmarker = null
+      outerPose: for (const modelAssetPath of [litePoseUrl, heavyPoseUrl]) {
+        for (const delegate of ["GPU", "CPU"] as const) {
+          try {
+            landmarker = await PoseLandmarker.createFromOptions(vision, {
+              baseOptions: { modelAssetPath, delegate },
+              runningMode: "VIDEO",
+              numPoses: 1,
+              minPoseDetectionConfidence: INITIAL_DETECTION_CONFIDENCE,
+              minPosePresenceConfidence: POSE_PRESENCE_CONFIDENCE,
+              minTrackingConfidence: TRACKING_CONFIDENCE,
+            })
+            if (modelAssetPath !== heavyPoseUrl || delegate !== "GPU") {
+              console.warn(
+                `Pose landmarker settled on ${modelAssetPath.includes("lite") ? "lite" : "heavy"} + ${delegate}`
+              )
+            }
+            break outerPose
+          } catch {
+            /* next combo */
+          }
+        }
+      }
+      if (!landmarker) throw new Error("PoseLandmarker: exhausted GPU/CPU × heavy/lite")
+
+      // Hands: optional; GPU→CPU fallback
+      handLandmarker = null
+      for (const delegate of ["GPU", "CPU"] as const) {
+        try {
+          handLandmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: handModelUrl, delegate },
+            runningMode: "VIDEO",
+            numHands: 2,
+            minHandDetectionConfidence: 0.4,
+            minHandPresenceConfidence: 0.4,
+            minTrackingConfidence: 0.4,
+          })
+          break
+        } catch {
+          /* try CPU */
+        }
+      }
+      if (!handLandmarker) {
+        console.warn("Hand landmarker init failed on GPU and CPU — finger bones disabled")
       }
 
       detectionQuality = 0.5
@@ -460,7 +467,16 @@ function detectHands(
 // Main detection loop
 // ---------------------------------------------------------------------------
 
-export function detectPose(video: HTMLVideoElement, timestamp: number): PoseResult | null {
+export type DetectPoseOptions = {
+  /** Skip optional hand landmarker pass (saves ~30–40% per frame on mid devices). */
+  skipHands?: boolean
+}
+
+export function detectPose(
+  video: HTMLVideoElement,
+  timestamp: number,
+  options?: DetectPoseOptions,
+): PoseResult | null {
   if (!landmarker) return null
   if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) return null
 
@@ -498,8 +514,7 @@ export function detectPose(video: HTMLVideoElement, timestamp: number): PoseResu
     const interpolated = interpolateLandmarks(rawLm, worldLm)
     const filtered = detectionQuality > 0.15 ? filterLandmarks(interpolated, timestamp) : interpolated
 
-    // Detect hands for finger-level detail
-    const hands = detectHands(video, timestamp, filtered)
+    const hands = options?.skipHands ? {} : detectHands(video, timestamp, filtered)
 
     return {
       landmarks: filtered,

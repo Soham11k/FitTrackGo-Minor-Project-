@@ -2,7 +2,8 @@
  * Extra locale-aware coaching tips (space, environment) — layered on base EXERCISE_TIPS.
  */
 
-import type { ExerciseId } from "./form-analysis"
+import { findVariantBySpecId } from "./coach-exercise-catalog"
+import { isLegacyExerciseId, type ExerciseId } from "./form-analysis"
 
 const EXTRA: Partial<Record<ExerciseId, Partial<Record<string, string[]>>>> = {
   squat: {
@@ -21,9 +22,13 @@ const EXTRA: Partial<Record<ExerciseId, Partial<Record<string, string[]>>>> = {
   },
 }
 
-export function getCulturalTipExtras(locale: string, exercise: ExerciseId): string[] {
+export function getCulturalTipExtras(locale: string, exercise: ExerciseId | string): string[] {
   const lang = (locale || "en").toLowerCase().split("-")[0] || "en"
-  const block = EXTRA[exercise]
+  const fromCat = findVariantBySpecId(exercise)
+  const key: ExerciseId | undefined =
+    fromCat?.family.tipsKey ?? (isLegacyExerciseId(exercise) ? exercise : undefined)
+  if (!key) return []
+  const block = EXTRA[key]
   if (!block) return []
   return block[lang] ?? []
 }

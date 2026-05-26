@@ -1,0 +1,61 @@
+{
+  "id": "pushup_diamond",
+  "displayName": "Diamond push-up",
+  "category": "upper",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16, 23, 24],
+  "visibleFraction": 0.75,
+  "positiveLine": "Solid diamond push-up — triceps and inner chest engaged",
+  "repPattern": "top_bottom_top",
+  "hudAngles": [
+    { "name": "Left elbow", "joints": ["left_shoulder", "left_elbow", "left_wrist"], "primary": true },
+    { "name": "Right elbow", "joints": ["right_shoulder", "right_elbow", "right_wrist"] }
+  ],
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 95 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 158 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 95 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 158 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "pushup_diamond.body_line",
+      "region": "torso",
+      "penalty": 15,
+      "when": { "metric": "body_line_deviation", "op": ">=", "value": 16 },
+      "feedback": "Keep a straight line from head to heels — don’t pike",
+      "breakdown": { "label": "Body line", "format": "boolean", "okLabel": "Straight", "failLabel": "Adjust", "detail": "Head to heels in line", "region": "torso" }
+    },
+    {
+      "id": "pushup_diamond.no_sag",
+      "region": "core",
+      "penalty": 12,
+      "when": { "any": [ { "metric": "hip_sag_y", "op": ">=", "value": 0.09 }, { "metric": "shoulder_hip_y_delta", "op": ">=", "value": 0.12 } ] },
+      "feedback": "Engage core and glutes to prevent hip sag",
+      "breakdown": { "label": "Hip position", "format": "boolean", "okLabel": "Level", "failLabel": "Sagging", "detail": "Hips level with shoulders", "region": "core" }
+    },
+    {
+      "id": "pushup_diamond.elbow_angle",
+      "region": "arms",
+      "penalty": 11,
+      "when": { "any": [ { "metric": "elbow_angle_avg", "op": "<=", "value": 65 }, { "metric": "elbow_angle_avg", "op": ">=", "value": 105 } ] },
+      "feedback": "Control depth — elbows track back, chest toward hands",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "detail": "Triceps-dominant path", "region": "arms" }
+    },
+    {
+      "id": "pushup_diamond.hands_wide",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "metric": "wrist_spread_x", "op": ">", "value": 0.2 },
+      "feedback": "Bring hands closer — index fingers and thumbs form a diamond",
+      "breakdown": { "label": "Hand spacing", "format": "boolean", "okLabel": "Narrow", "failLabel": "Too wide", "detail": "Hands under upper chest", "region": "arms" }
+    },
+    {
+      "id": "pushup_diamond.flare",
+      "region": "arms",
+      "penalty": 7,
+      "when": { "metric": "elbow_flare_ratio", "op": ">=", "value": 1.65 },
+      "feedback": "Keep elbows closer — they should brush your ribs",
+      "breakdown": { "label": "Elbow path", "format": "boolean", "okLabel": "Tucked", "failLabel": "Flared", "detail": "Elbows angled back", "region": "arms" }
+    }
+  ]
+}

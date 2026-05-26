@@ -1,3 +1,16 @@
 {
-  "java.import.exclusions": ["**/node_modules/**"]
+  "java.import.exclusions": [
+    "**/node_modules/**",
+    "**/node_modules/@capacitor/android/**"
+  ],
+  "java.project.resourceFilters": [
+    "node_modules",
+    ".git",
+    ".gradle",
+    "build",
+    "out"
+  ],
+  "files.watcherExclude": {
+    "**/node_modules/@capacitor/android/**": true
+  }
 }

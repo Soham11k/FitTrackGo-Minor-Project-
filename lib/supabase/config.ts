@@ -191,14 +191,27 @@ export function isSupabaseFetchError(error: unknown): boolean {
   }
 
   const message = error.message.toLowerCase()
+  const name = error.name.toLowerCase()
+  if (name.includes("authapierror") || name.includes("authweakpassworderror")) {
+    return false
+  }
+  if (
+    message.includes("invalid login credentials") ||
+    message.includes("email not confirmed") ||
+    message.includes("user already registered")
+  ) {
+    return false
+  }
   return (
     message.includes("fetch failed") ||
-    message.includes("network") ||
     message.includes("failed to fetch") ||
+    message.includes("networkerror") ||
     message.includes("load failed") ||
+    name.includes("authretryablefetcherror") ||
     causeCode === "enotfound" ||
     causeCode === "econnrefused" ||
-    causeCode === "etimedout"
+    causeCode === "etimedout" ||
+    causeCode === "econnreset"
   )
 }
 
@@ -225,11 +238,15 @@ export function getAuthErrorMessage(error: unknown, fallback: string): string {
     }
     const codeHint = codes.length ? ` (${codes.join(" · ")})` : ""
     const hostHint = safeHost ? `Host: ${safeHost}. ` : ""
+    const isReset = codes.some((c) => c.toLowerCase() === "econnreset")
+    const pausedHint = isReset
+      ? "TLS to your project host is being reset (ECONNRESET) — often a paused project: app.supabase.com → your project → Restore. "
+      : ""
     return (
       `Cannot reach Supabase${codeHint}. ${hostHint}` +
-      "Confirm the project is active at app.supabase.com (paused projects return no DNS). " +
-      "If the hostname matches your dashboard but you still see ENOTFOUND, your DNS/VPN/ad-block may block *.supabase.co — try another resolver (e.g. 1.1.1.1). " +
-      "Set NEXT_PUBLIC_SUPABASE_URL to Settings → API → Project URL (https://….supabase.co), restart the dev server, delete `.next`, and rebuild native apps after changing env."
+      pausedHint +
+      "If the project is active, try another network, turn off VPN/ad-block, or run `npm run check:supabase-host`. " +
+      "In dev, open /api/diag/supabase-proxy for a full connectivity report. Restart `npm run dev` after changing .env.local."
     )
   }
 

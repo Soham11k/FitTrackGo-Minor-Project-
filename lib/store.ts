@@ -56,6 +56,8 @@ export interface CoachRecord {
   loadKg?: number
   /** Reps × load. Cached at write time. */
   volumeKg?: number
+  /** FormSpec id (built-in or custom_*) for replay and analysis */
+  exerciseSpecId?: string
 }
 
 export interface AppData {

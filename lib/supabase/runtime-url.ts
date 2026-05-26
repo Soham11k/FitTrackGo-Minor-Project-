@@ -31,9 +31,9 @@ export function resolveCanonicalSupabaseOriginFromEnv(): string {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? ''
 
   if (
-    process.env.NODE_ENV === "development" &&
-    canonical.startsWith("https://") &&
-    canonical.includes(".supabase.co")
+    process.env.NODE_ENV === 'development' &&
+    canonical.startsWith('https://') &&
+    canonical.includes('.supabase.co')
   ) {
     const jwtRef = legacyJwtProjectRef(key)
     if (jwtRef) {
@@ -57,26 +57,44 @@ export function resolveCanonicalSupabaseOriginFromEnv(): string {
 }
 
 /**
- * Supabase HTTP URL used by createBrowserClient / createServerClient.
- * In local dev, optional same-origin proxy avoids DNS/ad-block issues with *.supabase.co
- * (Cursor embedded browser, Pi-hole, etc.). See next.config.mjs rewrites and .env.local.example.
+ * Dev-only: route browser Supabase via same-origin `/api/supabase-dev-proxy/`.
+ * Default **off** — call `*.supabase.co` directly when the project API is healthy.
+ * Set `NEXT_PUBLIC_SUPABASE_USE_DEV_PROXY=1` only if direct browser calls are blocked (ad-block/VPN).
+ */
+export function isSupabaseDevProxyEnabled(): boolean {
+  return (
+    process.env.NODE_ENV === 'development' &&
+    process.env.NEXT_PUBLIC_SUPABASE_USE_DEV_PROXY === '1'
+  )
+}
+
+/**
+ * Canonical `https://<ref>.supabase.co` for middleware, Server Components, and Route Handlers.
+ * Never use the dev browser proxy here (Edge loopback to localhost often fails).
+ */
+export function getSupabaseUrlForServer(): string {
+  return resolveCanonicalSupabaseOriginFromEnv()
+}
+
+/**
+ * Supabase HTTP URL for **browser** `createBrowserClient` only.
+ * In dev (proxy on), uses `/api/supabase-dev-proxy/` (trailing slash required for auth path joining).
  */
 export function getSupabaseUrlForRuntime(): string {
   const canonical = resolveCanonicalSupabaseOriginFromEnv()
 
   const useDevProxy =
-    process.env.NODE_ENV === "development" &&
-    process.env.NEXT_PUBLIC_SUPABASE_USE_DEV_PROXY === "1" &&
-    canonical.startsWith("https://") &&
-    canonical.includes(".supabase.co")
+    isSupabaseDevProxyEnabled() &&
+    canonical.startsWith('https://') &&
+    canonical.includes('.supabase.co')
 
   if (useDevProxy) {
-    if (typeof window !== "undefined") {
-      return `${window.location.origin}/__supabase-dev-proxy`
+    if (typeof window !== 'undefined') {
+      return `${window.location.origin}/api/supabase-dev-proxy/`
     }
     const base =
-      process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") || "http://localhost:3000"
-    return `${base}/__supabase-dev-proxy`
+      process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, '') || 'http://127.0.0.1:3000'
+    return `${base}/api/supabase-dev-proxy/`
   }
 
   return canonical

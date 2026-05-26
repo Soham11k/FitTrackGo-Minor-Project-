@@ -12,6 +12,7 @@ import {
   Calendar,
   MapPin,
   Dumbbell,
+  Flame,
   ChevronRight,
   ChevronLeft,
   LogOut,
@@ -28,6 +29,7 @@ import {
   Unlink,
   Download,
   Lock,
+  Wand2,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useAccent } from "@/components/accent-provider"
@@ -64,7 +66,11 @@ import {
 import { isCoachMidsetTipsEnabled, setCoachMidsetTipsEnabled } from "@/lib/coach-midset-tips"
 import { isClipEncryptionEnabledEnv } from "@/lib/encryption/env"
 import { fetchUserClipKeyRow } from "@/lib/user-clip-keys-supabase"
+import { rollingLocalDayWindows } from "@/lib/wearables/local-day-windows"
 import { PassphraseSetupDialog } from "@/components/encryption/passphrase-setup"
+import { InlineScreenSkeleton } from "@/components/brand/inline-screen-skeleton"
+import { ScreenTitle } from "@/components/brand/screen-title"
+import { MetricGrid, MetricTile } from "@/components/brand/metric-panel"
 
 const menuItems = [
   { icon: Bell, label: "Notifications", action: "notifications" },
@@ -82,7 +88,13 @@ function achievementBadgeTier(def: AchievementDef): AchievementBadgeTier {
   return "bronze"
 }
 
-export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
+export function ProfileScreen({
+  onLogout,
+  onCreateCustomExercise,
+}: {
+  onLogout: () => void
+  onCreateCustomExercise?: () => void
+}) {
   const { t } = useLocale()
   const [editingName, setEditingName] = useState(false)
   const [editingLevel, setEditingLevel] = useState(false)
@@ -137,6 +149,12 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
       spo2AvgPct: number | null
       spo2Date: string | null
     } | null
+  } | null>(null)
+  /** Mirrors `providers.google_fit` from `/api/wearables/status` (Fitbit alone lives in `wearableStatus`). */
+  const [wearableGoogleFit, setWearableGoogleFit] = useState<{
+    configured: boolean
+    connected: boolean
+    lastSyncAt: string | null
   } | null>(null)
   const profileChartEnter = useChartEnterOnce()
   const reduceProfileMotion = useReducedMotion() ?? false
@@ -288,8 +306,27 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
               spo2Date: string | null
             } | null
           }
+          providers?: Record<
+            string,
+            { configured?: boolean; connected?: boolean; lastSyncAt?: string | null }
+          >
+          error?: string
         }
-        if (cancelled || !j.fitbit) return
+        if (cancelled) return
+        if (!j.fitbit) {
+          if (!cancelled) setWearableGoogleFit(null)
+          return
+        }
+        const gf = j.providers?.google_fit
+        setWearableGoogleFit(
+          gf
+            ? {
+                configured: Boolean(gf.configured),
+                connected: Boolean(gf.connected),
+                lastSyncAt: (gf.lastSyncAt as string | null) ?? null,
+              }
+            : null
+        )
         setWearableStatus({
           configured: j.fitbit.configured,
           connected: j.fitbit.connected,
@@ -299,7 +336,10 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
           latest: j.fitbit.latest,
         })
       } catch {
-        if (!cancelled) setWearableStatus(null)
+        if (!cancelled) {
+          setWearableStatus(null)
+          setWearableGoogleFit(null)
+        }
       } finally {
         if (!cancelled) setWearableLoading(false)
       }
@@ -331,8 +371,22 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
             spo2Date: string | null
           } | null
         }
+        providers?: Record<
+          string,
+          { configured?: boolean; connected?: boolean; lastSyncAt?: string | null }
+        >
       }
       if (j.fitbit) {
+        const gf = j.providers?.google_fit
+        setWearableGoogleFit(
+          gf
+            ? {
+                configured: Boolean(gf.configured),
+                connected: Boolean(gf.connected),
+                lastSyncAt: (gf.lastSyncAt as string | null) ?? null,
+              }
+            : null
+        )
         setWearableStatus({
           configured: j.fitbit.configured,
           connected: j.fitbit.connected,
@@ -425,8 +479,67 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  const handleConnectGoogleFit = () => {
+    window.location.href = "/api/wearables/google_fit/auth"
+  }
+
+  const handleDisconnectGoogleFit = async () => {
+    setWearableSyncing(true)
+    try {
+      const r = await fetch("/api/wearables/google_fit/disconnect", {
+        method: "POST",
+        credentials: "include",
+      })
+      const j = (await r.json()) as { error?: string }
+      if (!r.ok) {
+        toast.error(j.error || "Could not disconnect Google Fit")
+        return
+      }
+      toast.success("Google Fit disconnected")
+      await refreshWearableStatus()
+    } catch {
+      toast.error("Could not disconnect Google Fit")
+    } finally {
+      setWearableSyncing(false)
+    }
+  }
+
+  const handleSyncGoogleFit = async () => {
+    setWearableSyncing(true)
+    try {
+      const days = rollingLocalDayWindows(14)
+      const r = await fetch("/api/wearables/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ provider: "google_fit", googleFitDays: days }),
+      })
+      const j = (await r.json()) as { error?: string; daysWritten?: number }
+      if (!r.ok) {
+        toast.error(j.error || "Google Fit sync failed")
+        return
+      }
+      const n = typeof j.daysWritten === "number" ? j.daysWritten : 0
+      if (n > 0) {
+        toast.success(`Google Fit · updated ${n} day(s)`)
+      } else {
+        toast.info("Synced — no new step/hr/spo₂ buckets yet (open Google Fit so data can populate).")
+      }
+      await refreshWearableStatus()
+    } catch {
+      toast.error("Google Fit sync failed")
+    } finally {
+      setWearableSyncing(false)
+    }
+  }
+
+  const wearablesOAuthConfigured =
+    Boolean(wearableStatus?.configured) || Boolean(wearableGoogleFit?.configured)
+
   const displayName = profile?.name?.trim() || "Athlete"
+  const profileInitial = displayName.charAt(0).toUpperCase()
   const joinYear = profile?.joinDate ? new Date(profile.joinDate).getFullYear() : new Date().getFullYear()
+  const totalSessions = runs.length + workouts.length + coachSessions.length
   const activeDays = weekActivity.filter((d) => d.active).length
 
   const handleSaveName = async () => {
@@ -530,21 +643,13 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-5 px-4 pt-4 pb-28">
-        <div className="flex items-center gap-4">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/15 animate-pulse">
-            <User className="h-8 w-8 text-primary/50" />
-          </div>
-          <div className="flex-1 space-y-2">
-            <div className="h-6 w-32 bg-secondary rounded animate-pulse" />
-            <div className="h-4 w-24 bg-secondary rounded animate-pulse" />
-          </div>
-        </div>
-        <div className="grid grid-cols-4 gap-2">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-20 bg-card border border-border rounded-2xl animate-pulse" />
-          ))}
-        </div>
+      <div className="px-4 pt-4 pb-28">
+        <InlineScreenSkeleton
+          label="Loading profile…"
+          hint="Preparing your metrics, privacy settings, and connected services."
+          layout="default"
+          showLogo
+        />
       </div>
     )
   }
@@ -568,6 +673,14 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
             className="rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
             Retry
+          </button>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-destructive/10 py-3 text-sm font-medium text-destructive transition-all hover:bg-destructive/20"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign Out
           </button>
         </div>
       </div>
@@ -641,14 +754,31 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
             </button>
           )}
         </div>
+        <button
+          type="button"
+          onClick={onLogout}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-destructive/10 py-3 text-sm font-medium text-destructive transition-all hover:bg-destructive/20"
+        >
+          <LogOut className="h-4 w-4" />
+          Sign Out
+        </button>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col gap-5 px-4 pt-4 pb-28 animate-fade-in-up" data-testid="screen-profile">
-      <div className="flex gap-3 items-start rounded-2xl border border-border bg-[color:var(--surface-stage)] p-5 text-[color:var(--surface-stage-fg)] shadow-[var(--shadow-card)] opacity-0 animate-slide-in-left" style={{ animationDelay: "0.05s", animationFillMode: "forwards" }}>
-        <div className="flex-1 min-w-0">
+    <motion.div className="flex flex-col gap-5 px-4 pt-4 pb-28 animate-fade-in-up" data-testid="screen-profile">
+      <ScreenTitle title="Profile" subtitle="Account, fitness summary, and settings." />
+
+      <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-[var(--shadow-card)]">
+        <div className="flex gap-4 items-start">
+          <div
+            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-2xl font-bold text-primary"
+            aria-hidden
+          >
+            {profileInitial}
+          </div>
+          <div className="flex-1 min-w-0">
           {editingName ? (
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 flex-wrap">
@@ -671,20 +801,14 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
                   Cancel
                 </button>
               </div>
-              <p className="text-typo-caption text-[color:oklch(0.92_0_0/0.65)]">Member since {joinYear}</p>
+              <p className="text-typo-caption text-muted-foreground">Member since {joinYear}</p>
             </div>
           ) : (
             <>
-              <StatDisplay
-                tone="stage"
-                size="lg"
-                eyebrow="Profile"
-                value={displayName}
-                secondary={`Member since ${joinYear}`}
-                icon={<User className="h-7 w-7 text-[color:var(--primary)]" />}
-                className="text-start"
-                contentClassName="justify-start flex-nowrap gap-3"
-              />
+              <h2 className="text-xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
+                {displayName}
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">Member since {joinYear}</p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -692,41 +816,52 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
                     setEditingName(true)
                     setNameInput(profile?.name || "")
                   }}
-                  className="text-xs font-medium text-[color:var(--surface-stage-fg)]/80 hover:text-[color:var(--surface-stage-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded underline-offset-4 hover:underline"
+                  className="text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded underline-offset-4"
                 >
                   Edit name
                 </button>
                 {userEmail && (
                   <>
-                    <span className="text-xs text-[color:oklch(0.92_0_0/0.55)]">•</span>
-                    <span className="text-xs text-[color:oklch(0.92_0_0/0.65)]">{userEmail}</span>
+                    <span className="text-xs text-muted-foreground">•</span>
+                    <span className="text-xs text-muted-foreground">{userEmail}</span>
                   </>
                 )}
               </div>
             </>
           )}
         </div>
-        <button type="button" onClick={() => handleMenuAction("settings")} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-background/60 border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background" aria-label="Settings">
+        <button type="button" onClick={() => handleMenuAction("settings")} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background" aria-label="Settings">
           <Settings className="h-4 w-4 text-muted-foreground" />
         </button>
+        </div>
       </div>
 
-      <section className="grid grid-cols-3 gap-2 rounded-2xl border border-border/80 bg-card p-4 shadow-[var(--shadow-card)] motion-card">
-        <StatDisplay eyebrow="Sessions" size="md" value={runs.length + workouts.length + coachSessions.length} />
-        <StatDisplay eyebrow="Distance" size="md" value={totalDistance.toFixed(1)} unit="km" />
-        <StatDisplay eyebrow="Streak" size="md" value={stats.streak} unit="d" />
+      <section className="rounded-3xl border border-border/80 bg-card p-4 shadow-[var(--shadow-card)]">
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Fitness summary</h2>
+        <MetricGrid cols={2}>
+          <MetricTile label="Sessions" value={String(totalSessions)} tone="coach" icon={Dumbbell} />
+          <MetricTile label="Distance" value={totalDistance.toFixed(1)} unit="km" tone="run" icon={MapPin} />
+          <MetricTile label="Streak" value={String(stats.streak)} unit="days" tone="streak" icon={Flame} />
+          <MetricTile label="Active days" value={String(activeDays)} unit="/ 7" tone="move" icon={Calendar} />
+        </MetricGrid>
       </section>
 
       {/* Profile Details Section */}
-      <section className="rounded-2xl bg-card p-4 border border-border space-y-4 animate-fade-in-up animate-stagger-2 transition-shadow duration-300 hover:shadow-md">
-        <h2 className="text-sm font-semibold text-foreground">Profile Details</h2>
-        
+      <section className="rounded-2xl bg-card p-4 border border-border space-y-3 animate-fade-in-up animate-stagger-2 shadow-[var(--shadow-card)]">
+        <h2 className="text-sm font-semibold text-foreground">Profile details</h2>
+
         {/* Level Selection */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-muted-foreground">Fitness Level</span>
+        <div className="rounded-xl border border-border/80 bg-muted/20 px-3 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-typo-eyebrow font-bold uppercase tracking-[0.14em] text-muted-foreground">Fitness level</p>
             {!editingLevel && (
-              <button onClick={() => setEditingLevel(true)} className="text-xs text-primary hover:underline">Change</button>
+              <button
+                type="button"
+                onClick={() => setEditingLevel(true)}
+                className="shrink-0 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/5"
+              >
+                Change
+              </button>
             )}
           </div>
           {editingLevel ? (
@@ -747,16 +882,22 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
               <button onClick={() => setEditingLevel(false)} className="px-3 py-2 text-xs text-muted-foreground">Cancel</button>
             </div>
           ) : (
-            <div className="text-sm font-medium text-foreground capitalize">{profile?.level || "beginner"}</div>
+            <p className="mt-2 text-sm font-semibold capitalize text-foreground">{profile?.level || "beginner"}</p>
           )}
         </div>
 
         {/* Goals */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-muted-foreground">Goals</span>
+        <div className="rounded-xl border border-border/80 bg-muted/20 px-3 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-typo-eyebrow font-bold uppercase tracking-[0.14em] text-muted-foreground">Goals</p>
             {!editingGoals && (
-              <button onClick={() => setEditingGoals(true)} className="text-xs text-primary hover:underline">Edit</button>
+              <button
+                type="button"
+                onClick={() => setEditingGoals(true)}
+                className="shrink-0 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/5"
+              >
+                {profile?.goals?.length ? "Edit" : "Add"}
+              </button>
             )}
           </div>
           {editingGoals ? (
@@ -802,13 +943,21 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
                   </span>
                 ))
               ) : (
-                <span className="text-xs text-muted-foreground">No goals set</span>
+                <button
+                  type="button"
+                  onClick={() => setEditingGoals(true)}
+                  className="mt-2 w-full rounded-lg border border-dashed border-primary/40 bg-primary/5 px-3 py-2.5 text-xs font-medium text-primary"
+                >
+                  Add your first goal
+                </button>
               )}
             </div>
           )}
         </div>
 
-        <BodyWeightRow profile={profile} onSaved={async () => { const u = await getProfile(); setProfile(u) }} />
+        <div className="rounded-xl border border-border/80 bg-muted/20 px-3 py-3">
+          <BodyWeightRow profile={profile} onSaved={async () => { const u = await getProfile(); setProfile(u) }} />
+        </div>
       </section>
 
       <section className="rounded-2xl bg-card p-4 border border-border space-y-3 animate-fade-in-up animate-stagger-3 transition-shadow duration-300 hover:shadow-md">
@@ -819,7 +968,9 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
             </div>
             <div>
               <h2 className="text-sm font-semibold text-foreground">Wearables</h2>
-              <p className="text-typo-caption text-muted-foreground leading-snug">Fitbit: resting heart rate and SpO2 summaries (not medical advice).</p>
+              <p className="text-typo-caption text-muted-foreground leading-snug">
+                Fitbit (minute HR + SpO₂) and Google Fit (daily aggregates). Not medical advice.
+              </p>
             </div>
           </div>
         </div>
@@ -827,9 +978,9 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
           <p className="text-xs text-muted-foreground">Loading…</p>
         ) : !wearableLoading && wearableStatus === null ? (
           <p className="text-xs text-muted-foreground">Could not load wearable status.</p>
-        ) : wearableStatus && !wearableStatus.configured ? (
+        ) : wearableStatus != null && !wearablesOAuthConfigured ? (
           <div className="text-xs text-muted-foreground space-y-2">
-            <p className="font-medium text-foreground">Fitbit isn&apos;t connected yet</p>
+            <p className="font-medium text-foreground">Wearable OAuth isn&apos;t configured on the server</p>
             {process.env.NODE_ENV === "development" ? (
               <>
                 <p>
@@ -855,7 +1006,8 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
                   </p>
                 )}
                 <p className="text-typo-caption opacity-90">
-                  Database tables for wearables are separate; if you already ran the migration, you only need the Fitbit keys above.
+                  Add Fitbit and/or Google OAuth keys (see <code className="text-typo-eyebrow bg-muted px-1 rounded">config/vercel-wearables.env.example</code> for
+                  Vercel).
                 </p>
                 {(wearableStatus.setup?.serverHasClientId === false ||
                   wearableStatus.setup?.serverHasClientSecret === false) && (
@@ -958,11 +1110,52 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
               ) : (
                 <p className="text-xs text-muted-foreground pt-1">No metrics loaded yet. Tap Sync now.</p>
               ))}
-            {wearableStatus?.connected && wearableStatus.lastSyncAt && (
+            {wearableStatus?.connected && wearableStatus.lastSyncAt ? (
               <p className="text-typo-eyebrow text-muted-foreground">
-                Last sync: {new Date(wearableStatus.lastSyncAt).toLocaleString()}
+                Fitbit last sync: {new Date(wearableStatus.lastSyncAt).toLocaleString()}
               </p>
-            )}
+            ) : null}
+            {wearableGoogleFit?.configured ? (
+              <div className="border-t border-border pt-3 mt-2 space-y-2">
+                <p className="text-typo-caption font-bold uppercase tracking-[0.14em] text-muted-foreground">Google Fit</p>
+                {!wearableGoogleFit.connected ? (
+                  <button
+                    type="button"
+                    onClick={handleConnectGoogleFit}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-2 text-xs font-medium text-foreground hover:bg-muted"
+                  >
+                    <Link2 className="h-3.5 w-3.5" aria-hidden />
+                    Connect Google Fit
+                  </button>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleSyncGoogleFit()}
+                      disabled={wearableSyncing}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${wearableSyncing ? "animate-spin" : ""}`} aria-hidden />
+                      Sync now
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDisconnectGoogleFit()}
+                      disabled={wearableSyncing}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-2 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
+                    >
+                      <Unlink className="h-3.5 w-3.5" aria-hidden />
+                      Disconnect Google Fit
+                    </button>
+                  </div>
+                )}
+                {wearableGoogleFit.connected && wearableGoogleFit.lastSyncAt ? (
+                  <p className="text-typo-eyebrow text-muted-foreground">
+                    Google Fit last sync: {new Date(wearableGoogleFit.lastSyncAt).toLocaleString()}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </>
         )}
       </section>
@@ -1331,6 +1524,22 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
                       aria-label="Toggle run voice cues"
                     />
                   </div>
+                  {onCreateCustomExercise ? (
+                    <button
+                      type="button"
+                      onClick={onCreateCustomExercise}
+                      className="flex w-full items-center gap-3 py-3 border-b border-border text-left hover:bg-muted/40 rounded-lg px-1 -mx-1 transition-colors"
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-background">
+                        <Wand2 className="h-4 w-4 text-primary" aria-hidden />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground">Custom exercises</p>
+                        <p className="text-xs text-muted-foreground">Describe a movement — AI builds form rules for Coach</p>
+                      </div>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </button>
+                  ) : null}
                   <div className="flex items-center justify-between gap-4 py-3 border-b border-border">
                     <div>
                       <p className="text-sm font-medium text-foreground">{t("profile.coachReplayLocal")}</p>
@@ -1374,10 +1583,11 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
                             <Lock className="h-4 w-4 text-primary" aria-hidden />
                           </div>
                           <div className="min-w-0">
-                            <p className="text-sm font-medium text-foreground">Clip encryption</p>
+                            <p className="text-sm font-medium text-foreground">Clip &amp; privacy key</p>
                             <p className="text-xs text-muted-foreground max-w-[16rem] sm:max-w-none">
-                              Backup your local clip decryption key with a passphrase so encrypted cloud clips replay on another
-                              device.
+                              This device key encrypts replay clips for the cloud and (by default) your display name plus run GPS
+                              paths in Postgres. Back it up with a passphrase so another browser can decrypt your data — we never see
+                              the passphrase.
                             </p>
                             {clipBackupOnServer === false ? (
                               <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">No backup saved yet.</p>
@@ -1602,6 +1812,6 @@ export function ProfileScreen({ onLogout }: { onLogout: () => void }) {
         <LogOut className="h-4 w-4" />
         Sign Out
       </button>
-    </div>
+    </motion.div>
   )
 }

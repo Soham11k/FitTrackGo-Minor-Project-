@@ -1,31 +1,38 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
-import { MapPin, Play } from "lucide-react"
+import { ArrowRight, MapPin } from "lucide-react"
 import { CinematicStage } from "@/components/ui/cinematic-stage"
 import { CINEMATIC, DURATION, EASE } from "@/lib/motion"
 import { pulse } from "@/lib/haptics"
 import { cn } from "@/lib/utils"
+import { browserAllowsGeolocation } from "@/lib/geo-context"
+import { useLocale } from "@/components/locale-provider"
+import { useEffect, useState } from "react"
 
 export type RunReadyGpsStatus = "off" | "searching" | "good" | "simulated"
-
-function gpsLabel(status: RunReadyGpsStatus): string {
-  if (status === "good") return "GPS locked · High accuracy"
-  if (status === "searching") return "Acquiring satellites…"
-  if (status === "simulated") return "Demo mode · Connect HTTPS for real GPS"
-  return "GPS ready when you press Start"
-}
 
 export function RunReadyScreen({
   gpsStatus,
   onStartRun,
   className,
+  insecureGpsReminder,
 }: {
   gpsStatus: RunReadyGpsStatus
   onStartRun: () => void
   className?: string
+  insecureGpsReminder?: boolean
 }) {
+  const { t } = useLocale()
+
+  const gpsLabel = (status: RunReadyGpsStatus): string => {
+    if (status === "good") return t("run.gps.idleGood")
+    if (status === "searching") return t("run.gps.idleSearching")
+    if (status === "simulated") {
+      return browserAllowsGeolocation() ? t("run.gps.unavailable") : t("run.gps.idleHTTPS")
+    }
+    return t("run.gps.idleOff")
+  }
   const [lockPhase, setLockPhase] = useState(0)
 
   useEffect(() => {
@@ -35,63 +42,53 @@ export function RunReadyScreen({
     }
     pulse("success")
     setLockPhase(1)
-    const t = window.setTimeout(() => setLockPhase(2), 550)
-    return () => clearTimeout(t)
+    const timeoutId = window.setTimeout(() => setLockPhase(2), 550)
+    return () => clearTimeout(timeoutId)
   }, [gpsStatus])
 
   return (
     <CinematicStage
       vignette
       className={cn(
-        "flex flex-col justify-end bg-[color-mix(in_oklab,var(--surface-stage)_76%,transparent)] backdrop-blur-md",
+        "flex flex-col justify-end bg-[color-mix(in_oklab,var(--surface-stage)_88%,transparent)] backdrop-blur-md",
         className,
       )}
     >
-      <div className="flex flex-1 flex-col justify-center px-6 pb-4 pt-14">
-        <motion.div variants={CINEMATIC.heroEnter} initial="hidden" animate="show" className="text-center">
-          <p className="text-eyebrow-mega text-[color:oklch(0.92_0_0/0.55)]">READY</p>
+      <div className="flex flex-1 flex-col justify-end px-6 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-12">
+        <motion.div variants={CINEMATIC.heroEnter} initial="hidden" animate="show" className="mb-auto pt-6 text-center">
+          <p className="text-sm text-[color:oklch(0.92_0_0/0.55)]">Outdoor run</p>
           <p
-            className="mt-2 text-display-stat-lg text-[color:var(--surface-stage-fg)] transition-opacity duration-300"
+            className="mt-2 text-display-stat-lg text-[color:var(--surface-stage-fg)]"
             style={{ fontFamily: "var(--font-display), var(--font-heading), sans-serif" }}
           >
-            FREE RUN
+            Ready
           </p>
-          <div className="mx-auto mt-4 flex items-center justify-center gap-2 text-typo-caption text-[color:oklch(0.92_0_0/0.7)]">
-            <MapPin className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+          <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-full border border-[color:var(--surface-stage-hairline)] bg-black/30 px-3 py-1.5 text-typo-caption text-[color:oklch(0.92_0_0/0.72)]">
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
             <span>{gpsLabel(gpsStatus)}</span>
             {gpsStatus === "good" && lockPhase >= 1 ? (
-              <span className="rounded-full bg-primary/25 px-2 py-0.5 text-typo-micro font-bold tabular-nums text-primary">
-                {lockPhase >= 2 ? "LOCK ✓" : "LOCK…"}
-              </span>
+              <span className="text-primary font-semibold">{lockPhase >= 2 ? "· Locked" : "· Locking…"}</span>
             ) : null}
           </div>
         </motion.div>
 
-        <div className="mt-8 grid grid-cols-2 gap-2">
-          <div className="rounded-2xl border border-[color:var(--surface-stage-hairline)] bg-black/35 p-3 text-left">
-            <p className="text-typo-eyebrow font-bold uppercase tracking-wider text-white/55">Trail</p>
-            <p className="mt-1 text-sm font-semibold text-[color:var(--surface-stage-fg)]">Route paints live</p>
-            <p className="text-typo-caption text-white/50">Km splits + voice cues when enabled</p>
-          </div>
-          <div className="rounded-2xl border border-[color:var(--surface-stage-hairline)] bg-black/35 p-3 text-left">
-            <p className="text-typo-eyebrow font-bold uppercase tracking-wider text-white/55">Outdoor</p>
-            <p className="mt-1 text-sm font-semibold text-[color:var(--surface-stage-fg)]">Clear sky helps GPS</p>
-            <p className="text-typo-caption text-white/50">Use HTTPS or localhost</p>
-          </div>
-        </div>
-      </div>
+        {insecureGpsReminder ? (
+          <p className="mb-4 rounded-xl border border-amber-500/35 bg-amber-500/[0.12] px-3 py-2 text-center text-typo-caption leading-snug text-amber-100/90">
+            Live GPS needs <strong className="text-foreground">localhost</strong> or <strong className="text-foreground">HTTPS</strong>.
+          </p>
+        ) : null}
 
-      <div className="flex justify-center pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-2">
         <motion.button
           type="button"
           layoutId="run-start-button"
           onClick={onStartRun}
-          className="flex h-[5.25rem] w-[5.25rem] min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl shadow-primary/30 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary"
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-[1.125rem] text-base font-bold uppercase tracking-[0.1em] text-primary-foreground shadow-[0_12px_40px_-12px_color-mix(in_oklab,var(--primary)_65%,transparent)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary"
           aria-label="Start run"
-          whileTap={{ scale: 0.95 }}
+          whileTap={{ scale: 0.98 }}
           transition={{ duration: DURATION.micro, ease: [...EASE.out] }}
         >
-          <Play className="relative z-[1] h-11 w-11 translate-x-[3px] fill-current motion-safe:animate-float" aria-hidden />
+          Start run
+          <ArrowRight className="h-5 w-5" aria-hidden />
         </motion.button>
       </div>
     </CinematicStage>

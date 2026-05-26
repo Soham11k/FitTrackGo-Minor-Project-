@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef, useId } from "react"
+import { useState, useEffect, useCallback, useRef, useId, useMemo } from "react"
 import Image from "next/image"
 import type { AuthChangeEvent } from "@supabase/supabase-js"
 import { toast } from "sonner"
-import { Trophy, Shield, Swords, Sparkles, Globe, Info, Flame } from "lucide-react"
+import { Trophy, Shield, Swords, Globe, Info, Flame, Dumbbell, Plus, LogIn } from "lucide-react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Label } from "@/components/ui/label"
 import { getCoachSessions, getProfile } from "@/lib/store-supabase"
@@ -28,17 +28,15 @@ import {
 } from "@/lib/duels-supabase"
 import type { TabId } from "@/components/bottom-nav"
 import { Button } from "@/components/ui/button"
-import { CinematicStage } from "@/components/ui/cinematic-stage"
+import { Badge } from "@/components/ui/badge"
+import { coachSessionForDuelExercise } from "@/lib/arena-coach-match"
+import { consumeArenaDuelExerciseLabel } from "@/lib/arena-duel-intent"
+import { listArenaDuelMovementOptions } from "@/lib/coach-exercise-catalog"
+import { ScreenTitle } from "@/components/brand/screen-title"
+import { MetricPanel, MetricRow } from "@/components/brand/metric-panel"
+import { EditorialEmpty } from "@/components/brand/editorial-empty"
 import { PbSticker } from "@/components/ui/pb-sticker"
 import { StatDisplay } from "@/components/ui/stat-display"
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty"
 import {
   createDuel,
   joinDuelByCode,
@@ -46,17 +44,6 @@ import {
   listDuels,
   type Duel,
 } from "@/lib/duels-local"
-
-function latestCoachSessionForExercise(
-  sessions: CoachRecord[],
-  exercise: string
-): CoachRecord | null {
-  const t = exercise.trim().toLowerCase()
-  for (const s of sessions) {
-    if (s.exercise.trim().toLowerCase() === t) return s
-  }
-  return sessions[0] ?? null
-}
 
 function toastDuelFailure(e: unknown) {
   toast.error(resolveDuelToastMessage(e))
@@ -70,10 +57,48 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
   const [duels, setDuels] = useState<Duel[]>([])
   const [code, setCode] = useState("")
   const [joinCode, setJoinCode] = useState("")
-  const [pickExercise, setPickExercise] = useState("Squats")
   const duelExerciseInputId = useId()
   const duelJoinInputId = useId()
+  const duelsSectionRef = useRef<HTMLElement>(null)
+  const joinCodeInputRef = useRef<HTMLInputElement>(null)
   const deviceOnlyExplainedRef = useRef(false)
+
+  const duelCatalog = useMemo(() => listArenaDuelMovementOptions(), [])
+  const duelGroups = useMemo(() => {
+    const m = new Map<string, (typeof duelCatalog)[number][]>()
+    for (const row of duelCatalog) {
+      const bucket = m.get(row.familyName) ?? []
+      bucket.push(row)
+      m.set(row.familyName, bucket)
+    }
+    return [...m.entries()]
+  }, [duelCatalog])
+
+  const [pickSpecId, setPickSpecId] = useState("squat")
+  const pickExerciseLabel = useMemo(
+    () => duelCatalog.find((r) => r.specId === pickSpecId)?.duelExerciseLabel ?? "Squats",
+    [duelCatalog, pickSpecId],
+  )
+
+  useEffect(() => {
+    const labelFromCoach = consumeArenaDuelExerciseLabel()
+    if (!labelFromCoach) return
+    const lc = labelFromCoach.trim().toLowerCase()
+    const hit =
+      duelCatalog.find((r) => r.duelExerciseLabel.trim().toLowerCase() === lc) ??
+      duelCatalog.find((r) => lc.includes(r.duelExerciseLabel.trim().toLowerCase())) ??
+      duelCatalog.find((r) => r.duelExerciseLabel.trim().toLowerCase().includes(lc))
+    if (hit) setPickSpecId(hit.specId)
+  }, [duelCatalog])
+
+  const scrollToDuels = () => {
+    duelsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+
+  const focusJoinDuel = () => {
+    scrollToDuels()
+    window.setTimeout(() => joinCodeInputRef.current?.focus(), 350)
+  }
 
   const useCloudDuels =
     userId !== null &&
@@ -203,14 +228,14 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
     try {
       if (useCloudDuels) {
         try {
-          const d = await createFormDuelRemote(pickExercise, name)
+          const d = await createFormDuelRemote(pickExerciseLabel, name)
           setCode(d.code)
           setDuels(await listFormDuelsRemote())
           toast.success("Duel created — share the code.")
         } catch (e) {
           if (isArenaCloudBackendUnavailableError(e)) {
             setArenaCloudBlocked(true)
-            const d = createDuel(pickExercise, name)
+            const d = createDuel(pickExerciseLabel, name)
             setCode(d.code)
             setDuels(listDuels())
             if (!deviceOnlyExplainedRef.current) {
@@ -224,7 +249,7 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
           }
         }
       } else {
-        const d = createDuel(pickExercise, name)
+        const d = createDuel(pickExerciseLabel, name)
         setCode(d.code)
         setDuels(listDuels())
         if (!isSupabaseConfigured()) {
@@ -289,7 +314,7 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
   }
 
   async function applyScoreFromLatestSession(d: Duel, role: "challenger" | "opponent") {
-    const s = latestCoachSessionForExercise(sessions, d.exercise)
+    const s = coachSessionForDuelExercise(sessions, d.exercise)
     if (!s) {
       toast.error("Complete a coach session for this exercise first.")
       return
@@ -303,7 +328,9 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
         submitDuelScore(d.id, role, sc)
         setDuels(listDuels())
       }
-      toast.success("Score logged.")
+      toast.success(
+        s.verifiedMovement ? "Score logged · verified-movement tier from Coach." : "Score logged."
+      )
     } catch (e) {
       if (useCloudDuels && isArenaCloudBackendUnavailableError(e)) {
         setArenaCloudBlocked(true)
@@ -318,46 +345,83 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
   }
 
   return (
-    <div className="flex flex-col gap-6 px-4 pt-4 pb-28 max-w-lg mx-auto">
-      <CinematicStage
-        vignette
-        className="rounded-2xl border border-border p-5 shadow-[var(--shadow-card)] text-[color:var(--surface-stage-fg)]"
-      >
-        <p className="text-eyebrow-mega text-[color:oklch(0.92_0_0/0.5)]">Arena</p>
-        <StatDisplay
-          tone="stage"
-          size="lg"
-          eyebrow="Compete fairly"
-          value="Form duels"
-          secondary="Form-weighted scoring and verified sessions — challenge friends with the same composite metric you earn in Coach Assist."
-          icon={<Trophy className="h-8 w-8 text-[color:var(--primary)]" />}
-          className="mt-3 text-start"
-          contentClassName="justify-start"
-        />
-      </CinematicStage>
+    <div className="flex flex-col gap-5 px-4 pt-4 pb-28 max-w-lg mx-auto">
+      <ScreenTitle
+        title="Arena"
+        subtitle="Form duels with the same composite score you earn in Coach."
+      />
+      <div className="grid grid-cols-3 gap-2">
+        <Button
+          type="button"
+          className="h-auto flex-col gap-1.5 rounded-xl py-3 text-xs font-semibold"
+          onClick={scrollToDuels}
+        >
+          <Plus className="h-4 w-4" aria-hidden />
+          New duel
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="h-auto flex-col gap-1.5 rounded-xl py-3 text-xs font-semibold"
+          onClick={focusJoinDuel}
+        >
+          <LogIn className="h-4 w-4" aria-hidden />
+          Join code
+        </Button>
+        {onNavigate ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-auto flex-col gap-1.5 rounded-xl py-3 text-xs font-semibold"
+            onClick={() => onNavigate("ai-coach")}
+          >
+            <Dumbbell className="h-4 w-4" aria-hidden />
+            Coach
+          </Button>
+        ) : (
+          <Button type="button" variant="outline" className="h-auto flex-col gap-1.5 rounded-xl py-3 text-xs font-semibold" disabled>
+            <Dumbbell className="h-4 w-4" aria-hidden />
+            Coach
+          </Button>
+        )}
+      </div>
 
       <section
-        className="rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground leading-relaxed volt-edge"
-        aria-label="Why Arena is different"
+        className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]"
+        aria-label="How form duels work"
       >
-        <p className="font-semibold text-foreground">Hero duels</p>
-        <p className="mt-1">
-          Create a code, both players log a coach session for that lift, then submit scores here. Numbers come from on-device pose —
-          not manually typed PRs — so wins match the rep quality you saw in session.
-        </p>
+        <p className="text-sm font-semibold text-foreground">How it works</p>
+        <ol className="mt-3 grid gap-2 sm:grid-cols-3">
+          {[
+            { step: "1", title: "Create or join", body: "Pick an exercise and share a duel code with a friend." },
+            { step: "2", title: "Coach a set", body: "Both log a session in Coach Assist for that lift." },
+            { step: "3", title: "Submit score", body: "Arena pulls your composite — no manual PR typing." },
+          ].map((item) => (
+            <li
+              key={item.step}
+              className="rounded-xl border border-border/80 bg-muted/25 px-3 py-2.5"
+            >
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-typo-eyebrow font-bold text-primary">
+                {item.step}
+              </span>
+              <p className="mt-2 text-xs font-semibold text-foreground">{item.title}</p>
+              <p className="mt-0.5 text-typo-caption text-muted-foreground leading-snug">{item.body}</p>
+            </li>
+          ))}
+        </ol>
       </section>
 
-      <section className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-[var(--shadow-card)]">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Shield className="h-4 w-4 text-metric-coach" />
-            Verified movement
-          </div>
+      <section
+        className="rounded-3xl border border-border/80 bg-card p-4 shadow-[var(--shadow-card)]"
+        aria-label="Your arena stats"
+      >
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-foreground">Your arena stats</h2>
           <Sheet>
             <SheetTrigger asChild>
               <button
                 type="button"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground transition-colors active:scale-95"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors hover:text-foreground active:scale-95"
                 aria-label="About verified movement"
               >
                 <Info className="h-3.5 w-3.5" />
@@ -367,7 +431,7 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
               <SheetHeader>
                 <SheetTitle>About verified movement</SheetTitle>
               </SheetHeader>
-              <div className="space-y-3 pt-2 text-sm text-muted-foreground leading-relaxed">
+              <div className="space-y-3 pt-2 text-sm leading-relaxed text-muted-foreground">
                 <p>
                   A session earns <strong className="text-foreground">Verified movement</strong> when rep-level scores stay high (typically ≥{VERIFIED_FORM_MIN}%).
                   Use this tier for integrity-friendly leaderboards.
@@ -379,38 +443,14 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
             </SheetContent>
           </Sheet>
         </div>
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-xl bg-metric-coach/10 py-3 px-1">
-            <StatDisplay eyebrow="Verified" value={verifiedSessions} valueClassName="text-metric-coach tabular-nums" size="md" />
-          </div>
-          <div className="rounded-xl bg-metric-move/10 py-3 px-1">
-            <StatDisplay
-              eyebrow="Eff. reps"
-              value={totalEffective.toFixed(0)}
-              valueClassName="text-metric-move tabular-nums"
-              size="md"
-            />
-          </div>
-          <div className="rounded-xl bg-metric-streak/10 py-3 px-1">
-            <StatDisplay
-              eyebrow="Day streak"
-              value={Math.max(verifiedStreak, standardStreak)}
-              valueClassName="text-metric-streak tabular-nums"
-              size="md"
-            />
-          </div>
-        </div>
-        <div className="flex items-center justify-between pt-1 text-typo-caption text-muted-foreground">
-          <span className="inline-flex items-center gap-1">
-            <Sparkles className="h-3 w-3 text-metric-spo2" /> Face days: <span className="tabular-nums font-semibold text-foreground">{verifiedStreak}</span>
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <Flame className="h-3 w-3 text-metric-streak" /> Coach days: <span className="tabular-nums font-semibold text-foreground">{standardStreak}</span>
-          </span>
-        </div>
+        <MetricPanel>
+          <MetricRow icon={Shield} label="Verified sessions" value={String(verifiedSessions)} delta={verifiedSessions === 0 ? "Complete a high-form Coach set" : undefined} />
+          <MetricRow icon={Trophy} label="Effective reps" value={totalEffective.toFixed(0)} />
+          <MetricRow icon={Flame} label="Day streak" value={String(Math.max(verifiedStreak, standardStreak))} delta={`Face ${verifiedStreak} · Coach ${standardStreak}`} />
+        </MetricPanel>
       </section>
 
-      <section className="rounded-2xl border border-border bg-card p-4 space-y-3">
+      <section className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-[var(--shadow-card)]">
         <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <Globe className="h-4 w-4 text-chart-4" />
           Your leaderboard (local)
@@ -419,32 +459,21 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
           Personal bests by composite score (reps × form × consistency). Sync to global ranks when you connect a season.
         </p>
         {bestByExercise.length === 0 ? (
-          <Empty className="rounded-2xl border border-dashed border-border/70 bg-muted/15 py-8 text-chart-4">
-            <EmptyHeader className="max-w-md">
-              <EmptyMedia>
-                <Image
-                  src="/illustrations/arena-empty.svg"
-                  alt=""
-                  width={96}
-                  height={96}
-                  className="h-24 w-24 opacity-90"
-                />
-              </EmptyMedia>
-              <EmptyTitle className="text-foreground">Leaderboard unlocks after Coach</EmptyTitle>
-              <EmptyDescription>
-                Finish at least one verified Coach Assist set — we rank your composite score (reps × form × consistency) per exercise.
-              </EmptyDescription>
-            </EmptyHeader>
-            <EmptyContent className="max-w-none flex-row justify-center pt-1">
-              {onNavigate ? (
-                <Button type="button" className="rounded-full" onClick={() => onNavigate("ai-coach")}>
-                  Open Coach Assist
-                </Button>
-              ) : (
-                <p className="text-typo-caption text-muted-foreground">Switch to Coach to log your first session.</p>
-              )}
-            </EmptyContent>
-          </Empty>
+          <EditorialEmpty
+            title="Leaderboard unlocks after Coach"
+            description="Finish at least one verified Coach Assist set — we rank your composite score (reps × form × consistency) per exercise."
+            media={
+              <Image
+                src="/illustrations/arena-empty.svg"
+                alt=""
+                width={96}
+                height={96}
+                className="h-24 w-24 opacity-90"
+              />
+            }
+            ctaLabel={onNavigate ? "Open Coach Assist" : undefined}
+            onCta={onNavigate ? () => onNavigate("ai-coach") : undefined}
+          />
         ) : (
           <ul className="space-y-2">
             {bestByExercise.map(([ex, { composite, session }]) => (
@@ -472,7 +501,10 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
         )}
       </section>
 
-      <section className="rounded-2xl border border-border bg-card p-4 space-y-3">
+      <section
+        ref={duelsSectionRef}
+        className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-[var(--shadow-card)] scroll-mt-24"
+      >
         <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <Swords className="h-4 w-4 text-destructive" />
           Async form duels {useCloudDuels ? "(cloud)" : "(this device)"}
@@ -490,23 +522,36 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
         </p>
         <div className="flex flex-col gap-2">
           <div className="space-y-1.5">
-            <Label htmlFor={duelExerciseInputId}>Exercise name</Label>
-            <input
+            <Label htmlFor={duelExerciseInputId}>Movement · FormSpec</Label>
+            <select
               id={duelExerciseInputId}
-              value={pickExercise}
-              onChange={(e) => setPickExercise(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-              placeholder="e.g. Squats"
-              autoComplete="off"
-            />
+              value={pickSpecId}
+              onChange={(e) => setPickSpecId(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground"
+            >
+              {duelGroups.map(([familyName, rows]) => (
+                <optgroup key={familyName} label={familyName}>
+                  {rows.map((r) => (
+                    <option key={r.specId} value={r.specId}>
+                      {r.duelExerciseLabel}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              Pick the same lift you coached — scores match when the duel label aligns with Coach&apos;s Session DNA (
+              <span className="font-mono">{pickExerciseLabel}</span>).
+              {sessions.some((s) => s.verifiedMovement) ? (
+                <span className="ml-1 inline-flex items-center gap-1 text-metric-move">
+                  <Shield className="h-3 w-3 inline" aria-hidden /> Verified-movement tiers win integrity points.
+                </span>
+              ) : null}
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void onCreateDuel()}
-            className="rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
+          <Button type="button" className="w-full rounded-xl py-2.5" onClick={() => void onCreateDuel()}>
             Create duel code
-          </button>
+          </Button>
           {code && (
             <p className="rounded-lg border border-primary/40 bg-primary/10 py-3 text-center text-2xl font-mono font-bold tracking-[0.3em] text-primary">{code}</p>
           )}
@@ -514,6 +559,7 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
             <div className="flex-1 space-y-1.5">
               <Label htmlFor={duelJoinInputId}>Duel code</Label>
               <input
+                ref={joinCodeInputRef}
                 id={duelJoinInputId}
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
@@ -523,23 +569,20 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
                 autoComplete="off"
               />
             </div>
-            <button type="button" onClick={() => void onJoin()} className="shrink-0 rounded-xl bg-secondary px-4 py-2.5 text-sm font-medium mb-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+            <Button type="button" variant="secondary" className="shrink-0 rounded-xl mb-px" onClick={() => void onJoin()}>
               Join
-            </button>
+            </Button>
           </div>
         </div>
         {duels.length === 0 ? (
-          <Empty className="rounded-2xl border border-dashed border-border/70 bg-muted/15 py-6">
-            <EmptyHeader className="max-w-md">
-              <EmptyMedia>
-                <Image src="/illustrations/arena-duel-empty.svg" alt="" width={80} height={80} className="h-20 w-20 opacity-90" />
-              </EmptyMedia>
-              <EmptyTitle className="text-foreground">No active duels yet</EmptyTitle>
-              <EmptyDescription>
-                Create a code and share it — or join a friend with their duel code. Same scoring as Coach Assist.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
+          <EditorialEmpty
+            className="rounded-2xl border border-dashed border-border/70 bg-muted/15 py-6"
+            title="No active duels yet"
+            description="Create a code and share it — or join a friend with their duel code. Same scoring as Coach Assist."
+            media={
+              <Image src="/illustrations/arena-duel-empty.svg" alt="" width={80} height={80} className="h-20 w-20 opacity-90" />
+            }
+          />
         ) : (
           <ul className="space-y-2 pt-2 border-t border-border">
             {duels.slice(0, 5).map((d) => {
@@ -552,9 +595,20 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
               const showScoreActions =
                 !d.settled && d.opponentName && (showChallenger || showOpponent)
 
+              const matchSes = coachSessionForDuelExercise(sessions, d.exercise)
+
               return (
                 <li key={d.id} className="text-typo-caption space-y-2 rounded-2xl border border-border/80 bg-card px-4 py-3 shadow-[var(--shadow-card)]">
-                  <div className="font-medium text-foreground">{d.exercise} · {d.code}</div>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
+                    <span className="text-foreground">{d.exercise}</span>
+                    <span className="text-muted-foreground">·</span>
+                    <span className="font-mono tracking-[0.12em] text-primary">{d.code}</span>
+                    {matchSes?.verifiedMovement ? (
+                      <Badge variant="outline" className="border-metric-move/35 bg-metric-move/15 text-[10px] font-bold uppercase text-metric-move">
+                        Verified
+                      </Badge>
+                    ) : null}
+                  </div>
                   <div className="text-muted-foreground">
                     {d.challengerName}: {d.challengerScore ?? "—"} vs {d.opponentName ?? "?"}: {d.opponentScore ?? "—"}
                   </div>
@@ -599,7 +653,7 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
                             valueClassName="truncate text-foreground"
                           />
                           {(() => {
-                            const winSession = latestCoachSessionForExercise(sessions, d.exercise)
+                            const winSession = coachSessionForDuelExercise(sessions, d.exercise)
                             return winSession && (winSession.score ?? 0) >= VERIFIED_FORM_MIN ? (
                               <div className="mt-2 flex flex-wrap gap-2">
                                 <PbSticker variant="pb-form-score" className="rotate-0 text-typo-micro" />
@@ -609,7 +663,7 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
                         </div>
                       </div>
                       {(() => {
-                        const s = latestCoachSessionForExercise(sessions, d.exercise)
+                        const s = coachSessionForDuelExercise(sessions, d.exercise)
                         if (!s) return null
                         const insightRows = insightsFromRepScores(s.repScores, s.exercise)
                         return (

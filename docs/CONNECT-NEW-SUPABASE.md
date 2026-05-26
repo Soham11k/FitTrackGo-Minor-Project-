@@ -77,3 +77,4 @@ If you use **Google / Apple / etc. OAuth**, update the provider’s redirect URI
 
 - **“Supabase is not configured” / mock client:** Wrong or placeholder env vars, or dev server not restarted after editing `.env.local`. See [`lib/supabase/config.ts`](../lib/supabase/config.ts) for validation rules.
 - **Fetch / CORS / wrong host:** `NEXT_PUBLIC_SUPABASE_URL` must be the **Supabase API URL** (`*.supabase.co`), not your Next.js URL. See [`FAILED-TO-FETCH-FIX.md`](../FAILED-TO-FETCH-FIX.md).
+- **Arena falls back to “device-only duels”:** Usually missing `20260901000000_form_duels.sql`, paused/billing blocked API, or an explicit `NEXT_PUBLIC_ARENA_DUELS_LOCAL_ONLY=1`. Re-run that migration SQL and ensure the signed-in anon key reaches the same Supabase URL as migrations.

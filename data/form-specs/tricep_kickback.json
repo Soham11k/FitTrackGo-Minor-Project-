@@ -1,0 +1,25 @@
+{
+  "id": "tricep_kickback",
+  "displayName": "Tricep Kickback",
+  "category": "upper",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16],
+  "visibleFraction": 0.67,
+  "positiveLine": "Upper arm still — extend the forearm only",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 70 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 165 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 70 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 165 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "tricep_kickback.range",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "any": [ { "metric": "elbow_angle_avg", "op": "<=", "value": 50 }, { "metric": "elbow_angle_avg", "op": ">=", "value": 175 } ] },
+      "feedback": "Full extension at the back — control the flex on the way in",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "region": "arms" }
+    }
+  ]
+}

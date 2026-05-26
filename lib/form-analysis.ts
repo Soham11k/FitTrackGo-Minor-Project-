@@ -1,18 +1,8 @@
 import { VIS_FORM_ANALYSIS, VIS_EXERCISE_GATE } from "./pose-config"
 import { angle2d, jointAngle, hipPlumbLineDeviation } from "./pose-geometry"
 import { hasSpec, loadSpec } from "./form-engine/registry"
-import { analyzeSpec, getSpecRepPhase } from "./form-engine/engine"
+import { hasEnoughVisibilityForSpec, analyzeSpec, getSpecRepPhase } from "./form-engine/engine"
 import type { AnalyzeContext } from "./form-engine/types"
-
-/**
- * Feature flag toggling spec-driven form analysis. Defaults to OFF so the
- * legacy hand-coded rule branches stay live until specs are validated.
- * Enable in dev with `NEXT_PUBLIC_ENABLE_FORM_ENGINE=1`.
- */
-function isFormEngineEnabled(): boolean {
-  if (typeof process === "undefined") return false
-  return process.env.NEXT_PUBLIC_ENABLE_FORM_ENGINE === "1"
-}
 
 export interface Landmark {
   x: number
@@ -20,19 +10,6 @@ export interface Landmark {
   z?: number
   visibility?: number
 }
-
-export type ExerciseId =
-  | "squat"
-  | "pushup"
-  | "plank"
-  | "lunge"
-  | "deadlift"
-  | "rdl"
-  | "bicep_curl"
-  | "shoulder_press"
-  | "jumping_jacks"
-  | "high_knees"
-  | "crunch"
 
 export interface AnalyzeFormOptions {
   /** MediaPipe world landmarks (same indices as image) for 3D joint angles when available. */
@@ -68,6 +45,29 @@ export interface FormResult {
   breakdown: FormBreakdown[]
   /** 0–1; lower when `trackingQuality` was applied to the final score. */
   trackingReliability?: number
+}
+
+export type ExerciseId =
+  | "squat"
+  | "pushup"
+  | "plank"
+  | "lunge"
+  | "deadlift"
+  | "rdl"
+  | "bicep_curl"
+  | "shoulder_press"
+  | "jumping_jacks"
+  | "high_knees"
+  | "crunch"
+
+/** Any registered FormSpec id (Coach catalog) or legacy `ExerciseId`. */
+export type CoachExerciseId = string
+
+/**
+ * True when `exercise` uses legacy hand-coded analysis (no FormSpec).
+ */
+export function isLegacyExerciseId(exercise: string): exercise is ExerciseId {
+  return Object.prototype.hasOwnProperty.call(REQUIRED_LANDMARKS, exercise)
 }
 
 /** Landmark indices required per exercise for visibility gating */
@@ -108,9 +108,8 @@ function applyTrackingScale(rawScore: number, trackingQuality: number | undefine
   return { score: Math.round(rawScore * reliability), trackingReliability: reliability }
 }
 
-export function analyzeForm(lm: Landmark[], exercise: ExerciseId, opts: AnalyzeFormOptions = {}): FormResult {
-  // Spec-driven path (feature-flagged).
-  if (isFormEngineEnabled() && hasSpec(exercise)) {
+export function analyzeForm(lm: Landmark[], exercise: ExerciseId | CoachExerciseId, opts: AnalyzeFormOptions = {}): FormResult {
+  if (hasSpec(exercise)) {
     const spec = loadSpec(exercise)!
     const ctx: AnalyzeContext = {
       bodyWeightKg: opts.bodyWeightKg,
@@ -134,6 +133,16 @@ export function analyzeForm(lm: Landmark[], exercise: ExerciseId, opts: AnalyzeF
         region: b.region,
       })),
       trackingReliability: r.trackingReliability,
+    }
+  }
+
+  if (!isLegacyExerciseId(exercise)) {
+    return {
+      feedback: ["Unknown exercise"],
+      isGoodForm: false,
+      score: 0,
+      breakdown: [],
+      trackingReliability: 0,
     }
   }
 
@@ -555,8 +564,13 @@ const VISIBLE_FRACTION: Record<ExerciseId, number> = {
 }
 
 /** Only count reps when the body parts needed for this exercise are visible (stops counting on wall/partial body). */
-export function hasEnoughVisibilityForExercise(lm: Landmark[], exercise: ExerciseId): boolean {
+export function hasEnoughVisibilityForExercise(lm: Landmark[], exercise: ExerciseId | CoachExerciseId): boolean {
   if (!lm?.length) return false
+  if (hasSpec(exercise)) {
+    const spec = loadSpec(exercise)!
+    return hasEnoughVisibilityForSpec(lm, spec)
+  }
+  if (!isLegacyExerciseId(exercise)) return false
   const indices = REQUIRED_LANDMARKS[exercise] ?? REQUIRED_LANDMARKS.squat
   const visible = countVisible(lm, indices)
   const required = Math.max(1, Math.ceil(indices.length * (VISIBLE_FRACTION[exercise] ?? 0.7)))
@@ -591,10 +605,17 @@ export function hasEnoughVisibilityForExercise(lm: Landmark[], exercise: Exercis
   }
 }
 
-export function getRepPhase(lm: Landmark[], exercise: ExerciseId, reset: boolean = false): RepPhase {
-  if (isFormEngineEnabled() && hasSpec(exercise)) {
+export function getRepPhase(lm: Landmark[], exercise: ExerciseId | CoachExerciseId, reset: boolean = false): RepPhase {
+  if (hasSpec(exercise)) {
     const spec = loadSpec(exercise)!
     return getSpecRepPhase(spec, lm, reset)
+  }
+  if (!isLegacyExerciseId(exercise)) {
+    if (reset) {
+      lastPhase = "idle"
+      phaseHistory = []
+    }
+    return "idle"
   }
   if (reset) {
     lastPhase = "idle"

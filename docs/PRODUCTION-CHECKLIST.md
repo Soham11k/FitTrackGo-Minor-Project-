@@ -53,6 +53,11 @@ This verifies `GET /`, `GET /api/health`, and `GET /login` return 200. Run this 
 - [ ] Enable uptime monitoring for `/`, `/login`, `/api/health`.
 - [ ] Run `npm run synthetic-checks` (with `SYNTHETIC_BASE_URL`) after each production deploy.
 
+## Performance
+
+- [ ] Record Lighthouse (or LHCI) numbers when you change Coach, maps, charts, or service worker behavior — template in [PERF.md](./PERF.md).
+- [ ] `npm run lh:audit` is part of `ci:check`; it is a **no-op** until you set `RUN_LHCI=1` and `LHCI_URL` (see `scripts/lighthouse-audit.mjs` and [PERF.md](./PERF.md)).
+
 ## Pre-release (tag / store)
 
 - [ ] `npm run ci:check`

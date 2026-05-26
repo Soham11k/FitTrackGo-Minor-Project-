@@ -171,8 +171,8 @@ function buildConnectionUrlCandidates() {
       `postgresql://postgres.${ref}:${enc}@aws-0-${r}.pooler.supabase.com:5432/postgres`
   )
 
-  /* Poolers first (IPv4-friendly); direct host is often IPv6-only (EHOSTUNREACH on many networks). */
-  return [...poolers, direct]
+  /* Try direct first when pooler region in .env is wrong; poolers remain as fallback. */
+  return [direct, ...poolers]
 }
 
 const migrationsDir = join(process.cwd(), 'supabase', 'migrations')
@@ -283,7 +283,9 @@ function isRetriableConnectError(err) {
     c === 'ENETUNREACH' ||
     c === 'ECONNREFUSED' ||
     c === 'ETIMEDOUT' ||
-    c === 'ENOTFOUND'
+    c === 'ENOTFOUND' ||
+    c === 'XX000' ||
+    /tenant\/user/i.test(msg)
   )
 }
 

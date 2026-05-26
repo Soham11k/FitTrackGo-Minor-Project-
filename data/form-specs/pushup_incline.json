@@ -1,0 +1,53 @@
+{
+  "id": "pushup_incline",
+  "displayName": "Incline push-up",
+  "category": "upper",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16, 23, 24],
+  "visibleFraction": 0.75,
+  "positiveLine": "Clean incline push-up — control the lowering phase",
+  "repPattern": "top_bottom_top",
+  "hudAngles": [
+    { "name": "Left elbow", "joints": ["left_shoulder", "left_elbow", "left_wrist"], "primary": true },
+    { "name": "Right elbow", "joints": ["right_shoulder", "right_elbow", "right_wrist"] }
+  ],
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 95 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 158 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 95 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 158 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "pushup_incline.body_line",
+      "region": "torso",
+      "penalty": 15,
+      "when": { "metric": "body_line_deviation", "op": ">=", "value": 17 },
+      "feedback": "Keep ribs down and body rigid — plank from head to heels",
+      "breakdown": { "label": "Body line", "format": "boolean", "okLabel": "Rigid", "failLabel": "Loose", "detail": "Straight torso", "region": "torso" }
+    },
+    {
+      "id": "pushup_incline.no_sag",
+      "region": "core",
+      "penalty": 11,
+      "when": { "any": [ { "metric": "hip_sag_y", "op": ">=", "value": 0.1 }, { "metric": "shoulder_hip_y_delta", "op": ">=", "value": 0.13 } ] },
+      "feedback": "Squeeze glutes — don’t let hips drop toward the floor",
+      "breakdown": { "label": "Hips", "format": "boolean", "okLabel": "Stable", "failLabel": "Dropping", "detail": "Core engaged", "region": "core" }
+    },
+    {
+      "id": "pushup_incline.elbow_angle",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "any": [ { "metric": "elbow_angle_avg", "op": "<=", "value": 72 }, { "metric": "elbow_angle_avg", "op": ">=", "value": 100 } ] },
+      "feedback": "Use full range on the incline — chest approaches the bench",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "detail": "Controlled ROM", "region": "arms" }
+    },
+    {
+      "id": "pushup_incline.no_flare",
+      "region": "arms",
+      "penalty": 8,
+      "when": { "metric": "elbow_flare_ratio", "op": ">=", "value": 1.55 },
+      "feedback": "Elbows about 45° from body — not flared to 90°",
+      "breakdown": { "label": "Elbow flare", "format": "boolean", "okLabel": "Good", "failLabel": "Wide", "detail": "Scapular-friendly path", "region": "arms" }
+    }
+  ]
+}

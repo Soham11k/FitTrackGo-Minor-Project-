@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
-import { analyzeForm, getRepPhase, type Landmark, type ExerciseId } from "./form-analysis"
+import { analyzeForm, getRepPhase, type Landmark } from "./form-analysis"
+import { listSpecIds } from "./form-engine/registry"
 
 /** Build a minimal landmark array (33 MediaPipe indices). */
 function makeLandmarks(overrides: Partial<Record<number, Pick<Landmark, "x" | "y"> & Partial<Pick<Landmark, "z" | "visibility">>>> = {}): Landmark[] {
@@ -31,22 +32,9 @@ describe("form-analysis", () => {
       expect(result.score).toBeLessThanOrEqual(100)
     })
 
-    it("supports all exercise ids", () => {
-      const ids: ExerciseId[] = [
-        "squat",
-        "pushup",
-        "plank",
-        "lunge",
-        "deadlift",
-        "rdl",
-        "bicep_curl",
-        "shoulder_press",
-        "jumping_jacks",
-        "high_knees",
-        "crunch",
-      ]
+    it("supports all registry exercise ids", () => {
       const lm = makeLandmarks()
-      for (const id of ids) {
+      for (const id of listSpecIds()) {
         const result = analyzeForm(lm, id)
         expect(result.feedback).toBeDefined()
         expect(result.breakdown).toBeDefined()
@@ -123,30 +111,30 @@ describe("form-analysis", () => {
       const b = analyzeForm(lm, "squat", { world })
       expect(a.score).toBeDefined()
       expect(b.score).toBeDefined()
-      expect(b.breakdown[0].value).toMatch(/°/)
+      const angleRow = b.breakdown.find((row) => /\d/.test(row.value) && row.value.includes("°"))
+      expect(angleRow).toBeDefined()
+      expect(angleRow!.value).toMatch(/°/)
     })
   })
 
   describe("getRepPhase", () => {
-    it("returns a phase for each exercise with reset true", () => {
+    it("returns a phase for each registry exercise with reset true", () => {
       const phases = ["idle", "eccentric", "bottom", "concentric", "top"] as const
       const lm = makeLandmarks()
-      const ids: ExerciseId[] = [
-        "squat",
-        "pushup",
-        "plank",
-        "lunge",
-        "deadlift",
-        "rdl",
-        "bicep_curl",
-        "shoulder_press",
-        "jumping_jacks",
-        "high_knees",
-        "crunch",
-      ]
-      for (const id of ids) {
+      for (const id of listSpecIds()) {
         const phase = getRepPhase(lm, id, true)
         expect(phases).toContain(phase)
+      }
+    })
+
+    it("catalog variants use FormSpec path without env flag (pushup_wide, goblet_squat)", () => {
+      const lm = makeLandmarks()
+      for (const id of ["pushup_wide", "goblet_squat"] as const) {
+        const a = analyzeForm(lm, id)
+        expect(a.feedback.length).toBeGreaterThanOrEqual(0)
+        expect(typeof a.score).toBe("number")
+        const p = getRepPhase(lm, id, true)
+        expect(["idle", "eccentric", "bottom", "concentric", "top"]).toContain(p)
       }
     })
 

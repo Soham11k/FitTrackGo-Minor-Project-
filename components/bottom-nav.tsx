@@ -85,12 +85,23 @@ export function BottomNav({
               aria-label={label}
               title={label}
             >
-              <item.icon
-                className={`h-5 w-5 transition-transform duration-200 ease-out ${
-                  isActive ? "scale-110" : "scale-100"
-                }`}
-                strokeWidth={isActive ? 2.4 : 1.8}
-              />
+              <motion.span
+                className="flex items-center justify-center"
+                animate={
+                  prefersReducedMotion
+                    ? undefined
+                    : isActive
+                      ? { scale: 1.14, y: -1 }
+                      : { scale: 1, y: 0 }
+                }
+                transition={
+                  prefersReducedMotion
+                    ? { duration: 0 }
+                    : { type: "spring", stiffness: 480, damping: 28 }
+                }
+              >
+                <item.icon className="h-5 w-5" strokeWidth={isActive ? 2.4 : 1.8} />
+              </motion.span>
               <span
                 className={`text-typo-micro max-w-[4.5rem] truncate font-bold uppercase tracking-[0.18em] leading-none motion-reduce:transition-none ${
                   isActive ? "text-foreground" : "text-muted-foreground"

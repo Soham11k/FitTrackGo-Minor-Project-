@@ -1,0 +1,25 @@
+{
+  "id": "preacher_curl",
+  "displayName": "Preacher Curl",
+  "category": "upper",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16],
+  "visibleFraction": 0.67,
+  "positiveLine": "Arms on pad — control the stretch and squeeze",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 62 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 138 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 62 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 138 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "preacher_curl.full_range",
+      "region": "arms",
+      "penalty": 12,
+      "when": { "any": [ { "metric": "elbow_angle_avg", "op": "<=", "value": 30 }, { "metric": "elbow_angle_avg", "op": ">=", "value": 160 } ] },
+      "feedback": "Use full range — don’t cut the bottom short",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "region": "arms" }
+    }
+  ]
+}

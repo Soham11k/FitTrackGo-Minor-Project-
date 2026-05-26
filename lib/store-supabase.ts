@@ -1,25 +1,65 @@
 import { createClient } from '@/lib/supabase/client'
-import { agentDebugLog } from '@/lib/debug-agent-log'
+import { isSupabaseFetchError } from '@/lib/supabase/config'
+import {
+  shouldSkipSupabaseNetwork,
+} from '@/lib/supabase/connectivity-circuit'
 import type { UserProfile, WorkoutRecord, RunRecord, CoachRecord } from './store'
 import { parseRepTracesJson } from '@/lib/rep-trace'
 import { isNetworkError } from './network-status'
 import { enqueuePendingWrite } from '@/lib/offline-queue'
+import {
+  encryptUserDataStringPlain,
+} from '@/lib/encryption/user-data-cipher'
+import { isUserDataFieldEncryptionEnabled } from '@/lib/encryption/user-data-env'
+import {
+  getOrCreateUserDataContentKey,
+} from '@/lib/encryption/content-key'
+import { formatErr } from '@/lib/format-err'
+import {
+  decryptRunPath,
+  maybeDecryptProfileName,
+  maybeEncryptProfileNameForWrite,
+  runPathCipherColumnUnsupported,
+  scheduleEncryptPlainProfileNameIfNeeded,
+} from '@/lib/store-supabase/user-data-field-crypto'
 
-// Use singleton client instance to prevent lock conflicts
-const supabase = createClient()
-type AuthUserResult = Awaited<ReturnType<typeof supabase.auth.getUser>>
+export { formatErr }
+
+function getSupabase() {
+  return createClient()
+}
+
+type AuthUserResult = Awaited<ReturnType<ReturnType<typeof getSupabase>['auth']['getUser']>>
 
 // Small helper to avoid hammering auth.getUser in parallel and triggering browser locks
 let cachedAuthUserPromise: Promise<AuthUserResult> | null = null
 let cachedAuthUserAt = 0
 const AUTH_USER_CACHE_MS = 15_000
 
+function isDevSupabaseOffline(): boolean {
+  return process.env.NODE_ENV === 'development' && shouldSkipSupabaseNetwork()
+}
+
+function offlineDevProfile(): UserProfile {
+  return {
+    name: '',
+    level: 'beginner',
+    goals: [],
+    joinDate: new Date().toISOString().slice(0, 10),
+    onboarded: true,
+  }
+}
+
 async function getCachedAuthUser() {
+  if (shouldSkipSupabaseNetwork()) {
+    return { data: { user: null }, error: null } as AuthUserResult
+  }
+
   const now = Date.now()
   if (!cachedAuthUserPromise || now - cachedAuthUserAt > AUTH_USER_CACHE_MS) {
     cachedAuthUserAt = now
     cachedAuthUserPromise = retryWithBackoff(
-      () => supabase.auth.getUser(),
+      () => getSupabase().auth.getUser(),
       3,
       150
     )
@@ -81,18 +121,12 @@ function coachSessionKindUnsupported(e: unknown): boolean {
   return false
 }
 
-/** Serialize any error to a readable string (Supabase errors often log as "{}" otherwise). */
-export function formatErr(e: unknown): string {
-  if (e == null) return 'Unknown error'
-  if (typeof e === 'string') return e
-  const o = e as Record<string, unknown>
-  const msg = o.message ?? o.msg
-  const code = o.code
-  const details = o.details
-  if (typeof msg === 'string' && msg) return code != null ? `${code}: ${msg}` : msg
-  if (code != null) return String(code)
-  if (typeof details === 'string' && details) return details
-  try { return JSON.stringify(e) } catch { return String(e) }
+function coachSessionExerciseSpecIdUnsupported(e: unknown): boolean {
+  const code = (e as { code?: string })?.code
+  const msg = String((e as { message?: string })?.message ?? "")
+  if (code === "PGRST204" && /\bexercise_spec_id\b/i.test(msg)) return true
+  if (/schema cache/i.test(msg) && /\bexercise_spec_id\b/i.test(msg)) return true
+  return false
 }
 
 // Helper function to retry with exponential backoff for lock timeouts
@@ -108,9 +142,18 @@ async function retryWithBackoff<T>(
       const msg = error instanceof Error ? error.message : String(error)
       const errorName = error instanceof Error ? error.name : ""
       const isLockError = msg.includes('LockManager') || msg.includes('lock') || msg.includes('timeout')
-      const isNetworkError = msg.includes('Failed to fetch') || msg.includes('fetch') ||
-        errorName === 'TypeError' || msg.includes('NetworkError')
-      
+      const isNetworkError =
+        isSupabaseFetchError(error) ||
+        msg.includes('Failed to fetch') ||
+        msg.includes('fetch') ||
+        errorName === 'TypeError' ||
+        msg.includes('NetworkError') ||
+        errorName === 'AuthRetryableFetchError'
+
+      if (isNetworkError && process.env.NODE_ENV === 'development') {
+        throw error
+      }
+
       if ((isLockError || isNetworkError) && i < maxRetries - 1) {
         // Wait with exponential backoff before retrying
         await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)))
@@ -122,33 +165,37 @@ async function retryWithBackoff<T>(
   throw new Error('Max retries exceeded')
 }
 
+function isLikelyRpcNotDeployed(error: unknown): boolean {
+  const o = error as { code?: string; message?: string }
+  const code = String(o?.code ?? '')
+  const msg = String(o?.message ?? '').toLowerCase()
+  return (
+    code === 'PGRST202' ||
+    (/\bcould not find the function\b/.test(msg) && /\bschema cache\b/.test(msg))
+  )
+}
+
 // Profile functions
 export async function getProfile(): Promise<UserProfile> {
   return retryWithBackoff(async () => {
     const { data: { user }, error: authError } = await getCachedAuthUser()
+    if (isDevSupabaseOffline()) {
+      return offlineDevProfile()
+    }
     if (authError) {
-      // #region agent log
-      {
-        const m = authError.message ?? ''
-        agentDebugLog({
-          sessionId: 'ada955',
-          runId: 'pre-fix',
-          hypothesisId: 'H_PROFILE_AUTH',
-          location: 'lib/store-supabase.ts:getProfile',
-          message: 'getProfile_auth_error',
-          data: {
-            msgPrefix: String(m).slice(0, 120),
-            looksLikeMockClient: String(m).includes('not configured correctly'),
-          },
-          timestamp: Date.now(),
-        })
+      const m = authError.message ?? ''
+      if (
+        m.includes('unreachable') ||
+        m.includes('not configured') ||
+        m.includes('check:supabase-host')
+      ) {
+        return offlineDevProfile()
       }
-      // #endregion
       throw new Error(`Authentication error: ${authError.message}`)
     }
     if (!user) throw new Error('Not authenticated')
 
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('profiles')
     .select('*')
     .eq('id', user.id)
@@ -164,25 +211,47 @@ export async function getProfile(): Promise<UserProfile> {
       user.email?.split('@')[0] ||
       'Athlete'
 
-    const { error: upsertError } = await supabase.from('profiles').upsert(
-      {
-        id: user.id,
-        name: defaultName,
-        level: 'beginner',
-        goals: [],
-        join_date: new Date().toISOString().split('T')[0],
-        onboarded: false,
-      },
-      { onConflict: 'id', ignoreDuplicates: true }
-    )
+    const joinDateStr = new Date().toISOString().split('T')[0]
+    const sb = getSupabase()
+    const { error: rpcError } = await sb.rpc('ensure_own_profile_bootstrap', {
+      p_name: defaultName,
+      p_level: 'beginner',
+      p_goals: [] as string[],
+      p_join_date: joinDateStr,
+      p_onboarded: false,
+    })
 
-    if (upsertError) {
-      const errMsg = formatErr(upsertError)
+    let ensureFailed = rpcError ?? null
+
+    // RPC shipped in migration `20261201000000_profiles_ensure_rpc.sql` — if DB never got it,
+    // PostgREST returns PGRST202. Fall back to direct upsert (works when RLS allows JWT).
+    if (ensureFailed && isLikelyRpcNotDeployed(rpcError)) {
+      console.warn(
+        '[profiles] ensure_own_profile_bootstrap RPC missing — using client upsert. Run migrations (e.g. npm run db:push or paste migration SQL in Supabase).',
+      )
+      const { error: upsertError } = await sb
+        .from('profiles')
+        .upsert(
+          {
+            id: user.id,
+            name: defaultName,
+            level: 'beginner',
+            goals: [],
+            join_date: joinDateStr,
+            onboarded: false,
+          },
+          { onConflict: 'id', ignoreDuplicates: true },
+        )
+      ensureFailed = upsertError ?? null
+    }
+
+    if (ensureFailed) {
+      const errMsg = formatErr(ensureFailed)
       console.error('Failed to ensure profile:', errMsg)
       throw new Error(`Failed to create profile: ${errMsg}`)
     }
 
-    const { data: row, error: again } = await supabase
+    const { data: row, error: again } = await sb
       .from('profiles')
       .select('*')
       .eq('id', user.id)
@@ -194,8 +263,9 @@ export async function getProfile(): Promise<UserProfile> {
       throw new Error(`Failed to load profile: ${errMsg}`)
     }
 
+    scheduleEncryptPlainProfileNameIfNeeded(user.id, row.name ?? null)
     return {
-      name: row.name || '',
+      name: await maybeDecryptProfileName(row.name),
       level: (row.level as UserProfile['level']) || 'beginner',
       goals: row.goals || [],
       joinDate: row.join_date || new Date().toISOString().split('T')[0],
@@ -212,16 +282,18 @@ export async function getProfile(): Promise<UserProfile> {
     throw new Error(`Failed to load profile: ${errMsg}`)
   }
 
-    // Return existing profile
-    return {
-      name: data?.name || '',
-      level: (data?.level as UserProfile['level']) || 'beginner',
-      goals: data?.goals || [],
-      joinDate: data?.join_date || new Date().toISOString().split('T')[0],
-      onboarded: data?.onboarded || false,
-      bodyWeightKg: data?.body_weight_kg ?? undefined,
-      weightUnit: (data?.weight_unit as UserProfile['weightUnit']) ?? 'kg',
-    }
+  if (!data) throw new Error('Profile missing')
+
+  scheduleEncryptPlainProfileNameIfNeeded(user.id, data.name ?? null)
+  return {
+    name: await maybeDecryptProfileName(data.name),
+    level: (data.level as UserProfile['level']) || 'beginner',
+    goals: data.goals || [],
+    joinDate: data.join_date || new Date().toISOString().split('T')[0],
+    onboarded: data.onboarded || false,
+    bodyWeightKg: data.body_weight_kg ?? undefined,
+    weightUnit: (data.weight_unit as UserProfile['weightUnit']) ?? 'kg',
+  }
   })
 }
 
@@ -237,14 +309,14 @@ export async function saveProfile(patch: Partial<UserProfile>) {
     body_weight_kg: number | null
     weight_unit: 'kg' | 'lb'
   }> = {}
-  if (patch.name !== undefined) updates.name = patch.name
+  if (patch.name !== undefined) updates.name = await maybeEncryptProfileNameForWrite(patch.name)
   if (patch.level !== undefined) updates.level = patch.level
   if (patch.goals !== undefined) updates.goals = patch.goals
   if (patch.onboarded !== undefined) updates.onboarded = patch.onboarded
   if (patch.bodyWeightKg !== undefined) updates.body_weight_kg = patch.bodyWeightKg ?? null
   if (patch.weightUnit !== undefined) updates.weight_unit = patch.weightUnit
 
-  const { error } = await supabase
+  const { error } = await getSupabase()
     .from('profiles')
     .upsert({ id: user.id, ...updates }, { onConflict: 'id' })
 
@@ -256,7 +328,7 @@ export async function refreshStreak(): Promise<number> {
   if (!user) return 0
 
   const today = toLocalDateStr(new Date())
-  const { data: profile } = await supabase
+  const { data: profile } = await getSupabase()
     .from('profiles')
     .select('streak, last_active_date')
     .eq('id', user.id)
@@ -269,7 +341,7 @@ export async function refreshStreak(): Promise<number> {
   const yesterday = toLocalDateStr(new Date(Date.now() - 86_400_000))
   const newStreak = profile.last_active_date === yesterday ? (profile.streak || 0) + 1 : 1
 
-  await supabase
+  await getSupabase()
     .from('profiles')
     .update({ streak: newStreak, last_active_date: today })
     .eq('id', user.id)
@@ -281,7 +353,7 @@ export async function getStreak(): Promise<number> {
   const { data: { user } } = await getCachedAuthUser()
   if (!user) return 0
 
-  const { data } = await supabase
+  const { data } = await getSupabase()
     .from('profiles')
     .select('streak')
     .eq('id', user.id)
@@ -334,7 +406,7 @@ export async function commitWorkoutInsert(r: Omit<WorkoutRecord, 'id' | 'complet
   const { data: { user } } = await getCachedAuthUser()
   if (!user) throw new Error('Not authenticated')
 
-  const { error } = await supabase
+  const { error } = await getSupabase()
     .from('workouts')
     .insert({
       user_id: user.id,
@@ -367,7 +439,7 @@ export async function getWorkouts(): Promise<WorkoutRecord[]> {
   const { data: { user }, error: authError } = await getCachedAuthUser()
   if (authError || !user) return []
 
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('workouts')
     .select('*')
     .eq('user_id', user.id)
@@ -394,17 +466,38 @@ export async function commitRunInsert(r: Omit<RunRecord, 'id' | 'completedAt'>) 
   const { data: { user } } = await getCachedAuthUser()
   if (!user) throw new Error('Not authenticated')
 
-  const { error } = await supabase
-    .from('runs')
-    .insert({
-      user_id: user.id,
-      distance: r.distance,
-      duration: r.duration,
-      pace: r.pace,
-      calories: r.calories,
-      path: r.path,
-    })
+  let pathPayload: [number, number][] | null = r.path?.length ? r.path : null
+  let path_cipher: string | null = null
+  if (isUserDataFieldEncryptionEnabled() && pathPayload && pathPayload.length > 0) {
+    const k = await getOrCreateUserDataContentKey()
+    if (k) {
+      try {
+        path_cipher = await encryptUserDataStringPlain(JSON.stringify(pathPayload), k)
+        pathPayload = null
+      } catch {
+        path_cipher = null
+      }
+    }
+  }
 
+  const row: Record<string, unknown> = {
+    user_id: user.id,
+    distance: r.distance,
+    duration: r.duration,
+    pace: r.pace,
+    calories: r.calories,
+    path: pathPayload,
+  }
+  if (path_cipher) row.path_cipher = path_cipher
+
+  let { error } = await getSupabase().from('runs').insert(row)
+  if (error && path_cipher && runPathCipherColumnUnsupported(error)) {
+    console.warn('[runs] path_cipher unsupported — storing plaintext path. Apply migration 20260525100000_run_path_cipher.sql')
+    delete row.path_cipher
+    row.path = r.path?.length ? r.path : null
+    const retry = await getSupabase().from('runs').insert(row)
+    error = retry.error
+  }
   if (error) throw error
   await refreshStreak()
 }
@@ -427,7 +520,7 @@ export async function getRuns(): Promise<RunRecord[]> {
   const { data: { user }, error: authError } = await getCachedAuthUser()
   if (authError || !user) return []
 
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('runs')
     .select('*')
     .eq('user_id', user.id)
@@ -438,15 +531,33 @@ export async function getRuns(): Promise<RunRecord[]> {
     return []
   }
 
-  return ((data || []) as Array<{ id: string; distance?: number | string; duration?: number; pace?: string; calories?: number; path?: [number, number][]; completed_at?: string | null }>).map((r) => ({
-    id: r.id,
-    distance: parseFloat(String(r.distance ?? 0)),
-    duration: r.duration || 0,
-    pace: r.pace || '0:00',
-    calories: r.calories || 0,
-    path: r.path || [],
-    completedAt: r.completed_at ?? '',
-  }))
+  const rows =
+    ((data ||
+      []) as Array<{
+        id: string
+        distance?: number | string
+        duration?: number
+        pace?: string
+        calories?: number
+        path?: [number, number][] | null
+        path_cipher?: string | null
+        completed_at?: string | null
+      }>) ?? []
+
+  return Promise.all(
+    rows.map(async (r) => ({
+      id: r.id,
+      distance: parseFloat(String(r.distance ?? 0)),
+      duration: r.duration || 0,
+      pace: r.pace || '0:00',
+      calories: r.calories || 0,
+      path: await decryptRunPath({
+        path: r.path ?? null,
+        path_cipher: r.path_cipher ?? null,
+      }),
+      completedAt: r.completed_at ?? '',
+    })),
+  )
 }
 
 /** Direct insert (replay from IndexedDB offline queue). Returns inserted row id when supported. */
@@ -470,9 +581,10 @@ export async function commitCoachInsert(r: Omit<CoachRecord, 'id' | 'completedAt
   if (r.kind && r.kind !== "rep") row.kind = r.kind
   if (r.loadKg !== undefined) row.load_kg = r.loadKg
   if (r.volumeKg !== undefined) row.volume_kg = r.volumeKg
+  if (r.exerciseSpecId) row.exercise_spec_id = r.exerciseSpecId
 
   const insert = (p: Record<string, unknown>) =>
-    supabase.from('coach_sessions').insert(p).select('id').maybeSingle()
+    getSupabase().from('coach_sessions').insert(p).select('id').maybeSingle()
 
   let payload = { ...row }
   let data: { id?: string | null } | null = null
@@ -498,6 +610,12 @@ export async function commitCoachInsert(r: Omit<CoachRecord, 'id' | 'completedAt
       const p = { ...payload }
       delete p.load_kg
       delete p.volume_kg
+      payload = p
+      continue
+    }
+    if (coachSessionExerciseSpecIdUnsupported(error) && payload.exercise_spec_id != null) {
+      const p = { ...payload }
+      delete p.exercise_spec_id
       payload = p
       continue
     }
@@ -536,7 +654,7 @@ export async function getCoachSessions(): Promise<CoachRecord[]> {
   const { data: { user }, error: authError } = await getCachedAuthUser()
   if (authError || !user) return []
 
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('coach_sessions')
     .select('*')
     .eq('user_id', user.id)
@@ -561,6 +679,7 @@ export async function getCoachSessions(): Promise<CoachRecord[]> {
     completed_at?: string | null
     load_kg?: number | null
     volume_kg?: number | null
+    exercise_spec_id?: string | null
   }>).map((c) => {
     const traces = parseRepTracesJson(c.rep_traces)
     return {
@@ -577,6 +696,7 @@ export async function getCoachSessions(): Promise<CoachRecord[]> {
       faceVerifiedSession: c.face_verified_session ?? undefined,
       loadKg: c.load_kg ?? undefined,
       volumeKg: c.volume_kg ?? undefined,
+      exerciseSpecId: c.exercise_spec_id ?? undefined,
     }
   })
 }
@@ -586,7 +706,7 @@ export async function toggleFavorite(exerciseId: number) {
   const { data: { user } } = await getCachedAuthUser()
   if (!user) throw new Error('Not authenticated')
 
-  const { data: existing } = await supabase
+  const { data: existing } = await getSupabase()
     .from('favorites')
     .select('id')
     .eq('user_id', user.id)
@@ -594,13 +714,13 @@ export async function toggleFavorite(exerciseId: number) {
     .single()
 
   if (existing) {
-    const { error } = await supabase
+    const { error } = await getSupabase()
       .from('favorites')
       .delete()
       .eq('id', existing.id)
     if (error) throw error
   } else {
-    const { error } = await supabase
+    const { error } = await getSupabase()
       .from('favorites')
       .insert({ user_id: user.id, exercise_id: exerciseId })
     if (error) throw error
@@ -612,7 +732,7 @@ export async function getFavorites(): Promise<number[]> {
     const { data: { user }, error: authError } = await getCachedAuthUser()
     if (authError || !user) return []
 
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from('favorites')
       .select('exercise_id')
       .eq('user_id', user.id)

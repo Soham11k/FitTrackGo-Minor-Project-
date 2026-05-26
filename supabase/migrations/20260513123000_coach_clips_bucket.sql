@@ -15,19 +15,23 @@ CREATE TABLE IF NOT EXISTS coach_clips (
 
 ALTER TABLE coach_clips ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "coach_clips_select_own" ON coach_clips;
 CREATE POLICY "coach_clips_select_own"
   ON coach_clips FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "coach_clips_insert_own" ON coach_clips;
 CREATE POLICY "coach_clips_insert_own"
   ON coach_clips FOR INSERT TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "coach_clips_delete_own" ON coach_clips;
 CREATE POLICY "coach_clips_delete_own"
   ON coach_clips FOR DELETE TO authenticated
   USING (auth.uid() = user_id);
 
 -- Storage: users may manage files under their user_id prefix
+DROP POLICY IF EXISTS "coach_clips_storage_select" ON storage.objects;
 CREATE POLICY "coach_clips_storage_select"
   ON storage.objects FOR SELECT TO authenticated
   USING (
@@ -35,6 +39,7 @@ CREATE POLICY "coach_clips_storage_select"
     AND (string_to_array(name, '/'))[1] = auth.uid()::text
   );
 
+DROP POLICY IF EXISTS "coach_clips_storage_insert" ON storage.objects;
 CREATE POLICY "coach_clips_storage_insert"
   ON storage.objects FOR INSERT TO authenticated
   WITH CHECK (
@@ -42,6 +47,7 @@ CREATE POLICY "coach_clips_storage_insert"
     AND (string_to_array(name, '/'))[1] = auth.uid()::text
   );
 
+DROP POLICY IF EXISTS "coach_clips_storage_update" ON storage.objects;
 CREATE POLICY "coach_clips_storage_update"
   ON storage.objects FOR UPDATE TO authenticated
   USING (
@@ -49,6 +55,7 @@ CREATE POLICY "coach_clips_storage_update"
     AND (string_to_array(name, '/'))[1] = auth.uid()::text
   );
 
+DROP POLICY IF EXISTS "coach_clips_storage_delete" ON storage.objects;
 CREATE POLICY "coach_clips_storage_delete"
   ON storage.objects FOR DELETE TO authenticated
   USING (

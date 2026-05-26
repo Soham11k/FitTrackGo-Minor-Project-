@@ -1,8 +1,10 @@
 "use client"
 
 import type { ReactNode } from "react"
+import { motion, useReducedMotion } from "framer-motion"
 import { cn } from "@/lib/utils"
-import { siteConfig } from "@/lib/data"
+import { FittrackBrandLockup } from "@/components/brand/fittrack-brand-lockup"
+import { LOGO_INTRO } from "@/lib/motion"
 
 export function AppHeader({
   streakChip,
@@ -17,31 +19,25 @@ export function AppHeader({
   right?: ReactNode
   className?: string
 }) {
-  const base = siteConfig.appName.replace(/Go\s*$/i, "").trim()
-  const hasGo = /Go\s*$/i.test(siteConfig.appName)
-
+  const reduce = useReducedMotion() ?? false
   return (
-    <header
+    <motion.header
       className={cn(
-        "sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-border bg-background px-4 py-3",
+        "sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-border bg-background/90 px-4 py-3 backdrop-blur-md",
         className,
       )}
+      initial={reduce ? false : { opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
     >
-      <div className="min-w-0 flex items-center gap-2">
-        <span
-          className="truncate text-xl tracking-[0.04em] text-foreground"
-          style={{ fontFamily: "var(--font-display), var(--font-heading), sans-serif" }}
-        >
-          {hasGo ? (
-            <>
-              <span className="font-bold uppercase">{base}</span>
-              <span className="font-bold uppercase">GO</span>
-              <span className="ml-0.5 text-primary">.</span>
-            </>
-          ) : (
-            <span className="font-bold uppercase">{siteConfig.appName}</span>
-          )}
-        </span>
+      <div className="flex min-w-0 items-center gap-2.5">
+        <motion.div variants={LOGO_INTRO} initial="hidden" animate="show" className="shrink-0" aria-hidden>
+          <FittrackBrandLockup
+            markSize={28}
+            layout="inline"
+            wordmarkClassName="truncate"
+          />
+        </motion.div>
       </div>
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
         {guest ? (
@@ -51,6 +47,6 @@ export function AppHeader({
         ) : null}
         {right ?? streakChip}
       </div>
-    </header>
+    </motion.header>
   )
 }

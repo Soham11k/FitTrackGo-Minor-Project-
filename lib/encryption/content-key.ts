@@ -101,6 +101,48 @@ export async function getOrCreateLocalContentKey(): Promise<CryptoKey> {
   return rawToCryptoKey(raw, false)
 }
 
+const USER_DATA_HKDF_INFO = new TextEncoder().encode("fittrackgo:user_fields:v1")
+
+/**
+ * AES-GCM key for encrypted profile/run fields — HKDF-isolated from the clip blob key
+ * (same raw material in IndexedDB; passphrase backup still restores both).
+ */
+export async function getUserDataContentKeyIfExists(): Promise<CryptoKey | null> {
+  const raw = await loadRawClipKeyMaterial()
+  if (!raw) return null
+  return deriveUserDataKeyFromRawClip(raw)
+}
+
+export async function getOrCreateUserDataContentKey(): Promise<CryptoKey | null> {
+  if (typeof crypto === "undefined" || !crypto.subtle) return null
+  try {
+    const raw = await getOrCreateClipRawKey()
+    return deriveUserDataKeyFromRawClip(raw)
+  } catch {
+    return null
+  }
+}
+
+async function deriveUserDataKeyFromRawClip(rawClip32: ArrayBuffer): Promise<CryptoKey | null> {
+  try {
+    const baseKey = await crypto.subtle.importKey("raw", rawClip32, { name: "HKDF" }, false, ["deriveKey"])
+    return crypto.subtle.deriveKey(
+      {
+        name: "HKDF",
+        hash: "SHA-256",
+        salt: new Uint8Array(0),
+        info: USER_DATA_HKDF_INFO,
+      },
+      baseKey,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"],
+    )
+  } catch {
+    return null
+  }
+}
+
 /** Restores decrypt capability on a new browser after passphrase unlock. */
 export async function restoreClipRawKeyFromPassphrase(
   passphrase: string,

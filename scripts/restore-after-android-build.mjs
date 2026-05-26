@@ -26,6 +26,8 @@ function restoreRoute(parts) {
 }
 
 const ROUTES_TO_RESTORE = [
+  ['api', 'supabase-dev-proxy', '[[...slug]]'],
+  ['api', 'diag', 'supabase-proxy'],
   ['auth', 'callback'],
   ['api', 'ai-coach', 'chat'],
   ['api', 'health'],

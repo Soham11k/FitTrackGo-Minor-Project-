@@ -21,12 +21,20 @@ import {
 import type { CoachReplayMeta, LandmarkSnapshot } from "@/lib/coach-replay/types"
 import { ClipReviewPanel } from "@/components/ai-coach/clip-review-panel"
 import { buildHighlightSegment } from "@/lib/coach-replay/highlight"
+import type { RepTracePair } from "@/lib/rep-trace"
 import { getSpecIdForStep } from "@/lib/exercise-ai-map"
 import { isCoachClipCloudSyncEnabled } from "@/lib/coach-replay/prefs"
 import { fetchAndDecryptCoachClip, getClipSignedUrl } from "@/lib/coach-clips-supabase"
 import { ClipKeyMissingError } from "@/lib/encryption/content-key"
 import { fetchUserClipKeyRow } from "@/lib/user-clip-keys-supabase"
 import { PassphraseUnlockDialog } from "@/components/encryption/passphrase-unlock"
+import { CueFocusProvider } from "@/components/coach/cue-focus-context"
+import { drawCueFocusOverlay } from "@/lib/coach-vision/canvas-highlight"
+import type { HighlightSpec } from "@/lib/coach-vision/cue-resolver"
+import { useReducedMotion } from "framer-motion"
+import type { Landmark } from "@/lib/form-analysis"
+import { getObjectFitContentRect } from "@/lib/video-overlay-layout"
+import { COACH_FRAME_INTERVAL_MS } from "@/lib/pose-config"
 
 function snapshotsToLm(s: LandmarkSnapshot): LandmarkPoint[] {
   const out: LandmarkPoint[] = []
@@ -68,10 +76,13 @@ export function CoachReplaySheet(props: {
   clipId?: string | null
   /** Per-rep summaries used by the AI review panel. */
   reps?: Array<{ index: number; score: number; faults: string[] }>
+  /** On-device bottom/top traces for instant per-rep notes. */
+  repTraces?: RepTracePair[]
   /** External load lifted on this set, when applicable. */
   loadKg?: number
 }) {
-  const { open, onOpenChange, sessionId, clipId, reps, loadKg } = props
+  const { open, onOpenChange, sessionId, clipId, reps, repTraces, loadKg } = props
+  const [selectedRepIndex, setSelectedRepIndex] = useState(0)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [overlay, setOverlay] = useState(true)
@@ -82,6 +93,13 @@ export function CoachReplaySheet(props: {
   const [unlockOpen, setUnlockOpen] = useState(false)
   const [encryptedReplay, setEncryptedReplay] = useState(false)
   const [reloadToken, setReloadToken] = useState(0)
+  const [cueHighlight, setCueHighlight] = useState<HighlightSpec | null>(null)
+  const reduceMotion = useReducedMotion() ?? false
+
+  const exerciseId =
+    meta?.exerciseId ||
+    (meta?.exerciseLabel && getSpecIdForStep(meta.exerciseLabel)) ||
+    "unknown"
 
   const drawFrame = useCallback(() => {
     const v = videoRef.current
@@ -89,16 +107,32 @@ export function CoachReplaySheet(props: {
     if (!meta || !v || !c || !overlay) return
     const ctx = c.getContext("2d")
     if (!ctx) return
-    const w = (c.width = v.clientWidth || 640)
-    const h = (c.height = v.clientHeight || 480)
-    ctx.clearRect(0, 0, w, h)
+
+    const containerW = Math.max(1, v.clientWidth || 640)
+    const containerH = Math.max(1, v.clientHeight || 480)
+    const mediaW = Math.max(1, v.videoWidth || containerW)
+    const mediaH = Math.max(1, v.videoHeight || containerH)
+
+    c.width = containerW
+    c.height = containerH
+    ctx.clearRect(0, 0, containerW, containerH)
+
     const tMs = Math.max(0, v.currentTime * 1000)
     const snap = pickSnapshot(meta.landmarkFrames, tMs, meta.durationMs)
     if (!snap) return
+
     const lm = snapshotsToLm(snap)
-    const good = true
-    drawSkeleton(ctx, lm, w, h, good, undefined, 88, [])
-  }, [meta, overlay])
+    const faultPairs = cueHighlight?.kind === "improve" ? cueHighlight.segmentPairs : []
+    const rect = getObjectFitContentRect(containerW, containerH, mediaW, mediaH, "cover")
+
+    ctx.save()
+    ctx.translate(rect.x, rect.y)
+    drawSkeleton(ctx, lm, rect.w, rect.h, true, undefined, 88, faultPairs)
+    if (cueHighlight) {
+      drawCueFocusOverlay(ctx, lm as unknown as Landmark[], cueHighlight, rect.w, rect.h, reduceMotion)
+    }
+    ctx.restore()
+  }, [meta, overlay, cueHighlight, reduceMotion])
 
   useEffect(() => {
     let revoke: string | null = null
@@ -179,11 +213,26 @@ export function CoachReplaySheet(props: {
   }, [videoUrl])
 
   useEffect(() => {
-    drawFrame()
+    if (!open || !overlay) return
+    let raf = 0
+    let lastDraw = 0
+    const loop = (t: number) => {
+      if (t - lastDraw >= COACH_FRAME_INTERVAL_MS) {
+        lastDraw = t
+        drawFrame()
+      }
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
   }, [drawFrame, overlay, open])
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
+      <CueFocusProvider
+        exerciseId={exerciseId}
+        onHighlightChange={setCueHighlight}
+      >
       <SheetContent side="bottom" className="max-h-[90vh] rounded-t-3xl overflow-y-auto">
         <SheetHeader className="text-left">
           <SheetTitle className="flex items-center gap-2">
@@ -210,11 +259,12 @@ export function CoachReplaySheet(props: {
             {videoUrl ? (
               <video
                 ref={videoRef}
-                className="w-full h-full object-contain"
+                className="absolute inset-0 h-full w-full object-cover"
                 playsInline
                 controls
-                onTimeUpdate={() => drawFrame()}
+                style={{ transform: "scaleX(-1)" }}
                 onLoadedMetadata={() => drawFrame()}
+                onSeeked={() => drawFrame()}
               />
             ) : (
               <div className="flex h-full items-center justify-center text-xs text-muted-foreground px-4 text-center">
@@ -224,24 +274,29 @@ export function CoachReplaySheet(props: {
             {overlay ? (
               <canvas
                 ref={canvasRef}
-                className="pointer-events-none absolute inset-0 w-full h-full"
+                className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+                style={{ transform: "scaleX(-1)", zIndex: 10 }}
                 aria-hidden
               />
             ) : null}
           </div>
 
-          {meta && meta.repMarkersMs.length > 1 ? (
+          {meta && meta.repMarkersMs.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {meta.repMarkersMs.map((ms, i) => (
                 <Button
                   key={i}
                   type="button"
-                  variant="outline"
+                  variant={selectedRepIndex === i ? "default" : "outline"}
                   size="sm"
                   className="rounded-full"
                   onClick={() => {
+                    setSelectedRepIndex(i)
                     const v = videoRef.current
-                    if (v && videoUrl) v.currentTime = Math.max(0, (ms - 400) / 1000)
+                    if (v && videoUrl) {
+                      const seg = buildHighlightSegment(meta.repMarkersMs, i, meta.durationMs)
+                      v.currentTime = Math.max(0, (seg?.startMs ?? ms - 400) / 1000)
+                    }
                     drawFrame()
                   }}
                 >
@@ -254,11 +309,23 @@ export function CoachReplaySheet(props: {
           {sessionId && reps && reps.length > 0 ? (
             <ClipReviewPanel
               sessionId={sessionId}
-              exerciseId={(meta?.exerciseLabel && getSpecIdForStep(meta.exerciseLabel)) || "unknown"}
+              exerciseId={exerciseId}
               exerciseName={meta?.exerciseLabel ?? "Exercise"}
               clipBlob={videoBlob}
               loadKg={loadKg}
               reps={reps}
+              repTraces={repTraces}
+              repMarkersMs={meta?.repMarkersMs}
+              clipDurationMs={meta?.durationMs}
+              selectedRepIndex={selectedRepIndex}
+              onSelectedRepChange={(repIndex) => {
+                setSelectedRepIndex(repIndex)
+                if (!meta) return
+                const seg = buildHighlightSegment(meta.repMarkersMs, repIndex, meta.durationMs)
+                const v = videoRef.current
+                if (v && seg) v.currentTime = Math.max(0, seg.startMs / 1000)
+                drawFrame()
+              }}
               onHighlightChange={(repIndex) => {
                 if (!meta) return
                 const seg = buildHighlightSegment(meta.repMarkersMs, repIndex, meta.durationMs)
@@ -276,6 +343,7 @@ export function CoachReplaySheet(props: {
           onUnlocked={() => setReloadToken((t) => t + 1)}
         />
       </SheetContent>
+      </CueFocusProvider>
     </Sheet>
   )
 }

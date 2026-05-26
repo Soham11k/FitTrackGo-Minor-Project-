@@ -6,7 +6,7 @@
  * use `metric-coach` / `chart-2` for coach, `metric-run` for runs, `chart-4` for trophies/PBs.
  */
 
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import {
   Activity,
@@ -30,17 +30,17 @@ import {
   getCoachSessions,
   getStreak,
 } from "@/lib/store-supabase"
-import { WearableLiveHome } from "@/components/wearable-live-home"
+import { WearableLiveHome, type WearableDashboardReadiness } from "@/components/wearable-live-home"
+import { ProgramHub } from "@/components/program-hub"
 import { ActivityDetailSheet, type ActivityDetailPayload } from "@/components/activity-detail"
 import { TodayTripleRing } from "@/components/today-triple-ring"
 import { RingGauge } from "@/components/ring-gauge"
 import { HomeWeekChart } from "@/components/home-week-chart"
-import { TodayStatQuad } from "@/components/today-stat-quad"
 import { MetricTrendMini } from "@/components/metric-trend-mini"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
+import { InlineScreenSkeleton } from "@/components/brand/inline-screen-skeleton"
 import {
   Empty,
   EmptyContent,
@@ -54,6 +54,7 @@ import { useChartEnterOnce } from "@/hooks/use-chart-enter-once"
 import { useLocale } from "@/components/locale-provider"
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt"
 import { resolveTodayPrompt } from "@/lib/today-prompt"
+import { MetricPanel, MetricRow, MetricGrid, MetricTile } from "@/components/brand/metric-panel"
 import { cn } from "@/lib/utils"
 
 /**
@@ -113,12 +114,18 @@ export function Dashboard({
   onNavigate,
   onViewAll,
   onEnterCoachFocus,
+  onStartProgramCoach,
+  onMobilityCoachIntent,
 }: {
   /** When false, vitals polling pauses; data still refetches when user returns to Home. */
   isActive?: boolean
   onNavigate: (tab: TabId) => void
   onViewAll?: () => void
   onEnterCoachFocus?: () => void
+  /** Program tab day → Coach with FormSpec preset */
+  onStartProgramCoach?: (specId: string) => void
+  /** Readiness cues → Mobility Coach strip */
+  onMobilityCoachIntent?: () => void
 }) {
   const { t } = useLocale()
   const loadedOnce = useRef(false)
@@ -153,17 +160,14 @@ export function Dashboard({
   const [loadError, setLoadError] = useState<string | null>(null)
   const [retryBump, setRetryBump] = useState(0)
   const [promptRuns, setPromptRuns] = useState<RunRecord[]>([])
-  const [heroNameBig, setHeroNameBig] = useState(true)
+  const [wearableHomeReadiness, setWearableHomeReadiness] = useState<WearableDashboardReadiness | null>(null)
+  /** Google Fit daily aggregates (steps) → additive Move ring cue */
+  const [googleFitSteps, setGoogleFitSteps] = useState<number | null>(null)
+  const [wearableMoveCalBump, setWearableMoveCalBump] = useState(0)
 
-  useEffect(() => {
-    if (reduceMotion) {
-      setHeroNameBig(false)
-      return
-    }
-    if (loading) return
-    const id = window.setTimeout(() => setHeroNameBig(false), 900)
-    return () => clearTimeout(id)
-  }, [loading, reduceMotion])
+  const onWearableHomeReadiness = useCallback((next: WearableDashboardReadiness | null) => {
+    setWearableHomeReadiness(next)
+  }, [])
 
   useEffect(() => {
     if (!isActive) return
@@ -230,6 +234,28 @@ export function Dashboard({
           activeMinutes: todayMinutes + todayCoach.length * 3,
           runDistanceTodayKm: todayRuns.reduce((a, r) => a + runDistanceKm(r), 0),
         })
+
+        try {
+          const hbRes = await fetch(
+            `/api/wearables/home-boost?localToday=${encodeURIComponent(todayStr)}`,
+            { credentials: "include" }
+          )
+          if (hbRes.ok) {
+            const hb = (await hbRes.json()) as {
+              googleFitSteps?: number | null
+              moveCalBump?: number
+            }
+            const s = hb.googleFitSteps
+            setGoogleFitSteps(typeof s === "number" && s > 0 ? Math.round(s) : null)
+            setWearableMoveCalBump(Math.max(0, Math.round(Number(hb.moveCalBump) || 0)))
+          } else {
+            setGoogleFitSteps(null)
+            setWearableMoveCalBump(0)
+          }
+        } catch {
+          setGoogleFitSteps(null)
+          setWearableMoveCalBump(0)
+        }
 
         const allRecent: DashboardFeedRow[] = [
           ...workouts.map((w) => ({
@@ -345,8 +371,16 @@ export function Dashboard({
         })
         loadedOnce.current = true
       } catch (error) {
-        console.error("Failed to load dashboard data:", error)
-        setLoadError(error instanceof Error ? error.message : "Something went wrong loading your dashboard.")
+        const msg = error instanceof Error ? error.message : "Something went wrong loading your dashboard."
+        if (
+          process.env.NODE_ENV === "development" &&
+          (msg.includes("unreachable") || msg.includes("Not authenticated"))
+        ) {
+          setLoadError(null)
+        } else {
+          console.error("Failed to load dashboard data:", error)
+          setLoadError(msg)
+        }
       } finally {
         setLoading(false)
       }
@@ -365,6 +399,9 @@ export function Dashboard({
   const dailySessionGoal = 1
   const dailyActiveMinGoal = 30
   const dailyCalorieGoal = 500
+  const moveRingCalories = Math.max(0, today.calories + wearableMoveCalBump)
+  const googleFitMoveFootnote =
+    googleFitSteps != null ? `${googleFitSteps.toLocaleString()} steps · Google Fit` : null
   const todaySessionTotal = today.workouts + today.runs + today.coachSessions
   const weekProgressPct = Math.min(100, (thisWeekTotal / Math.max(1, weekTarget)) * 100)
   const streakProgressPct = Math.min(100, (stats.streak / Math.max(1, streakTarget)) * 100)
@@ -376,32 +413,27 @@ export function Dashboard({
         runs: promptRuns,
         streakDays: stats.streak,
         coachSessionsThisWeekRomMinutes: mobilityWeekMinutes,
+        wearableReadinessScore: wearableHomeReadiness?.score ?? null,
+        wearableReadinessSignals: wearableHomeReadiness?.signalsOk ?? false,
       }),
-    [promptRuns, stats.streak, mobilityWeekMinutes],
+    [
+      mobilityWeekMinutes,
+      promptRuns,
+      stats.streak,
+      wearableHomeReadiness?.score,
+      wearableHomeReadiness?.signalsOk,
+    ],
   )
 
   if (loading) {
     return (
-      <div className="relative z-[1] flex flex-col gap-4 px-4 pt-3 pb-28">
-        <div className="space-y-2" aria-busy="true" aria-label="Loading home">
-          <Skeleton className="h-3 w-28 rounded-full" />
-          <Skeleton className="h-8 w-40 rounded-lg" />
-          <Skeleton className="h-3 w-36 rounded-full" />
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-2xl" />
-          ))}
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Skeleton className="h-28 rounded-3xl" />
-          <Skeleton className="h-28 rounded-3xl" />
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-2xl" />
-          ))}
-        </div>
+      <div className="px-4 pt-3 pb-28">
+        <InlineScreenSkeleton
+          label="Loading home…"
+          hint="Syncing today rings, weekly impact, and coaching highlights."
+          layout="default"
+          showLogo
+        />
       </div>
     )
   }
@@ -428,128 +460,87 @@ export function Dashboard({
         </Alert>
       ) : null}
       <motion.header variants={CINEMATIC.heroEnter} initial="hidden" animate="show" className="-mx-1">
-        <p className="text-typo-eyebrow font-bold uppercase tracking-[0.32em] text-muted-foreground">
-          {todayDateLine}
-        </p>
-        <p className="mt-1 text-typo-caption font-bold uppercase tracking-[0.22em] text-primary">{greeting}</p>
+        <p className="text-sm text-muted-foreground">{todayDateLine}</p>
         <h1
-          className={cn(
-            "mt-1 font-bold uppercase leading-[0.86] tracking-[-0.04em] text-foreground transition-[font-size,line-height] duration-500",
-            displayName !== "there" && heroNameBig ? "text-display-stat-lg sm:text-[clamp(5rem,18vw,9rem)]" : "text-display-stat sm:text-5xl",
-          )}
-          style={{ fontFamily: "var(--font-display), var(--font-heading)" }}
+          className="mt-1 text-3xl font-bold text-foreground sm:text-4xl"
+          style={{ fontFamily: "var(--font-heading)" }}
         >
-          {displayName === "there" ? (
-            <>
-              START
-              <span className="text-primary">.</span>
-            </>
-          ) : (
-            <>
-              {titleCaseFirstName(displayName).toUpperCase()}
-              <span className="text-primary">.</span>
-            </>
-          )}
+          {greeting}, {displayName === "there" ? "let's move" : titleCaseFirstName(displayName)}
         </h1>
         {todayPrompt ? (
           <button
             type="button"
             onClick={() => {
               if (todayPrompt.kind === "run" || todayPrompt.kind === "streak") onNavigate("run")
-              else onNavigate("ai-coach")
+              else if (todayPrompt.kind === "mobility") {
+                if (onMobilityCoachIntent) onMobilityCoachIntent()
+                else onNavigate("ai-coach")
+              } else {
+                onNavigate("ai-coach")
+              }
             }}
-            className="motion-card-interactive mt-4 w-full border-t border-border bg-transparent px-1 py-3 text-left transition-colors hover:bg-secondary/40 volt-edge"
+            className="mt-4 w-full rounded-2xl border border-border/80 bg-card px-4 py-3 text-left shadow-[var(--shadow-card)] transition-colors hover:bg-muted/40"
           >
-            <p className="text-typo-eyebrow font-bold uppercase tracking-[0.22em] text-primary">{todayPrompt.title}</p>
-            <p className="mt-1 text-typo-caption leading-snug text-muted-foreground">{todayPrompt.hint}</p>
+            <p className="text-sm font-semibold text-foreground">{todayPrompt.title}</p>
+            <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{todayPrompt.hint}</p>
           </button>
         ) : null}
       </motion.header>
 
       <motion.section
-        className="rounded-3xl border border-metric-coach/25 bg-gradient-to-br from-metric-coach/10 via-card to-card p-4 shadow-sm dark:border-white/10"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
-        aria-label={t("dashboard.verifiedHeadline")}
-      >
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-metric-coach/20">
-            <Shield className="h-5 w-5 text-metric-coach" strokeWidth={2} aria-hidden />
-          </div>
-          <div className="min-w-0 flex-1 space-y-2">
-            <h2 className="text-sm font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
-              {t("dashboard.verifiedHeadline")}
-            </h2>
-            <p className="text-xs leading-relaxed text-muted-foreground">{t("dashboard.verifiedSub")}</p>
-            <div className="flex flex-wrap gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => onNavigate("ai-coach")}
-                className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90 active:scale-[0.98]"
-              >
-                <ScanLine className="h-3.5 w-3.5" aria-hidden />
-                {t("dashboard.verifiedCoachBtn")}
-              </button>
-              <button
-                type="button"
-                onClick={() => onNavigate("arena")}
-                className="inline-flex items-center gap-1.5 rounded-full border border-metric-streak/40 bg-metric-streak/10 px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-metric-streak/15"
-              >
-                <Trophy className="h-3.5 w-3.5 text-metric-streak" aria-hidden />
-                {t("dashboard.verifiedArenaBtn")}
-              </button>
-            </div>
-            {latestCoach && (
-              <p className="text-typo-caption text-muted-foreground border-t border-border/60 pt-2 mt-1">
-                <span className="font-semibold text-foreground">{t("dashboard.lastCoachTitle")}:</span>{" "}
-                {latestCoach.exercise} · {latestCoach.reps} reps · {latestCoach.score}%
-                {latestCoach.verifiedMovement ? " · verified" : ""}
-                {latestCoach.faceVerifiedSession ? " · face match" : ""}
-              </p>
-            )}
-          </div>
-        </div>
-      </motion.section>
-
-      <WearableLiveHome sessionsLast7d={sessionsLast7d} onNavigate={onNavigate} paused={!isActive} />
-
-      <motion.section
-        className="rounded-3xl border border-border/80 bg-card p-3 sm:p-4 dark:border-white/10"
+        className="rounded-3xl border border-border/80 bg-card p-4 shadow-[var(--shadow-card)] dark:border-white/10"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: EASE.out }}
         aria-label="Today rings summary"
       >
-        <h2 className="mb-3 text-xs font-semibold text-foreground">Today rings</h2>
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Today</h2>
         <TodayTripleRing
-          calories={today.calories}
+          calories={moveRingCalories}
           calorieGoal={dailyCalorieGoal}
           activeMinutes={today.activeMinutes}
           activeMinGoal={dailyActiveMinGoal}
           sessions={todaySessionTotal}
           sessionGoal={dailySessionGoal}
+          moveFootnote={googleFitMoveFootnote}
         />
       </motion.section>
 
-      <motion.section
-        className="rounded-3xl border border-border/80 bg-card p-3 sm:p-4 dark:border-white/10"
-        initial="hidden"
-        animate="show"
-        variants={fadeUp}
-        aria-label="Today stats"
-      >
-        <h2 className="mb-3 text-xs font-semibold text-foreground">Today</h2>
-        <TodayStatQuad
-          sessions={todaySessionTotal}
-          sessionGoal={dailySessionGoal}
-          activeMinutes={today.activeMinutes}
-          activeMinGoal={dailyActiveMinGoal}
-          distanceKm={today.runDistanceTodayKm}
-          calories={today.calories}
-          calorieGoal={dailyCalorieGoal}
-        />
-      </motion.section>
+      <MetricPanel title="Key metrics">
+        <MetricGrid cols={3}>
+          <MetricTile label="Calories" value={`${today.calories}`} tone="move" icon={Flame} />
+          <MetricTile label="Active min" value={`${today.activeMinutes}`} unit="m" tone="coach" icon={Activity} />
+          <MetricTile label="Coach score" value={latestCoach ? `${latestCoach.score}%` : "—"} tone="coach" icon={Shield} />
+        </MetricGrid>
+        <div className="mt-4 space-y-2 border-t border-border/60 pt-4">
+          <MetricRow
+            icon={Activity}
+            label="Weekly sessions"
+            value={`${thisWeekTotal}`}
+            delta={weekCompare !== 0 ? `${weekCompare >= 0 ? "↑" : "↓"} ${Math.abs(weekCompare)}% vs last week` : `${Math.max(0, dailyCalorieGoal - today.calories)} cal to daily target`}
+            points={weekly.map((w) => ({ v: w.count }))}
+          />
+        </div>
+      </MetricPanel>
+
+      <WearableLiveHome
+        sessionsLast7d={sessionsLast7d}
+        onNavigate={onNavigate}
+        paused={!isActive}
+        onDashboardReadiness={isActive ? onWearableHomeReadiness : undefined}
+      />
+
+      {onStartProgramCoach ? (
+        <motion.section
+          className="rounded-3xl border border-border/80 bg-card p-3 sm:p-4 dark:border-white/10"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.42, ease: EASE.out }}
+          aria-label="Training programs hub"
+        >
+          <ProgramHub onStartCoach={onStartProgramCoach} />
+        </motion.section>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <motion.button

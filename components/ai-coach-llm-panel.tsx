@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Sparkles, Loader2, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import type { ExerciseId, FormBreakdown } from "@/lib/form-analysis"
+import type { FormBreakdown } from "@/lib/form-analysis"
 
 type SessionDnaSummary = {
   effectiveReps: number
@@ -15,7 +15,7 @@ type SessionDnaSummary = {
 type RepScoreStats = { min: number; max: number; avg: number }
 
 type Props = {
-  exerciseId: ExerciseId
+  exerciseId: string
   exerciseName: string
   reps: number
   score: number

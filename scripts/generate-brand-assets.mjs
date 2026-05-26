@@ -17,38 +17,47 @@ const OUT = join(ROOT, 'public', 'brand')
 const BG = '#121212'
 const FG = '#fafafa'
 const ACCENT = '#22c55e'
+const ACCENT2 = '#0ea5e9'
 const FRAME = 'rgba(255,255,255,0.12)'
 
 function ogSvg(width, height, titleText) {
+  const iconInner = iconSvg(108).trim().replace(/^<\?xml[^?]*\?>\s*/i, "").replace(/^<svg[^>]+>/, "").replace(/<\/svg>\s*$/, "")
   return `
   <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
     <rect width="100%" height="100%" fill="${BG}"/>
     <rect x="24" y="24" width="${width - 48}" height="${height - 48}" fill="none" stroke="${FRAME}" stroke-width="4"/>
-    <text x="${width / 2}" y="${height / 2 - 40}" text-anchor="middle" fill="${FG}" font-family="system-ui, sans-serif" font-size="96" font-weight="800">${titleText}</text>
-    <text x="${width / 2}" y="${height / 2 + 50}" text-anchor="middle" fill="${ACCENT}" font-family="system-ui, sans-serif" font-size="36" font-weight="600">Track runs · Coach · Arena</text>
+    <svg x="${(width - 108) / 2}" y="118" width="108" height="108" viewBox="0 0 80 80">${iconInner}</svg>
+    <text x="${width / 2}" y="${height / 2 + 20}" text-anchor="middle" fill="${FG}" font-family="system-ui, sans-serif" font-size="88" font-weight="800">${titleText}</text>
+    <text x="${width / 2}" y="${height / 2 + 88}" text-anchor="middle" fill="${ACCENT}" font-family="system-ui, sans-serif" font-size="30" font-weight="600">Track runs · Coach · Arena</text>
   </svg>`
 }
 
-/** Square app icon SVG (filled stage + FG monogram FG). */
-function iconSvg(size, fg = FG, accent = ACCENT, bg = BG) {
-  const r = Math.round(size * 0.18)
+/** Square app icon — activity rings (matches components/fittrack-logo-mark.tsx). */
+function iconSvg(size, fg = FG, accent = ACCENT, accent2 = ACCENT2, bg = BG) {
+  const sw = Math.max(1, size / 80)
   return `
-  <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-    <rect width="100%" height="100%" rx="${r}" fill="${bg}"/>
-    <rect x="${size * 0.06}" y="${size * 0.06}" width="${size * 0.88}" height="${size * 0.88}" rx="${r * 0.8}" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="${Math.max(2, size / 96)}"/>
-    <text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" fill="${fg}" font-family="system-ui, sans-serif" font-size="${Math.round(size * 0.42)}" font-weight="800">F</text>
-    <circle cx="${size * 0.78}" cy="${size * 0.22}" r="${size * 0.08}" fill="${accent}"/>
+  <svg width="${size}" height="${size}" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+    <rect x="6" y="6" width="68" height="68" rx="18" fill="${bg}" stroke="rgba(255,255,255,0.12)" stroke-width="${sw}"/>
+    <defs>
+      <linearGradient id="g" x1="16" y1="58" x2="64" y2="16" gradientUnits="userSpaceOnUse">
+        <stop stop-color="${accent}"/>
+        <stop offset="1" stop-color="${accent2}"/>
+      </linearGradient>
+    </defs>
+    <path d="M 40 28 A 12 12 0 1 1 34 50" fill="none" stroke="${fg}" stroke-opacity="0.12" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 40 20 A 20 20 0 1 1 26 54" fill="none" stroke="${fg}" stroke-opacity="0.18" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 40 12 A 28 28 0 1 1 18 56" fill="none" stroke="url(#g)" stroke-width="4.5" stroke-linecap="round"/>
+    <circle cx="18" cy="56" r="4.5" fill="${accent}"/>
   </svg>`
 }
 
-/** Safari pinned tab style (transparent bg, monochrome). */
+/** Safari pinned tab — simplified rings on black. */
 function safariPinnedSvg() {
-  const size = 64
-  const r = 12
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-  <rect x="8" y="8" width="48" height="48" rx="${r}" fill="#000"/>
-  <text x="32" y="36" dominant-baseline="middle" text-anchor="middle" fill="#fff" font-family="system-ui, sans-serif" font-size="28" font-weight="800">F</text>
+<svg width="64" height="64" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <rect x="6" y="6" width="68" height="68" rx="18" fill="#000"/>
+  <path d="M 40 12 A 28 28 0 1 1 18 56" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/>
+  <circle cx="18" cy="56" r="4.5" fill="#fff"/>
 </svg>`
 }
 

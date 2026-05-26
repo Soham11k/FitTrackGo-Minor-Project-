@@ -1,7 +1,10 @@
-import type { ExerciseId } from "./form-analysis"
-
 export interface AICoachIntent {
-  exerciseId: ExerciseId
+  /** FormSpec id (legacy `ExerciseId` or catalog variant). */
+  exerciseId?: string
+  /** Open Mobility Coach immediately (recovery / readiness prescription). */
+  openMobility?: boolean
+  /** Open the custom exercise builder sheet on the Coach tab. */
+  openCustomExerciseBuilder?: boolean
 }
 
 let pendingIntent: AICoachIntent | null = null

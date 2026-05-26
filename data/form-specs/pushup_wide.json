@@ -1,0 +1,53 @@
+{
+  "id": "pushup_wide",
+  "displayName": "Wide push-up",
+  "category": "upper",
+  "loadType": "bodyweight",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16, 23, 24],
+  "visibleFraction": 0.75,
+  "positiveLine": "Strong wide push-up — chest and shoulders working together",
+  "repPattern": "top_bottom_top",
+  "hudAngles": [
+    { "name": "Left elbow", "joints": ["left_shoulder", "left_elbow", "left_wrist"], "primary": true },
+    { "name": "Right elbow", "joints": ["right_shoulder", "right_elbow", "right_wrist"] }
+  ],
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 95 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 158 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 95 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 158 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "pushup_wide.body_line",
+      "region": "torso",
+      "penalty": 15,
+      "when": { "metric": "body_line_deviation", "op": ">=", "value": 16 },
+      "feedback": "Keep a straight line from head to knees or heels",
+      "breakdown": { "label": "Body line", "format": "boolean", "okLabel": "Straight", "failLabel": "Adjust", "detail": "Head to hips in line", "region": "torso" }
+    },
+    {
+      "id": "pushup_wide.no_sag",
+      "region": "core",
+      "penalty": 12,
+      "when": { "any": [ { "metric": "hip_sag_y", "op": ">=", "value": 0.09 }, { "metric": "shoulder_hip_y_delta", "op": ">=", "value": 0.12 } ] },
+      "feedback": "Engage core and glutes to prevent hip sag",
+      "breakdown": { "label": "Hip position", "format": "boolean", "okLabel": "Level", "failLabel": "Sagging", "detail": "Hips level with shoulders", "region": "core" }
+    },
+    {
+      "id": "pushup_wide.elbow_angle",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "any": [ { "metric": "elbow_angle_avg", "op": "<=", "value": 70 }, { "metric": "elbow_angle_avg", "op": ">=", "value": 100 } ] },
+      "feedback": "Control depth — aim for ~90° at the bottom",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "detail": "Depth per rep", "region": "arms" }
+    },
+    {
+      "id": "pushup_wide.hand_width",
+      "region": "arms",
+      "penalty": 8,
+      "when": { "metric": "wrist_spread_x", "op": "<", "value": 0.14 },
+      "feedback": "Place hands wider than standard — outside shoulder width",
+      "breakdown": { "label": "Hand width", "format": "boolean", "okLabel": "Wide", "failLabel": "Narrow", "detail": "Wider hand placement", "region": "arms" }
+    }
+  ]
+}

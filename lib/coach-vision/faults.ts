@@ -8,6 +8,7 @@
  */
 
 import type { Landmark, ExerciseId, FormRegion, FormResult } from "@/lib/form-analysis"
+import { hasSpec } from "@/lib/form-engine/registry"
 import { jointAngle } from "@/lib/pose-geometry"
 
 export type FaultSeverity = "minor" | "moderate" | "severe"
@@ -63,6 +64,55 @@ function severityFor(deviation: number, thresholds: [number, number]): FaultSeve
 }
 
 /**
+ * Map a coach spec id to the closest legacy overlay heuristic set.
+ * When null, only generic breakdown-derived faults are shown.
+ */
+export function resolveFaultOverlayExercise(specId: string): ExerciseId | null {
+  if (!hasSpec(specId)) {
+    return specId === "squat" ||
+      specId === "pushup" ||
+      specId === "plank" ||
+      specId === "lunge" ||
+      specId === "deadlift" ||
+      specId === "rdl" ||
+      specId === "bicep_curl" ||
+      specId === "shoulder_press" ||
+      specId === "jumping_jacks" ||
+      specId === "high_knees" ||
+      specId === "crunch"
+      ? (specId as ExerciseId)
+      : null
+  }
+  if (specId.startsWith("pushup") || specId === "dip" || specId === "bench_dip") return "pushup"
+  if (specId === "squat" || specId === "goblet_squat" || specId === "front_squat" || specId === "wall_sit") return "squat"
+  if (
+    specId === "lunge" ||
+    specId === "bulgarian_split_squat" ||
+    specId === "romanian_split_squat" ||
+    specId === "step_up"
+  )
+    return "lunge"
+  if (specId === "plank" || specId === "side_plank") return "plank"
+  if (specId === "deadlift") return "deadlift"
+  if (specId === "rdl") return "rdl"
+  if (specId === "bicep_curl" || specId === "hammer_curl") return "bicep_curl"
+  if (specId === "shoulder_press") return "shoulder_press"
+  if (specId === "jumping_jacks") return "jumping_jacks"
+  if (specId === "high_knees") return "high_knees"
+  if (specId === "crunch" || specId === "sit_up" || specId === "bicycle_crunch") return "crunch"
+  if (
+    ["bench_press", "incline_bench_press", "lateral_raise", "front_raise", "overhead_tricep_extension", "face_pull", "reverse_fly"].includes(
+      specId,
+    )
+  )
+    return "shoulder_press"
+  if (["leg_press", "leg_extension", "leg_curl", "calf_raise"].includes(specId)) return "squat"
+  if (specId === "kettlebell_swing" || specId === "farmer_carry") return "deadlift"
+  if (specId === "box_jump") return "jumping_jacks"
+  return null
+}
+
+/**
  * Detect exercise-specific form faults from pose landmarks.
  *
  * Returns an array that can contain 0–N faults. The downstream overlay will
@@ -70,17 +120,36 @@ function severityFor(deviation: number, thresholds: [number, number]): FaultSeve
  */
 export function detectFaults(
   lm: Landmark[],
-  exercise: ExerciseId,
+  exercise: ExerciseId | string,
   analyzed: FormResult,
   world?: Landmark[]
 ): FaultDetection {
   const faults: FormFault[] = []
   if (!lm?.length) return { faults, analyzed }
+  const overlay = resolveFaultOverlayExercise(String(exercise))
+  if (!overlay) {
+    for (const b of analyzed.breakdown) {
+      if (b.ok) continue
+      const region = b.region
+      if (!region) continue
+      faults.push({
+        id: `generic.${region}`,
+        label: b.label,
+        cue: b.detail ?? b.label,
+        region,
+        severity: "minor",
+        landmarkIndices: regionToIndices(region),
+        segmentPairs: regionToSegmentPairs(region),
+      })
+    }
+    return { faults, analyzed }
+  }
+
   const w = (i: number) => world?.[i]
   const wTri = (a: number, b: number, c: number) =>
     w(a) && w(b) && w(c) ? { a: w(a)!, b: w(b)!, c: w(c)! } : undefined
 
-  if (exercise === "squat") {
+  if (overlay === "squat") {
     const kneeL = jointAngle(safe(lm, 23), safe(lm, 25), safe(lm, 27), wTri(23, 25, 27))
     const kneeR = jointAngle(safe(lm, 24), safe(lm, 26), safe(lm, 28), wTri(24, 26, 28))
     const avgKnee = (kneeL + kneeR) / 2
@@ -138,13 +207,13 @@ export function detectFaults(
     }
   }
 
-  if (exercise === "deadlift" || exercise === "rdl") {
+  if (overlay === "deadlift" || overlay === "rdl") {
     const midFootX = (safe(lm, 27).x + safe(lm, 28).x) / 2
     const midWristX = (safe(lm, 15).x + safe(lm, 16).x) / 2
     const drift = Math.abs(midWristX - midFootX)
     if (drift > 0.055) {
       faults.push({
-        id: exercise === "rdl" ? "rdl.bar_drift" : "deadlift.bar_drift",
+        id: overlay === "rdl" ? "rdl.bar_drift" : "deadlift.bar_drift",
         label: "Bar drifting from mid-foot",
         cue: "Pull the bar straight up, close to your legs.",
         region: "arms",
@@ -160,7 +229,7 @@ export function detectFaults(
     const kneeL = jointAngle(safe(lm, 23), safe(lm, 25), safe(lm, 27), wTri(23, 25, 27))
     const kneeR = jointAngle(safe(lm, 24), safe(lm, 26), safe(lm, 28), wTri(24, 26, 28))
     const kneeAvg = (kneeL + kneeR) / 2
-    if (exercise === "rdl" && kneeAvg < 130) {
+    if (overlay === "rdl" && kneeAvg < 130) {
       faults.push({
         id: "rdl.knees_too_bent",
         label: "Knees bending too much",
@@ -170,7 +239,7 @@ export function detectFaults(
         landmarkIndices: LEGS,
       })
     }
-    if (exercise === "deadlift" && kneeAvg > 155) {
+    if (overlay === "deadlift" && kneeAvg > 155) {
       faults.push({
         id: "deadlift.knees_locked_early",
         label: "Knees overly straight early",
@@ -182,7 +251,7 @@ export function detectFaults(
     }
   }
 
-  if (exercise === "pushup") {
+  if (overlay === "pushup") {
     const shoulderY = (safe(lm, 11).y + safe(lm, 12).y) / 2
     const hipY = (safe(lm, 23).y + safe(lm, 24).y) / 2
     const sag = shoulderY - hipY
@@ -212,7 +281,7 @@ export function detectFaults(
     }
   }
 
-  if (exercise === "plank") {
+  if (overlay === "plank") {
     const shoulderY = (safe(lm, 11).y + safe(lm, 12).y) / 2
     const hipY = (safe(lm, 23).y + safe(lm, 24).y) / 2
     const diff = hipY - shoulderY
@@ -237,7 +306,7 @@ export function detectFaults(
     }
   }
 
-  if (exercise === "lunge") {
+  if (overlay === "lunge") {
     const kL = jointAngle(safe(lm, 23), safe(lm, 25), safe(lm, 27), wTri(23, 25, 27))
     const kR = jointAngle(safe(lm, 24), safe(lm, 26), safe(lm, 28), wTri(24, 26, 28))
     const frontKnee = Math.min(kL, kR)
@@ -253,7 +322,7 @@ export function detectFaults(
     }
   }
 
-  if (exercise === "bicep_curl") {
+  if (overlay === "bicep_curl") {
     const elbowTravelL = Math.abs(safe(lm, 13).x - safe(lm, 11).x)
     const elbowTravelR = Math.abs(safe(lm, 14).x - safe(lm, 12).x)
     if (elbowTravelL > 0.08 || elbowTravelR > 0.08) {
@@ -268,7 +337,7 @@ export function detectFaults(
     }
   }
 
-  if (exercise === "shoulder_press") {
+  if (overlay === "shoulder_press") {
     const shoulderY = (safe(lm, 11).y + safe(lm, 12).y) / 2
     const hipY = (safe(lm, 23).y + safe(lm, 24).y) / 2
     const torsoArch = hipY - shoulderY

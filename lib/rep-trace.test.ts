@@ -10,7 +10,7 @@ function lm(): Landmark[] {
 describe("rep-trace", () => {
   it("captureRepTrace includes angles and phase", () => {
     const landmarks = lm()
-    const t = captureRepTrace(landmarks, "squat", "bottom", {})
+    const t = captureRepTrace(landmarks, "deadlift", "bottom", {})
     expect(t.phase).toBe("bottom")
     expect(Object.keys(t.anglesDeg).length).toBeGreaterThan(0)
     expect(Array.isArray(t.faults)).toBe(true)

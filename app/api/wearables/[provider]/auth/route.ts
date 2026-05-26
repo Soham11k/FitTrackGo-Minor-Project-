@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { getAdapter } from "@/lib/wearables/providers"
 import type { ProviderId } from "@/lib/wearables/providers"
+import { resolveWearableOAuthRedirectBase } from "@/lib/wearables/app-origin"
 
 export async function GET(
   request: Request,
@@ -20,8 +21,8 @@ export async function GET(
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
 
-  const origin = new URL(request.url).origin
-  const redirectUri = `${origin}/api/wearables/${provider}/callback`
+  const oauthBase = resolveWearableOAuthRedirectBase(request.url)
+  const redirectUri = `${oauthBase}/api/wearables/${provider}/callback`
   // `state` carries the user id so the callback can map back. Sign it with a
   // short-lived HMAC if paranoid; for now include a random suffix to deter
   // replay.

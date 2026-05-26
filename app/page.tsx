@@ -6,28 +6,44 @@ import { SplashScreen } from "@/components/splash-screen"
 import { LoginScreen } from "@/components/login-screen"
 import { BottomNav, type TabId } from "@/components/bottom-nav"
 import { Dashboard } from "@/components/dashboard"
-
-const TabLoader = () => (
-  <div className="flex h-[70vh] items-center justify-center" aria-busy="true" aria-label="Loading">
-    <div className="h-10 w-10 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
-  </div>
-)
+import { BrandedTabLoad } from "@/components/app-tab-skeleton"
+import { FittrackBrandLockup } from "@/components/brand/fittrack-brand-lockup"
+import { LaunchHydrateScreen } from "@/components/brand/launch-hydrate-screen"
 
 const RunTracker = dynamic(() => import("@/components/run-tracker").then((m) => m.RunTracker), {
   ssr: false,
-  loading: () => <TabLoader />,
+  loading: () => (
+    <BrandedTabLoad
+      layout="map"
+      label="Loading Run…"
+      hint="Getting the tracker and map modules ready."
+    />
+  ),
 })
 const ExerciseLibrary = dynamic(
   () => import("@/components/exercise-library").then((m) => m.ExerciseLibrary),
-  { ssr: false, loading: () => <TabLoader /> }
+  {
+    ssr: false,
+    loading: () => (
+      <BrandedTabLoad layout="list" label="Loading Exercises…" hint="Fetching your workouts library shell." />
+    ),
+  },
 )
 const AICoach = dynamic(() => import("@/components/ai-coach").then((m) => m.AICoach), {
   ssr: false,
-  loading: () => <TabLoader />,
+  loading: () => (
+    <BrandedTabLoad
+      layout="coach"
+      label="Opening Form…"
+      hint="Preparing on-device pose model — first open after refresh can take a few seconds."
+    />
+  ),
 })
 const ArenaHub = dynamic(() => import("@/components/arena-hub").then((m) => m.ArenaHub), {
   ssr: false,
-  loading: () => <TabLoader />,
+  loading: () => (
+    <BrandedTabLoad layout="default" label="Loading Arena…" hint="Fetching duels and leaderboards shell." />
+  ),
 })
 import { ProfileScreen } from "@/components/profile-screen"
 import { WorkoutHistory } from "@/components/workout-history"
@@ -35,14 +51,25 @@ import { OnboardingWizard } from "@/components/onboarding-wizard"
 import { SupabaseSetupGuide } from "@/components/supabase-setup-guide"
 import { NetworkStatusIndicator } from "@/components/network-status-indicator"
 import { AlertTriangle, X } from "lucide-react"
-import { createClient, isSupabaseConfigured } from "@/lib/supabase/client"
-import { getAuthErrorMessage } from "@/lib/supabase/config"
+import {
+  createClient,
+  invalidateSupabaseBrowserClient,
+  isSupabaseConfigured,
+} from "@/lib/supabase/client"
+import { getAuthErrorMessage, isSupabaseFetchError } from "@/lib/supabase/config"
+import {
+  markSupabaseReachable,
+  markSupabaseUnreachable,
+} from "@/lib/supabase/connectivity-circuit"
+import { primeSupabaseDevFromDiag } from "@/lib/supabase/dev-reachability"
 import { getProfile, getStreak } from "@/lib/store-supabase"
 import { isSecureContext } from "@/lib/secure-context"
 import { setAICoachIntent } from "@/lib/ai-coach-intent"
-import type { ExerciseId } from "@/lib/form-analysis"
 import { AppHeader } from "@/components/app-header"
+import { AmbientBackdrop } from "@/components/motion/ambient-backdrop"
+import { TabTransition } from "@/components/motion/tab-transition"
 import { isGuestMode, clearGuestMode, markGuestMode } from "@/lib/guest-mode"
+import { rollingLocalDayWindows } from "@/lib/wearables/local-day-windows"
 
 type AppState = "splash" | "login" | "app"
 type View = "main" | "history"
@@ -60,7 +87,7 @@ export default function Page() {
   const [headerStreak, setHeaderStreak] = useState(0)
   const [initialName, setInitialName] = useState<string>("")
   const [guestSession, setGuestSession] = useState(false)
-  const supabase = createClient()
+  const [supabaseCloudOffline, setSupabaseCloudOffline] = useState(false)
 
   useEffect(() => {
     try {
@@ -90,38 +117,71 @@ export default function Page() {
     }
     setShowSetupGuide(false)
 
-    async function checkAuth() {
+    let cancelled = false
+    let subscription: { unsubscribe: () => void } | null = null
+
+    async function runAuth() {
+      const guest = guestSession || isGuestMode()
+
+      if (process.env.NODE_ENV === "development" && !guest) {
+        const diag = await primeSupabaseDevFromDiag()
+        if (cancelled) return
+        if (diag?.authReachable) {
+          markSupabaseReachable()
+          invalidateSupabaseBrowserClient()
+          setSupabaseCloudOffline(false)
+        } else if (diag && (diag as { configured?: boolean }).configured) {
+          setSupabaseCloudOffline(true)
+        }
+      }
+      if (cancelled) return
+      if (guest) return
+
+      const supabase = createClient()
+
       try {
         const { data: { user } } = await supabase.auth.getUser()
-        if (guestSession) return
+        if (cancelled) return
+        if (guestSession || isGuestMode()) return
         if (user && appState === "splash") {
           setAppState("app")
-        } else if (!user && appState === "app") {
+        } else if (!user && appState === "app" && !guestSession && !isGuestMode()) {
           setAppState("login")
         }
       } catch (error) {
+        if (cancelled) return
+        if (isSupabaseFetchError(error)) markSupabaseUnreachable()
         console.warn("Auth check failed:", getAuthErrorMessage(error, "Unable to validate auth session."))
-        if (!guestSession && appState === "app") {
+        if (!guestSession && !isGuestMode() && appState === "app") {
           setAppState("login")
         }
       }
+
+      if (cancelled) return
+      const { data: { subscription: sub } } = supabase.auth.onAuthStateChange(
+        (event: string, session: { user?: unknown } | null) => {
+          if (isGuestMode() || guestSession) return
+          if (event === "SIGNED_IN" && session) {
+            clearGuestMode()
+            setGuestSession(false)
+            setAppState("app")
+          } else if (event === "SIGNED_OUT") {
+            clearGuestMode()
+            setGuestSession(false)
+            setAppState("login")
+          }
+        }
+      )
+      subscription = sub
     }
-    checkAuth()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, session: { user?: unknown } | null) => {
-      if (event === "SIGNED_IN" && session) {
-        clearGuestMode()
-        setGuestSession(false)
-        setAppState("app")
-      } else if (event === "SIGNED_OUT") {
-        clearGuestMode()
-        setGuestSession(false)
-        setAppState("login")
-      }
-    })
+    void runAuth()
 
-    return () => subscription.unsubscribe()
-  }, [appState, supabase, guestSession])
+    return () => {
+      cancelled = true
+      subscription?.unsubscribe()
+    }
+  }, [appState, guestSession])
 
   useEffect(() => {
     if (appState !== "app") return
@@ -160,6 +220,35 @@ export default function Page() {
     }
   }, [appState, guestSession])
 
+  // Google Fit OAuth return: reconcile local-calendar days vs server UTC prefetch.
+  useEffect(() => {
+    if (appState !== "app" || guestSession) return
+    let cancelled = false
+    try {
+      const url = new URL(window.location.href)
+      if (url.searchParams.get("wearable_connected") !== "google_fit") return
+
+      url.searchParams.delete("wearable_connected")
+      window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`)
+
+      void (async () => {
+        const days = rollingLocalDayWindows(14)
+        await fetch("/api/wearables/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ provider: "google_fit", googleFitDays: days }),
+        }).catch(() => {})
+        if (cancelled) return
+      })()
+    } catch {
+      /* ignore */
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [appState, guestSession])
+
   // PWA manifest shortcuts: /?tab=run | ai-coach | arena
   useEffect(() => {
     if (appState !== "app") return
@@ -190,8 +279,20 @@ export default function Page() {
     setTransitioning(true)
     setTimeout(() => {
       setAppState("app")
+      setActiveTab("ai-coach")
       setTransitioning(false)
     }, 300)
+  }, [])
+
+  const handleRequestSignInFromGuestCoach = useCallback(() => {
+    clearGuestMode()
+    setGuestSession(false)
+    setTransitioning(true)
+    setTimeout(() => {
+      setAppState("login")
+      setActiveTab("home")
+      setTransitioning(false)
+    }, 200)
   }, [])
 
   const handleLogout = useCallback(async () => {
@@ -199,7 +300,7 @@ export default function Page() {
     try {
       clearGuestMode()
       setGuestSession(false)
-      await supabase.auth.signOut()
+      await createClient().auth.signOut()
       setAppState("login")
       setActiveTab("home")
     } catch (error) {
@@ -207,14 +308,24 @@ export default function Page() {
     } finally {
       setTransitioning(false)
     }
-  }, [supabase])
+  }, [])
 
   const handleTabChange = useCallback((tab: TabId) => {
     setActiveTab(tab)
   }, [])
 
-  const handleOpenAICoachFromExercises = useCallback((opts?: { exerciseId?: ExerciseId }) => {
+  const handleOpenAICoachFromExercises = useCallback((opts?: { exerciseId?: string }) => {
     if (opts?.exerciseId) setAICoachIntent({ exerciseId: opts.exerciseId })
+    handleTabChange("ai-coach")
+  }, [handleTabChange])
+
+  const handleOpenCustomExerciseBuilder = useCallback(() => {
+    setAICoachIntent({ openCustomExerciseBuilder: true })
+    handleTabChange("ai-coach")
+  }, [handleTabChange])
+
+  const handleProgramStartCoach = useCallback((specId: string) => {
+    setAICoachIntent({ exerciseId: specId })
     handleTabChange("ai-coach")
   }, [handleTabChange])
 
@@ -240,7 +351,11 @@ export default function Page() {
           transitioning ? "opacity-0" : "opacity-100"
         }`}
       >
-        <LoginScreen onLogin={handleLogin} onGuestEnter={handleGuestEnter} />
+        <LoginScreen
+          onLogin={handleLogin}
+          onGuestEnter={handleGuestEnter}
+          supabaseCloudOffline={supabaseCloudOffline}
+        />
       </div>
     )
   }
@@ -254,12 +369,22 @@ export default function Page() {
     )
   }
 
+  if (appState === "app" && needsOnboarding === null) {
+    return (
+      <LaunchHydrateScreen
+        label="Syncing your training profile…"
+        hint="Loading streaks, recent sessions, and personalized coaching surfaces."
+      />
+    )
+  }
+
   return (
     <div
-      className={`min-h-screen bg-background transition-opacity duration-300 ${
+      className={`relative min-h-screen bg-background transition-opacity duration-300 ${
         transitioning ? "opacity-0" : "opacity-100"
       }`}
     >
+      <AmbientBackdrop />
       <AppHeader
         guest={guestSession}
         streakChip={
@@ -300,7 +425,7 @@ export default function Page() {
             }}
           />
         ) : (
-          <div key={activeTab} className="route-in pb-24">
+          <TabTransition tabKey={activeTab}>
             {activeTab === "home" && (
               <Dashboard
                 onNavigate={handleTabChange}
@@ -309,22 +434,35 @@ export default function Page() {
                   setCoachFocusMode(true)
                   setActiveTab("ai-coach")
                 }}
+                onStartProgramCoach={handleProgramStartCoach}
+                onMobilityCoachIntent={() => {
+                  setAICoachIntent({ openMobility: true })
+                  setActiveTab("ai-coach")
+                }}
               />
             )}
             {activeTab === "run" && <RunTracker />}
             {activeTab === "exercises" && (
-              <ExerciseLibrary onOpenAICoach={handleOpenAICoachFromExercises} onNavigate={handleTabChange} />
+              <ExerciseLibrary
+                onOpenAICoach={handleOpenAICoachFromExercises}
+                onNavigate={handleTabChange}
+                onCreateCustomExercise={handleOpenCustomExerciseBuilder}
+              />
             )}
             {activeTab === "ai-coach" && (
               <AICoach
                 focusMode={coachFocusMode}
+                guestMode={guestSession}
                 onExitFocus={() => setCoachFocusMode(false)}
                 onNavigate={handleTabChange}
+                onRequestSignIn={guestSession ? handleRequestSignInFromGuestCoach : undefined}
               />
             )}
             {activeTab === "arena" && <ArenaHub onNavigate={handleTabChange} />}
-            {activeTab === "profile" && <ProfileScreen onLogout={handleLogout} />}
-          </div>
+            {activeTab === "profile" && (
+              <ProfileScreen onLogout={handleLogout} onCreateCustomExercise={handleOpenCustomExerciseBuilder} />
+            )}
+          </TabTransition>
         )}
       </main>
 

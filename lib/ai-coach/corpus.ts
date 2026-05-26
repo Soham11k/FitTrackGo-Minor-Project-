@@ -1,9 +1,10 @@
+import { COACH_EXERCISE_FAMILIES } from "@/lib/coach-exercise-catalog"
 import { EXERCISE_TIPS, type ExerciseId } from "@/lib/form-analysis"
 
 export type CoachChunk = {
   id: string
   text: string
-  exerciseId: ExerciseId | "general"
+  exerciseId: ExerciseId | "general" | string
 }
 
 const STATIC: { id: string; text: string; exerciseId: CoachChunk["exerciseId"] }[] = [
@@ -41,6 +42,18 @@ export function buildCoachCorpus(): CoachChunk[] {
         exerciseId: eid,
       })
     })
+  }
+  for (const fam of COACH_EXERCISE_FAMILIES) {
+    for (const v of fam.variants) {
+      if (!v.tips?.length) continue
+      v.tips.forEach((text, i) => {
+        out.push({
+          id: `${v.specId}-catalog-${i}`,
+          text,
+          exerciseId: v.specId,
+        })
+      })
+    }
   }
   return out
 }

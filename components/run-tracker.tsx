@@ -6,10 +6,15 @@ import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-m
 import { Play, Pause, Square, MapPin, ChevronDown } from "lucide-react"
 import { addRun, getRuns } from "@/lib/store-supabase"
 import { isNetworkError } from "@/lib/network-status"
-import { isSecureContext } from "@/lib/secure-context"
+import {
+  browserAllowsGeolocation,
+  faultFromGeoError,
+  type RunGeolocationFault,
+} from "@/lib/geo-context"
 import { toast } from "sonner"
 import { RunFinishRecap, type RunFinishLap } from "@/components/run-finish-recap"
 import { RunReadyScreen, type RunReadyGpsStatus } from "@/components/run-ready-screen"
+import { MetricGrid, MetricTile } from "@/components/brand/metric-panel"
 import { StatDisplay } from "@/components/ui/stat-display"
 import { staggerChildren, CINEMATIC } from "@/lib/motion"
 import { computeWeeklyRunKmImpact, weeklyImpactSentence } from "@/lib/run-week-impact"
@@ -18,6 +23,8 @@ import type { PbResult } from "@/lib/run-pb"
 import type { RunRecord } from "@/lib/store"
 import { announceRunKmSplit } from "@/lib/run-voice"
 import { useLocale } from "@/components/locale-provider"
+import { isSecureContext } from "@/lib/secure-context"
+import { cn } from "@/lib/utils"
 
 const RunMap = dynamic(() => import("./run-map").then((m) => m.RunMap), { ssr: false })
 
@@ -58,6 +65,8 @@ export function RunTracker() {
   const [path, setPath] = useState<[number, number][]>([])
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null)
   const [gpsStatus, setGpsStatus] = useState<"off" | "searching" | "good" | "simulated">("off")
+  /** When GPS shows as unavailable, distinguishes HTTP/LAN blocks vs permission/timeouts vs missing API */
+  const [gpsFault, setGpsFault] = useState<RunGeolocationFault | null>(null)
   const [showSplits, setShowSplits] = useState(false)
   const [mapReady, setMapReady] = useState(false)
   const [savingRun, setSavingRun] = useState(false)
@@ -74,6 +83,30 @@ export function RunTracker() {
   } | null>(null)
   const [primaryMetric, setPrimaryMetric] = useState<PrimaryRunMetric>("pace")
   const [liveHudAnimKey, setLiveHudAnimKey] = useState(0)
+  /** Shown inside Run-ready when insecure context remains but global amber banner was dismissed. */
+  const [runInsecureGpsReminder, setRunInsecureGpsReminder] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const tick = () => {
+      if (isSecureContext()) {
+        setRunInsecureGpsReminder(false)
+        return
+      }
+      try {
+        setRunInsecureGpsReminder(sessionStorage.getItem("fit-track-insecure-banner-dismissed") === "1")
+      } catch {
+        setRunInsecureGpsReminder(false)
+      }
+    }
+    tick()
+    window.addEventListener("pageshow", tick)
+    window.addEventListener("focus", tick)
+    return () => {
+      window.removeEventListener("pageshow", tick)
+      window.removeEventListener("focus", tick)
+    }
+  }, [])
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const watchIdRef = useRef<number | null>(null)
   const runStateRef = useRef<RunState>("idle")
@@ -108,10 +141,25 @@ export function RunTracker() {
 
   runStateRef.current = runState
 
+  // Next often prints Network: http://0.0.0.0:3000 — that host is NOT a secure context,
+  // so Geolocation stays blocked until you open the same app at http://localhost:3000.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (process.env.NODE_ENV !== "development") return
+    if (window.location.hostname !== "0.0.0.0") return
+    try {
+      const u = new URL(window.location.href)
+      u.hostname = "localhost"
+      window.location.replace(u.toString())
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
   useEffect(() => {
     if (runState !== "idle") return
     setMapReady(true)
-    if (!isSecureContext() || !navigator.geolocation) return
+    if (!browserAllowsGeolocation()) return
     navigator.geolocation.getCurrentPosition(
       (pos) => setMapCenter([pos.coords.latitude, pos.coords.longitude]),
       () => setMapCenter(null),
@@ -121,15 +169,18 @@ export function RunTracker() {
 
   useEffect(() => {
     if (runState !== "running") return
-    if (!isSecureContext() || !navigator.geolocation?.watchPosition) {
+    if (!browserAllowsGeolocation() || !navigator.geolocation.watchPosition) {
+      setGpsFault(typeof navigator !== "undefined" && !navigator.geolocation ? "no_api" : "insecure_origin")
       setGpsStatus("simulated")
       return
     }
+    setGpsFault(null)
     setGpsStatus("searching")
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         if (runStateRef.current !== "running") return
         const { latitude, longitude } = pos.coords
+        setGpsFault(null)
         setGpsStatus("good")
         const pt: [number, number] = [latitude, longitude]
         setPath((prev) => [...prev, pt])
@@ -141,8 +192,11 @@ export function RunTracker() {
           setDistance((d) => d + km)
         }
       },
-      () => setGpsStatus("simulated"),
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 5000 }
+      (err: GeolocationPositionError) => {
+        setGpsFault(faultFromGeoError(err?.code))
+        setGpsStatus("simulated")
+      },
+      { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
     )
     return () => {
       if (watchIdRef.current != null) navigator.geolocation?.clearWatch(watchIdRef.current)
@@ -203,6 +257,7 @@ export function RunTracker() {
     lastLapDistRef.current = 0
     lastLapTimeRef.current = 0
     lapCountRef.current = 0
+    setGpsFault(null)
     setPath([])
     setSplits([])
     setPrimaryMetric("pace")
@@ -276,12 +331,26 @@ export function RunTracker() {
     setPath([])
     setMapCenter(null)
     setGpsStatus("off")
+    setGpsFault(null)
   }
 
   const idleReadyGps = (): RunReadyGpsStatus => {
     if (typeof window === "undefined") return "off"
-    if (!isSecureContext() || !navigator.geolocation) return "simulated"
+    if (!browserAllowsGeolocation()) return "simulated"
     return mapCenter ? "good" : "searching"
+  }
+
+  const gpsBadgeLabel = () => {
+    if (gpsStatus === "good") return t("run.gps.active")
+    if (gpsStatus === "searching") return t("run.gps.searching")
+    if (gpsStatus === "simulated") {
+      if (gpsFault === "insecure_origin" || gpsFault === "no_api") return t("run.gps.insecure")
+      if (gpsFault === "permission_denied") return t("run.gps.denied")
+      if (gpsFault === "timeout") return t("run.gps.timeout")
+      if (gpsFault === "position_unavailable") return t("run.gps.unavailable")
+      return t("run.gps.simulated")
+    }
+    return t("run.gps.ready")
   }
 
   const cyclePrimaryMetric = () => {
@@ -336,7 +405,14 @@ export function RunTracker() {
   }
 
   const statsCardClass =
-    "relative z-[20] mx-4 -mt-12 rounded-lg border border-border bg-background p-6 backdrop-blur-xl"
+    runState === "idle"
+      ? "relative z-[20] mx-4 -mt-12 rounded-3xl border border-border/80 bg-card p-6 shadow-[var(--shadow-card)] backdrop-blur-xl"
+      : "relative z-[20] mx-4 -mt-12 overflow-hidden rounded-3xl border border-border/80 bg-[color:var(--surface-stage)] text-[color:var(--surface-stage-fg)] shadow-[var(--shadow-card)]"
+
+  const primaryMetricLabel = primaryMetric === "pace" ? t("run.stat.pace") : primaryMetric === "distance" ? t("run.stat.distance") : t("run.stat.time")
+  const primaryMetricValue =
+    primaryMetric === "pace" ? pace : primaryMetric === "distance" ? distance.toFixed(2) : formatTime(seconds)
+  const primaryMetricUnit = primaryMetric === "pace" ? "/km" : primaryMetric === "distance" ? "km" : undefined
 
   const statsBody = (
     <>
@@ -355,6 +431,37 @@ export function RunTracker() {
         <div className="px-2">
           <StatDisplay eyebrow={t("run.stat.cal")} value={String(Math.round(calories))} unit="kcal" size="md" />
         </div>
+      </div>
+    </>
+  )
+
+  const liveStatsBody = (
+    <>
+      <button
+        type="button"
+        onClick={cyclePrimaryMetric}
+        className="w-full rounded-2xl bg-primary px-4 py-5 text-left text-primary-foreground transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground/40"
+        aria-label="Cycle primary statistic"
+      >
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] opacity-80">{primaryMetricLabel}</p>
+        <p className="mt-1 text-4xl font-bold tabular-nums" style={{ fontFamily: "var(--font-heading)" }}>
+          {primaryMetricValue}
+          {primaryMetricUnit ? <span className="ml-1 text-lg font-semibold opacity-80">{primaryMetricUnit}</span> : null}
+        </p>
+      </button>
+      <div className="mt-4 px-1">
+        <MetricGrid cols={3}>
+          {secondaryMetrics.map((m) => (
+            <MetricTile
+              key={m}
+              tone="stage"
+              label={m === "pace" ? t("run.stat.pace") : m === "distance" ? t("run.stat.distance") : t("run.stat.time")}
+              value={m === "pace" ? pace : m === "distance" ? distance.toFixed(2) : formatTime(seconds)}
+              unit={m === "pace" ? "/km" : m === "distance" ? "km" : undefined}
+            />
+          ))}
+          <MetricTile tone="stage" label={t("run.stat.cal")} value={String(Math.round(calories))} unit="kcal" />
+        </MetricGrid>
       </div>
     </>
   )
@@ -382,8 +489,11 @@ export function RunTracker() {
             />
           ) : null}
         </AnimatePresence>
-      {/* Real map — pushed taller to NRC scale */}
-      <div className="relative h-[40vh] min-h-[280px] overflow-hidden bg-secondary">
+      {/* Real map — NRC scale; taller while running */}
+      <div className={cn(
+        "relative overflow-hidden bg-secondary transition-[height,min-height] duration-300",
+        runState === "idle" ? "h-[40vh] min-h-[280px]" : "h-[48vh] min-h-[320px]",
+      )}>
         {mapReady && (
           <RunMap
             path={path}
@@ -401,13 +511,7 @@ export function RunTracker() {
           <div className="flex items-center gap-2 rounded-sm border border-border bg-background/95 backdrop-blur-sm px-3 py-1.5">
             <MapPin className="h-3.5 w-3.5 text-primary" />
             <span className="text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-foreground">
-              {gpsStatus === "good"
-                ? t("run.gps.active")
-                : gpsStatus === "searching"
-                  ? t("run.gps.searching")
-                  : gpsStatus === "simulated"
-                    ? t("run.gps.simulated")
-                    : t("run.gps.ready")}
+              {gpsBadgeLabel()}
             </span>
           </div>
           {typeof window !== "undefined" && !window.isSecureContext && runState !== "idle" && (
@@ -418,12 +522,12 @@ export function RunTracker() {
         </div>
         {runState === "idle" && (
           <>
-            <RunReadyScreen gpsStatus={idleReadyGps()} onStartRun={handleStart} className="absolute inset-0 z-[500]" />
-            {typeof window !== "undefined" && !window.isSecureContext && (
-              <p className="absolute bottom-28 left-0 right-0 z-[502] px-8 text-center text-typo-eyebrow text-chart-4">
-                {t("run.https.banner")}
-              </p>
-            )}
+            <RunReadyScreen
+              gpsStatus={idleReadyGps()}
+              onStartRun={handleStart}
+              className="absolute inset-0 z-[500]"
+              insecureGpsReminder={runInsecureGpsReminder}
+            />
           </>
         )}
       </div>
@@ -438,21 +542,8 @@ export function RunTracker() {
           initial={reducedMotionPref ? false : "hidden"}
           animate="show"
         >
-          <motion.div variants={CINEMATIC.statReveal}>
-            <button
-              type="button"
-              onClick={cyclePrimaryMetric}
-              className="w-full rounded-2xl border border-transparent text-center transition-colors hover:border-primary/20 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              aria-label="Cycle primary statistic"
-            >
-              {renderMetricCell(primaryMetric, { hero: true })}
-            </button>
-          </motion.div>
-          <motion.div variants={CINEMATIC.statReveal} className="mt-5 grid grid-cols-3 gap-2 border-t border-border/60 pt-5">
-            {secondaryMetrics.map((m) => (
-              <div key={m}>{renderMetricCell(m, { hero: false })}</div>
-            ))}
-            <StatDisplay eyebrow={t("run.stat.cal")} value={String(Math.round(calories))} unit="kcal" size="md" />
+          <motion.div variants={CINEMATIC.statReveal} className="p-4">
+            {liveStatsBody}
           </motion.div>
         </motion.div>
       )}

@@ -40,7 +40,11 @@ export const garminAdapter: WearableProviderAdapter = {
     throw new Error("Garmin adapter: refresh not yet implemented.")
   },
 
-  async fetchDailySummary(): Promise<ProviderDailyMetrics | null> {
+  async fetchDailySummary(
+    _accessToken: string,
+    _date: string,
+    _opts?: { startMs: number; endMs: number }
+  ): Promise<ProviderDailyMetrics | null> {
     return null
   },
 }

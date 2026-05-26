@@ -34,6 +34,26 @@ export default function OpenGraphImage() {
             boxSizing: 'border-box',
           }}
         />
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 108,
+            height: 108,
+            borderRadius: 28,
+            border: "2px solid rgba(255,255,255,0.16)",
+            background: "rgba(10,10,10,0.7)",
+            marginBottom: 18,
+          }}
+        >
+          <svg width="74" height="74" viewBox="0 0 80 80" fill="none">
+            <path d="M 40 28 A 12 12 0 1 1 34 50" stroke="rgba(250,250,250,0.12)" strokeWidth="2" strokeLinecap="round" />
+            <path d="M 40 20 A 20 20 0 1 1 26 54" stroke="rgba(250,250,250,0.18)" strokeWidth="2.5" strokeLinecap="round" />
+            <path d="M 40 12 A 28 28 0 1 1 18 56" stroke="#22c55e" strokeWidth="4.5" strokeLinecap="round" />
+            <circle cx="18" cy="56" r="4.5" fill="#22c55e" />
+          </svg>
+        </div>
         <span
           style={{
             fontSize: 94,

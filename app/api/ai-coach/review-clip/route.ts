@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { checkRateLimit } from "@/lib/rate-limit"
+import { isOpenAIConfigured } from "@/lib/ai-coach/openai-fetch"
 import { OpenAiVisionProvider, type ClipReviewFrame, type ClipReviewRequest } from "@/lib/ai-coach/clip-review"
 
 /**
@@ -11,7 +12,7 @@ import { OpenAiVisionProvider, type ClipReviewFrame, type ClipReviewRequest } fr
  *     exerciseName: string,
  *     loadKg?: number,
  *     reps: { index, score, faults[] }[],
- *     frames: { dataUrl, timestampMs }[]  // 3-40, JPEG/PNG data URLs
+ *     frames: { dataUrl, timestampMs }[]  // 2-24, JPEG/PNG data URLs
  *   }
  *
  * Persists the result to coach_clip_reviews. Returns the review JSON.
@@ -22,6 +23,17 @@ export async function POST(request: Request) {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
+
+  if (!isOpenAIConfigured()) {
+    return NextResponse.json(
+      {
+        error: "not_configured",
+        message:
+          "Coach clip AI review requires OPENAI_API_KEY on the server (.env.local in dev or host env vars in production).",
+      },
+      { status: 503 },
+    )
+  }
 
   const rate = await checkRateLimit({
     key: `coach-review-clip:${user.id}`,
@@ -45,8 +57,12 @@ export async function POST(request: Request) {
   if (!sessionId || !exerciseId || !exerciseName) {
     return NextResponse.json({ error: "bad_request" }, { status: 400 })
   }
-  const frames = Array.isArray(body.frames) ? (body.frames as ClipReviewFrame[]) : []
-  if (frames.length < 3) {
+  const framesRaw = Array.isArray(body.frames) ? (body.frames as ClipReviewFrame[]) : []
+  const frames =
+    framesRaw.length === 1 && framesRaw[0]
+      ? [framesRaw[0], { ...framesRaw[0], timestampMs: (framesRaw[0].timestampMs ?? 0) + 33 }]
+      : [...framesRaw]
+  if (frames.length < 2) {
     return NextResponse.json({ error: "too_few_frames" }, { status: 400 })
   }
   if (frames.length > 40) frames.length = 40

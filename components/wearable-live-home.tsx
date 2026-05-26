@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Bluetooth, Heart, Droplets, Watch } from "lucide-react"
 import { useBleHeartRate } from "@/hooks/use-ble-heart-rate"
 import { useChartEnterOnce } from "@/hooks/use-chart-enter-once"
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/empty"
 import { cn } from "@/lib/utils"
 import { useLocale } from "@/components/locale-provider"
+import { InlineScreenSkeleton } from "@/components/brand/inline-screen-skeleton"
 
 type LivePayload = {
   ok?: boolean
@@ -131,15 +132,23 @@ function BleHeartRatePanel({
   )
 }
 
+export type WearableDashboardReadiness = {
+  score: number
+  signalsOk: boolean
+}
+
 export function WearableLiveHome({
   onNavigate,
   paused = false,
   sessionsLast7d = 0,
+  onDashboardReadiness,
 }: {
   onNavigate: (tab: TabId) => void
   paused?: boolean
   /** Sessions logged in rolling 7d (dash + readiness load). */
   sessionsLast7d?: number
+  /** Home tab: indicative readiness tied to synced vitals (null when wearable block not connected). */
+  onDashboardReadiness?: (snapshot: WearableDashboardReadiness | null) => void
 }) {
   const { t } = useLocale()
   const [data, setData] = useState<LivePayload | null>(null)
@@ -253,33 +262,52 @@ export function WearableLiveHome({
     }
   }, [sheet])
 
+  const wearableDashPrep = useMemo(() => {
+    const heartHistory = histRows.filter((r) => r.resting_heart_rate != null && Number(r.resting_heart_rate) > 0)
+    const spo2History = histRows.filter((r) => r.spo2_avg_pct != null)
+    const restingSeries = [...heartHistory]
+      .reverse()
+      .map((r) => Number(r.resting_heart_rate))
+      .filter((n) => Number.isFinite(n) && n > 0)
+    const latestResting = heartHistory[0]?.resting_heart_rate != null ? Number(heartHistory[0].resting_heart_rate) : null
+    const spo2Series = spo2History.map((r) => Number(r.spo2_avg_pct)).filter((n) => Number.isFinite(n) && n > 0)
+
+    const { score } = computeReadiness({
+      restingSeries,
+      latestResting: latestResting && Number.isFinite(latestResting) ? latestResting : null,
+      spo2Series,
+      sessionsLast7d,
+    })
+
+    const signalsOk = heartHistory.length >= 5 || spo2History.length >= 3
+
+    return { score, signalsOk }
+  }, [histRows, sessionsLast7d])
+
+  useEffect(() => {
+    if (!onDashboardReadiness) return
+    if (paused || loading || !data || data.error || !data.connected || data.fitbitConfigured === false) {
+      onDashboardReadiness(null)
+      return
+    }
+    if (!wearableDashPrep.signalsOk) {
+      onDashboardReadiness(null)
+      return
+    }
+    onDashboardReadiness({
+      score: wearableDashPrep.score,
+      signalsOk: true,
+    })
+  }, [data, loading, onDashboardReadiness, paused, wearableDashPrep.score, wearableDashPrep.signalsOk])
+
   if (loading && !data) {
     return (
-      <section
-        className="rounded-3xl border border-border/80 bg-card/50 p-4 space-y-3 backdrop-blur-xl shadow-[var(--shadow-card)] dark:border-white/10"
-        aria-busy="true"
-        aria-label="Loading vitals"
-      >
-        <div className="flex items-center justify-between gap-2">
-          <div className="h-3 w-20 animate-pulse rounded-full bg-muted" />
-          <div className="h-3 w-14 animate-pulse rounded-full bg-muted/60" />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          {[0, 1].map((i) => (
-            <div
-              key={i}
-              className="flex flex-col items-center rounded-2xl border border-border/60 bg-background/40 p-3 dark:border-white/10"
-            >
-              <div className="mb-1 h-2.5 w-10 animate-pulse rounded-full bg-muted" />
-              <div className="relative my-0.5 flex h-[108px] w-[108px] items-center justify-center">
-                <div className="absolute inset-1 rounded-full border-[8px] border-muted/50" />
-                <div className="h-6 w-10 animate-pulse rounded-md bg-muted" />
-              </div>
-              <div className="mt-1 h-2 w-12 animate-pulse rounded-full bg-muted/60" />
-            </div>
-          ))}
-        </div>
-      </section>
+      <InlineScreenSkeleton
+        label="Loading live vitals…"
+        hint="Connecting wearable metrics and readiness signals."
+        layout="default"
+        className="border-border/80 bg-card/50 shadow-[var(--shadow-card)]"
+      />
     )
   }
 

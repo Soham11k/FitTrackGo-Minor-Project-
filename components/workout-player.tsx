@@ -1,15 +1,24 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { motion, useReducedMotion } from "framer-motion"
-import { ChevronLeft, Play, Pause, SkipForward, Check, Flame, Timer, Trophy } from "lucide-react"
+import { ChevronLeft, Play, Pause, SkipForward, Check, Flame, Timer, Trophy, ArrowRight, ScanLine } from "lucide-react"
 import type { ExerciseItem, ExerciseStep } from "@/lib/data"
 import { addWorkout } from "@/lib/store-supabase"
 import { RingGauge } from "@/components/ring-gauge"
 import { WorkoutStepCamera } from "@/components/workout-step-camera"
 import { MotionCelebrate } from "@/components/motion-celebrate"
 import { DURATION, EASE, SPRING } from "@/lib/motion"
+import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { CueFocusProvider } from "@/components/coach/cue-focus-context"
+import { getAICoachIdForStep } from "@/lib/exercise-ai-map"
+import {
+  saveWorkoutSessionSnapshot,
+  clearWorkoutSessionSnapshot,
+  readWorkoutSessionSnapshot,
+} from "@/lib/workout-session-snapshot"
 
 /** Parse a "45 sec" / "3 min" / "1:30" string into seconds. Defaults to 45s. */
 function parseDurationToSeconds(value: string | undefined): number {
@@ -43,9 +52,12 @@ type Phase = "active" | "rest" | "done"
 
 export function WorkoutPlayer({
   exercise,
+  resume = false,
   onExit,
 }: {
   exercise: ExerciseItem
+  /** When true, restore mid-workout state from localStorage for this exercise if present. */
+  resume?: boolean
   onExit: (completed: boolean) => void
 }) {
   const steps: ExerciseStep[] = useMemo(
@@ -53,19 +65,74 @@ export function WorkoutPlayer({
       exercise.steps && exercise.steps.length > 0
         ? exercise.steps
         : [{ name: exercise.title, duration: exercise.duration, reps: "Single block" }],
-    [exercise.steps, exercise.title, exercise.duration]
+    [exercise.steps, exercise.title, exercise.duration],
   )
 
-  const [index, setIndex] = useState(0)
-  const [phase, setPhase] = useState<Phase>("active")
-  const initialSeconds = useMemo(() => parseDurationToSeconds(steps[0]?.duration), [steps])
-  const [secondsLeft, setSecondsLeft] = useState(initialSeconds)
-  const [totalSeconds, setTotalSeconds] = useState(initialSeconds)
-  const [paused, setPaused] = useState(false)
+  const snapOnLoad = useMemo(() => {
+    if (!resume || typeof window === "undefined") return null
+    const s = readWorkoutSessionSnapshot()
+    if (!s || s.exerciseId !== exercise.id) return null
+    return s
+  }, [resume, exercise.id])
+
+  const [mounted, setMounted] = useState(false)
+  const [index, setIndex] = useState(() => snapOnLoad?.index ?? 0)
+  const [phase, setPhase] = useState<Phase>(() =>
+    snapOnLoad?.phase === "rest" ? "rest" : "active",
+  )
+  const firstStepSeconds = useMemo(
+    () => parseDurationToSeconds(steps[snapOnLoad?.index ?? 0]?.duration),
+    [steps, snapOnLoad?.index],
+  )
+  const [secondsLeft, setSecondsLeft] = useState(
+    () =>
+      snapOnLoad && (snapOnLoad.phase === "active" || snapOnLoad.phase === "rest")
+        ? snapOnLoad.secondsLeft
+        : firstStepSeconds,
+  )
+  const [totalSeconds, setTotalSeconds] = useState(
+    () =>
+      snapOnLoad && (snapOnLoad.phase === "active" || snapOnLoad.phase === "rest")
+        ? snapOnLoad.totalSeconds
+        : firstStepSeconds,
+  )
+  const [paused, setPaused] = useState(() => snapOnLoad?.paused ?? false)
   const [startedAt] = useState(() => Date.now())
   const [finalDurationSec, setFinalDurationSec] = useState<number | null>(null)
   const savedRef = useRef(false)
   const reduceMotion = useReducedMotion() ?? false
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!mounted) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [mounted])
+
+  useEffect(() => {
+    if (resume) return
+    const snap = readWorkoutSessionSnapshot()
+    if (snap?.exerciseId === exercise.id) clearWorkoutSessionSnapshot()
+  }, [resume, exercise.id])
+
+  useEffect(() => {
+    if (phase === "done") return
+    saveWorkoutSessionSnapshot({
+      exerciseId: exercise.id,
+      exercise,
+      index,
+      phase: phase === "rest" ? "rest" : "active",
+      secondsLeft,
+      totalSeconds,
+      paused,
+    })
+  }, [phase, index, secondsLeft, totalSeconds, paused, exercise])
 
   useEffect(() => {
     if (phase !== "done") return
@@ -78,7 +145,7 @@ export function WorkoutPlayer({
     }
   }, [phase])
 
-  const currentStep = steps[index]
+  const currentStep = steps[index] ?? steps[0]
   const totalSteps = steps.length
   const progress = ((index + (phase === "rest" ? 0.5 : 0)) / totalSteps) * 100
 
@@ -131,6 +198,7 @@ export function WorkoutPlayer({
       return
     }
     savedRef.current = true
+    clearWorkoutSessionSnapshot()
     const durationSeconds =
       finalDurationSec ?? Math.round((Date.now() - startedAt) / 1000)
     try {
@@ -161,12 +229,19 @@ export function WorkoutPlayer({
   }, [phase, reduceMotion])
 
   const isRest = phase === "rest"
-  // Remaining time as a fraction from 1 → 0 (full ring at start, empty at end).
   const timerProgressRemaining = totalSeconds > 0 ? secondsLeft / totalSeconds : 0
 
-  return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-background">
-      <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-background/80 px-4 py-3 backdrop-blur-xl">
+  const overlay = (
+    <div
+      data-testid="screen-workout-player"
+      className={cn(
+        "fixed inset-0 z-50 grid h-[100dvh] bg-background",
+        phase === "done"
+          ? "grid-rows-[auto_minmax(0,1fr)]"
+          : "grid-rows-[auto_auto_minmax(0,1fr)_auto]",
+      )}
+    >
+      <header className="flex items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur-xl">
         <button
           type="button"
           onClick={() => onExit(false)}
@@ -175,7 +250,7 @@ export function WorkoutPlayer({
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {exercise.title}
           </p>
@@ -191,13 +266,13 @@ export function WorkoutPlayer({
             />
           </div>
         </div>
-        <span className="text-xs font-semibold tabular-nums text-muted-foreground whitespace-nowrap">
+        <span className="whitespace-nowrap text-xs font-semibold tabular-nums text-muted-foreground">
           {Math.min(index + 1, totalSteps)}/{totalSteps}
         </span>
       </header>
 
-      <main className="flex flex-1 min-h-0 flex-col items-center justify-center gap-5 overflow-y-auto px-6 py-4 text-center">
-        {phase === "done" ? (
+      {phase === "done" ? (
+        <div className="flex min-h-0 flex-col items-center justify-center gap-5 overflow-y-auto px-6 py-4 text-center">
           <MotionCelebrate
             className="flex w-full max-w-xs flex-col items-center gap-4 rounded-3xl border border-border/80 bg-card/80 p-6 shadow-[var(--shadow-card)] backdrop-blur-xl dark:border-white/10"
             role="status"
@@ -244,94 +319,135 @@ export function WorkoutPlayer({
             </div>
             <p className="text-xs text-muted-foreground">Saving to your history…</p>
           </MotionCelebrate>
-        ) : (
-          <>
-            {phase === "active" && (
-              <WorkoutStepCamera
-                stepName={currentStep.name}
-                isActive
-                paused={paused}
-              />
-            )}
+        </div>
+      ) : (
+        <>
+          <div className="border-b border-border/60 bg-muted/25 px-4 py-3 text-center dark:bg-black/25">
             <p className="text-typo-caption font-bold uppercase tracking-[0.25em] text-muted-foreground">
-              {isRest ? "Rest" : `Step ${index + 1}`}
+              {isRest ? "Rest" : `Step ${index + 1} of ${totalSteps}`}
             </p>
             <h2
-              className="text-3xl font-bold text-foreground"
+              data-testid="workout-step-name"
+              className="mt-2 text-xl font-bold leading-tight text-foreground sm:text-2xl"
               style={{ fontFamily: "var(--font-heading)" }}
               aria-live="polite"
             >
               {isRest ? "Catch your breath" : currentStep.name}
             </h2>
-            {!isRest && (
-              <p className="text-sm text-muted-foreground">{currentStep.reps}</p>
+            {!isRest ? (
+              <p className="mt-2 line-clamp-2 text-sm leading-snug text-muted-foreground">{currentStep.reps}</p>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">Next interval starts automatically after rest.</p>
             )}
-            <div role="timer" aria-live="polite" className="shrink-0">
-              <RingGauge
-                value={timerProgressRemaining}
-                max={1}
-                size={196}
-                thickness={12}
-                progressClassName={
-                  isRest ? "stroke-metric-spo2" : "stroke-metric-move"
-                }
-                trackClassName={
-                  isRest ? "stroke-metric-spo2/10" : "stroke-metric-move/10"
-                }
-              >
-                <motion.span
-                  key={secondsLeft}
-                  className="text-5xl font-bold tabular-nums text-foreground"
-                  style={{ fontFamily: "var(--font-heading)" }}
-                  initial={reduceMotion ? false : { scale: 0.96, opacity: 0.7 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ duration: DURATION.fast, ease: EASE.out }}
-                >
-                  {formatSeconds(secondsLeft)}
-                </motion.span>
-              </RingGauge>
-            </div>
-            {!isRest && steps[index + 1] && (
-              <p className="text-xs text-muted-foreground">Up next: {steps[index + 1].name}</p>
-            )}
-          </>
-        )}
-      </main>
+            {!isRest && steps[index + 1] ? (
+              <p className="mt-3 rounded-full bg-background/55 px-3 py-1 text-xs text-muted-foreground dark:bg-white/5">
+                Up next:{" "}
+                <span className="font-semibold text-foreground">{steps[index + 1].name}</span>
+              </p>
+            ) : null}
+          </div>
 
-      {phase !== "done" && (
-        <footer className="sticky bottom-0 z-10 flex items-center justify-center gap-4 border-t border-border bg-background/90 px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-xl">
-          <button
-            type="button"
-            onClick={() => setPaused((p) => !p)}
-            aria-label={paused ? "Resume" : "Pause"}
-            className="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-card text-foreground transition-transform active:scale-95"
-          >
-            {paused ? <Play className="h-5 w-5" /> : <Pause className="h-5 w-5" />}
-          </button>
-          <button
-            type="button"
-            onClick={skip}
-            aria-label="Skip"
-            className={`flex h-12 flex-1 items-center justify-center gap-2 rounded-full font-semibold text-primary-foreground active:scale-[0.98] transition-colors ${
-              isRest ? "bg-metric-spo2" : "bg-primary"
-            }`}
-          >
-            <SkipForward className="h-5 w-5" />
-            {isRest ? "Skip rest" : "Finish step"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setFinalDurationSec(Math.round((Date.now() - startedAt) / 1000))
-              setPhase("done")
-            }}
-            aria-label="End workout"
-            className="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-card text-foreground transition-transform active:scale-95"
-          >
-            <Check className="h-5 w-5" />
-          </button>
-        </footer>
+          <div className="flex min-h-0 flex-col overflow-y-auto overflow-x-hidden">
+            {phase === "active" ? (
+              <section className="shrink-0 space-y-2 px-4 pb-2 pt-2" aria-label="Live pose and camera">
+                <div className="flex flex-col items-center gap-1">
+                  <p className="flex items-center gap-2 text-[0.65rem] font-bold uppercase tracking-[0.22em] text-primary">
+                    <ScanLine className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    Live body tracking
+                  </p>
+                  <p className="max-w-[20rem] text-center text-[0.6875rem] leading-snug text-muted-foreground">
+                    Front camera mirror + skeleton when the model finishes loading. Lighting helps detection.
+                  </p>
+                </div>
+                <div className="flex min-h-[12rem] justify-center">
+                  <CueFocusProvider
+                    key={getAICoachIdForStep(currentStep.name) ?? currentStep.name}
+                    exerciseId={getAICoachIdForStep(currentStep.name) ?? "unknown"}
+                    breakdown={[]}
+                  >
+                    <WorkoutStepCamera stepName={currentStep.name} isActive paused={paused} hideStepEyebrow />
+                  </CueFocusProvider>
+                </div>
+              </section>
+            ) : (
+              <section className="shrink-0 px-4 pb-2 pt-3 text-center" aria-label="Rest period">
+                <p className="text-xs text-muted-foreground">
+                  Camera pauses during rest — you&apos;ll see live tracking again on the next work step.
+                </p>
+              </section>
+            )}
+
+            <div className="flex shrink-0 flex-col items-center justify-center gap-3 px-6 py-4 pb-6 text-center">
+              <p className="text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-muted-foreground">Timer</p>
+              <div role="timer" aria-live="polite" className="shrink-0">
+                <RingGauge
+                  value={timerProgressRemaining}
+                  max={1}
+                  size={168}
+                  thickness={11}
+                  progressClassName={isRest ? "stroke-metric-spo2" : "stroke-metric-move"}
+                  trackClassName={isRest ? "stroke-metric-spo2/10" : "stroke-metric-move/10"}
+                >
+                  <motion.span
+                    key={secondsLeft}
+                    className="text-4xl font-bold tabular-nums text-foreground sm:text-5xl"
+                    style={{ fontFamily: "var(--font-heading)" }}
+                    initial={reduceMotion ? false : { scale: 0.96, opacity: 0.7 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: DURATION.fast, ease: EASE.out }}
+                  >
+                    {formatSeconds(secondsLeft)}
+                  </motion.span>
+                </RingGauge>
+              </div>
+            </div>
+          </div>
+
+          <footer className="border-t border-border bg-background/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-xl">
+            <div className="mx-auto grid w-full max-w-md grid-cols-[3rem_1fr_3rem] items-center gap-3 sm:gap-4">
+              <button
+                type="button"
+                onClick={() => setPaused((p) => !p)}
+                aria-label={paused ? "Resume" : "Pause"}
+                className="flex h-12 w-full items-center justify-center rounded-full border border-border bg-card text-foreground transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                {paused ? <Play className="h-5 w-5" /> : <Pause className="h-5 w-5" />}
+              </button>
+              <button
+                type="button"
+                onClick={skip}
+                aria-label={isRest ? "Skip rest" : "Finish this step"}
+                className={cn(
+                  "flex h-[3.125rem] min-w-0 items-center justify-center gap-2 rounded-full px-4 text-sm font-bold text-primary-foreground shadow-[0_12px_36px_-14px_color-mix(in_oklab,var(--primary)_42%,transparent)] transition-[transform,filter] hover:brightness-[1.06] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background max-sm:gap-1 max-sm:px-3 max-sm:text-[0.7rem] max-sm:uppercase max-sm:tracking-[0.08em]",
+                  isRest
+                    ? "bg-metric-spo2 shadow-[0_12px_36px_-14px_color-mix(in_oklab,var(--chart-2)_42%,transparent)] hover:brightness-[1.04]"
+                    : "bg-primary",
+                )}
+              >
+                {isRest ? <SkipForward className="h-5 w-5 shrink-0" /> : <ArrowRight className="h-5 w-5 shrink-0" />}
+                <span className="truncate leading-tight max-sm:leading-tight">
+                  {isRest ? "Skip rest" : "Finish step"}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFinalDurationSec(Math.round((Date.now() - startedAt) / 1000))
+                  setPhase("done")
+                }}
+                aria-label="End workout"
+                className="flex h-12 w-full items-center justify-center rounded-full border border-border bg-card text-foreground transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <Check className="h-5 w-5" />
+              </button>
+            </div>
+          </footer>
+        </>
       )}
     </div>
   )
+
+  if (!mounted || typeof document === "undefined") return null
+
+  return createPortal(overlay, document.body)
 }

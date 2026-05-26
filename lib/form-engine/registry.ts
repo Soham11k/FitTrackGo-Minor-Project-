@@ -11,6 +11,10 @@ import shoulder_press from "../../data/form-specs/shoulder_press.json"
 import jumping_jacks from "../../data/form-specs/jumping_jacks.json"
 import high_knees from "../../data/form-specs/high_knees.json"
 import crunch from "../../data/form-specs/crunch.json"
+import pushup_wide from "../../data/form-specs/pushup_wide.json"
+import pushup_diamond from "../../data/form-specs/pushup_diamond.json"
+import pushup_knee from "../../data/form-specs/pushup_knee.json"
+import pushup_incline from "../../data/form-specs/pushup_incline.json"
 
 import bench_press from "../../data/form-specs/bench_press.json"
 import incline_bench_press from "../../data/form-specs/incline_bench_press.json"
@@ -22,6 +26,12 @@ import chin_up from "../../data/form-specs/chin_up.json"
 import dip from "../../data/form-specs/dip.json"
 import overhead_tricep_extension from "../../data/form-specs/overhead_tricep_extension.json"
 import hammer_curl from "../../data/form-specs/hammer_curl.json"
+import concentration_curl from "../../data/form-specs/concentration_curl.json"
+import preacher_curl from "../../data/form-specs/preacher_curl.json"
+import incline_dumbbell_curl from "../../data/form-specs/incline_dumbbell_curl.json"
+import cable_bicep_curl from "../../data/form-specs/cable_bicep_curl.json"
+import tricep_pushdown from "../../data/form-specs/tricep_pushdown.json"
+import tricep_kickback from "../../data/form-specs/tricep_kickback.json"
 import lateral_raise from "../../data/form-specs/lateral_raise.json"
 import front_raise from "../../data/form-specs/front_raise.json"
 import face_pull from "../../data/form-specs/face_pull.json"
@@ -63,6 +73,10 @@ const SPECS: Record<string, FormSpec> = {
   jumping_jacks: jumping_jacks as FormSpec,
   high_knees: high_knees as FormSpec,
   crunch: crunch as FormSpec,
+  pushup_wide: pushup_wide as FormSpec,
+  pushup_diamond: pushup_diamond as FormSpec,
+  pushup_knee: pushup_knee as FormSpec,
+  pushup_incline: pushup_incline as FormSpec,
   bench_press: bench_press as FormSpec,
   incline_bench_press: incline_bench_press as FormSpec,
   dumbbell_row: dumbbell_row as FormSpec,
@@ -73,6 +87,12 @@ const SPECS: Record<string, FormSpec> = {
   dip: dip as FormSpec,
   overhead_tricep_extension: overhead_tricep_extension as FormSpec,
   hammer_curl: hammer_curl as FormSpec,
+  concentration_curl: concentration_curl as FormSpec,
+  preacher_curl: preacher_curl as FormSpec,
+  incline_dumbbell_curl: incline_dumbbell_curl as FormSpec,
+  cable_bicep_curl: cable_bicep_curl as FormSpec,
+  tricep_pushdown: tricep_pushdown as FormSpec,
+  tricep_kickback: tricep_kickback as FormSpec,
   lateral_raise: lateral_raise as FormSpec,
   front_raise: front_raise as FormSpec,
   face_pull: face_pull as FormSpec,
@@ -103,14 +123,43 @@ const SPECS: Record<string, FormSpec> = {
   farmer_carry: farmer_carry as FormSpec,
 }
 
+/** User-authored specs loaded from Supabase (client-only). */
+const userSpecs: Record<string, FormSpec> = {}
+
+export function registerUserSpec(spec: FormSpec): void {
+  if (!spec?.id?.trim()) return
+  userSpecs[spec.id] = spec
+}
+
+export function unregisterUserSpec(id: string): void {
+  delete userSpecs[id]
+}
+
+export function registerUserSpecs(specs: FormSpec[]): void {
+  for (const s of specs) registerUserSpec(s)
+}
+
+export function clearUserSpecs(): void {
+  for (const k of Object.keys(userSpecs)) delete userSpecs[k]
+}
+
+export function listUserSpecIds(): string[] {
+  return Object.keys(userSpecs).sort()
+}
+
 export function listSpecIds(): string[] {
-  return Object.keys(SPECS).sort()
+  const ids = new Set([...Object.keys(SPECS), ...Object.keys(userSpecs)])
+  return [...ids].sort()
 }
 
 export function hasSpec(id: string): boolean {
-  return Object.prototype.hasOwnProperty.call(SPECS, id)
+  return Object.prototype.hasOwnProperty.call(SPECS, id) || Object.prototype.hasOwnProperty.call(userSpecs, id)
 }
 
 export function loadSpec(id: string): FormSpec | undefined {
-  return SPECS[id]
+  return SPECS[id] ?? userSpecs[id]
+}
+
+export function isUserSpec(id: string): boolean {
+  return Object.prototype.hasOwnProperty.call(userSpecs, id)
 }

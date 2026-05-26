@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { validateSupabaseEnv } from '@/lib/supabase/config'
-import { getSupabaseUrlForRuntime } from '@/lib/supabase/runtime-url'
+import { getSupabaseUrlForServer } from '@/lib/supabase/runtime-url'
 
 export async function createClient() {
   const cookieStore = await cookies()
@@ -21,7 +21,7 @@ export async function createClient() {
   }
 
   return createServerClient(
-    getSupabaseUrlForRuntime(),
+    getSupabaseUrlForServer(),
     key!,
     {
       cookies: {

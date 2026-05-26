@@ -12,7 +12,7 @@
 import { createBrowserClient, createServerClient, type CookieOptions } from "@supabase/ssr"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { validateSupabaseEnv } from "@/lib/supabase/config"
-import { getSupabaseUrlForRuntime } from "@/lib/supabase/runtime-url"
+import { getSupabaseUrlForRuntime, getSupabaseUrlForServer } from "@/lib/supabase/runtime-url"
 import type { Database } from "./database.types"
 
 export type TypedSupabaseClient = SupabaseClient<Database>
@@ -41,7 +41,7 @@ type CookieStore = {
 export function createTypedServerClient(cookies: CookieStore): TypedSupabaseClient | null {
   const { isConfigured, key } = validateSupabaseEnv()
   if (!isConfigured || !key) return null
-  return createServerClient<Database>(getSupabaseUrlForRuntime(), key, {
+  return createServerClient<Database>(getSupabaseUrlForServer(), key, {
     cookies: {
       get(name: string) {
         return cookies.get(name)?.value

@@ -320,7 +320,7 @@ export function OnboardingWizard({
               {step === 5 && showClipProtect && (
                 <div className="space-y-4">
                   <p className="text-typo-eyebrow font-bold uppercase tracking-[0.3em] text-muted-foreground">
-                    Protect your clips
+                    Protect synced data
                   </p>
                   <div className="flex items-start gap-3 rounded-lg border border-border bg-secondary/25 p-4">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-background">
@@ -329,8 +329,8 @@ export function OnboardingWizard({
                     <div className="space-y-2 text-sm text-muted-foreground">
                       <p className="text-base font-semibold text-foreground">Optional passphrase backup</p>
                       <p>
-                        Coach clips you sync to the cloud can be encrypted. Set a passphrase to recover playback on another
-                        browser. You can skip and add this anytime from Profile.
+                        Clips and synced profile/run data use a key on this device. Add a passphrase backup to unlock them on
+                        another browser. You can skip and add this anytime from Profile.
                       </p>
                       <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setClipPassphraseOpen(true)}>
                         Back up encryption key

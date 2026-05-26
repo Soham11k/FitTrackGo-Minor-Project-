@@ -4,6 +4,10 @@
  */
 export function agentDebugLog(payload: Record<string, unknown>): void {
   if (typeof window === 'undefined') return
+  if (process.env.NODE_ENV === 'development') {
+    // eslint-disable-next-line no-console -- Cursor debug: evidence when `.cursor/debug-*.log` is unavailable (no dev server / static bundle).
+    console.debug('[debug-session]', payload.message ?? '', payload)
+  }
   fetch('/api/debug-session-log', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

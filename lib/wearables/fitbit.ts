@@ -1,3 +1,5 @@
+import { resolveWearableOAuthRedirectBase } from "@/lib/wearables/app-origin"
+
 const FITBIT_AUTH = "https://www.fitbit.com/oauth2/authorize"
 const FITBIT_TOKEN = "https://api.fitbit.com/oauth2/token"
 
@@ -42,10 +44,7 @@ export function fitbitEnvKeyPresenceForUi(): {
 }
 
 export function getFitbitCallbackUrl(): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "")
-  if (base) return `${base}/api/wearables/fitbit/callback`
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}/api/wearables/fitbit/callback`
-  return "http://localhost:3000/api/wearables/fitbit/callback"
+  return `${resolveWearableOAuthRedirectBase()}/api/wearables/fitbit/callback`
 }
 
 export function buildFitbitAuthorizeUrl(params: { state: string; redirectUri: string }): string {

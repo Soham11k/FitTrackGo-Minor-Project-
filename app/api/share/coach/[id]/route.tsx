@@ -87,7 +87,7 @@ export async function GET(
           fontFamily: '"Bebas Neue", ui-sans-serif, system-ui',
         }}
       >
-        <div style={{ fontSize: 26, opacity: 0.78 }}>FITTRACK GO · FORM REPORT</div>
+        <div style={{ fontSize: 26, opacity: 0.78 }}>FITTRACK GO · TRAIN WITH PROOF</div>
         <div style={{ display: "flex", flexDirection: "column", flex: 1, justifyContent: "center", gap: 18 }}>
           <div style={{ fontSize: 80, letterSpacing: -2, textTransform: "uppercase", lineHeight: 1 }}>
             {scoreNum}%
@@ -135,7 +135,7 @@ export async function GET(
           })}
         </div>
         <div style={{ marginTop: 16, fontSize: 26, opacity: 0.55 }}>
-          Proof without private video — opaque session id only
+          Train with proof — rep traces · no raw video shared here
         </div>
       </div>
     ),

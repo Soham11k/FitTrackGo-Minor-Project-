@@ -1,12 +1,14 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { buildFitbitAuthorizeUrl, getFitbitCallbackUrl, isFitbitConfigured } from "@/lib/wearables/fitbit"
+import { resolveWearableOAuthRedirectBase } from "@/lib/wearables/app-origin"
 
 const STATE_COOKIE = "fitbit_oauth_state"
 
 export async function GET() {
+  const appBase = resolveWearableOAuthRedirectBase()
   if (!isFitbitConfigured()) {
-    return NextResponse.redirect(new URL("/?fitbit_setup=server", process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"))
+    return NextResponse.redirect(new URL("/?fitbit_setup=server", appBase))
   }
 
   const supabase = await createClient()
@@ -15,7 +17,7 @@ export async function GET() {
     error,
   } = await supabase.auth.getUser()
   if (error || !user) {
-    return NextResponse.redirect(new URL("/?fitbit_setup=signin", process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"))
+    return NextResponse.redirect(new URL("/?fitbit_setup=signin", appBase))
   }
 
   const state = crypto.randomUUID()

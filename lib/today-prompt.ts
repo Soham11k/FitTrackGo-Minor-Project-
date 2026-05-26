@@ -21,13 +21,27 @@ function localDateStr(isoOrDate: string | Date): string {
 
 /** @param streakDays — streak from dashboard / store */
 /** @param mobilityMinutesThisWeek — optional minutes from ROM coach sessions summary */
+/** @param wearableReadiness — 0–100 from Fitbit/ble sync + history (nullable when unknown). */
+/** @param wearableSignals — resting HR trend or SpO₂ history available enough to trust readiness. */
 export function resolveTodayPrompt(input: {
   runs: Pick<RunRecord, "completedAt" | "distance">[]
   streakDays: number
   coachSessionsThisWeekRomMinutes?: number
+  wearableReadinessScore?: number | null
+  wearableReadinessSignals?: boolean
 }): TodayPrompt | null {
   const todayStr = localDateStr(new Date())
   const ranToday = input.runs.some((r) => r.completedAt && localDateStr(r.completedAt) === todayStr)
+
+  const wearScore = input.wearableReadinessScore
+  const wearTrust = !!input.wearableReadinessSignals
+  if (wearTrust && typeof wearScore === "number" && wearScore <= 52) {
+    return {
+      kind: "mobility",
+      title: "Recovery cues",
+      hint: `Wearable readiness is soft at ${wearScore}/100 — start with Mobility Coach before a heavy verified set.`,
+    }
+  }
 
   const weekKm = (() => {
     const weekAgo = Date.now() - 7 * 86400000

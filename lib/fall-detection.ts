@@ -50,6 +50,21 @@ const FRAMES_REQUIRED = 12
 
 let fallFrameCount = 0
 
+const HORIZONTAL_SAFE = new Set<string>([
+  "plank",
+  "side_plank",
+  "pushup",
+  "pushup_wide",
+  "pushup_diamond",
+  "pushup_knee",
+  "pushup_incline",
+  "crunch",
+  "deadlift",
+  "rdl",
+  "dip",
+  "bench_dip",
+])
+
 export type ExerciseId =
   | "squat"
   | "pushup"
@@ -63,18 +78,9 @@ export type ExerciseId =
   | "high_knees"
   | "crunch"
 
-/** Returns true if a possible fall is detected (body horizontal and low). Disabled for plank/pushup. */
-export function detectFall(
-  landmarks: LandmarkPoint[],
-  exercise: ExerciseId
-): boolean {
-  if (
-    exercise === "plank" ||
-    exercise === "pushup" ||
-    exercise === "crunch" ||
-    exercise === "deadlift" ||
-    exercise === "rdl"
-  ) {
+/** Returns true if a possible fall is detected (body horizontal and low). Disabled for plank/pushup-like poses. */
+export function detectFall(landmarks: LandmarkPoint[], exercise: ExerciseId | string): boolean {
+  if (HORIZONTAL_SAFE.has(exercise)) {
     fallFrameCount = 0
     return false
   }

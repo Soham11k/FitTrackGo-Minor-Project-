@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS runs (
   duration INTEGER NOT NULL, -- in seconds
   pace TEXT NOT NULL,
   calories INTEGER NOT NULL,
-  path JSONB, -- array of [lat, lon] coordinates
+  path JSONB, -- array of [lat, lon] coordinates (legacy plaintext); may be null when path_cipher is used
+  path_cipher TEXT, -- client-encrypted path JSON (prefix FTUSRfld1:)
   completed_at TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -52,9 +53,31 @@ CREATE TABLE IF NOT EXISTS coach_sessions (
   effective_reps REAL,
   verified_movement BOOLEAN DEFAULT FALSE,
   face_verified_session BOOLEAN DEFAULT FALSE,
+  exercise_spec_id TEXT,
   completed_at TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- User-authored custom exercises (FormSpec JSON from in-app AI builder)
+CREATE TABLE IF NOT EXISTS user_custom_exercises (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  spec_id TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  form_spec JSONB NOT NULL,
+  camera_note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, spec_id)
+);
+
+CREATE INDEX IF NOT EXISTS user_custom_exercises_user_idx
+  ON user_custom_exercises (user_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS coach_sessions_spec_idx
+  ON coach_sessions (user_id, exercise_spec_id)
+  WHERE exercise_spec_id IS NOT NULL;
 
 -- Favorites table
 CREATE TABLE IF NOT EXISTS favorites (
@@ -79,6 +102,7 @@ ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workouts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE coach_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_custom_exercises ENABLE ROW LEVEL SECURITY;
 ALTER TABLE favorites ENABLE ROW LEVEL SECURITY;
 
 -- Profiles policies
@@ -131,6 +155,24 @@ CREATE POLICY "Users can insert own coach sessions"
 
 CREATE POLICY "Users can delete own coach sessions"
   ON coach_sessions FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- Custom exercises policies
+CREATE POLICY "user_custom_exercises_select_own"
+  ON user_custom_exercises FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "user_custom_exercises_insert_own"
+  ON user_custom_exercises FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "user_custom_exercises_update_own"
+  ON user_custom_exercises FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "user_custom_exercises_delete_own"
+  ON user_custom_exercises FOR DELETE
   USING (auth.uid() = user_id);
 
 -- Favorites policies

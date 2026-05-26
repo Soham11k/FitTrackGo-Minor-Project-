@@ -2,27 +2,23 @@
 
 import { useState, useMemo, useEffect } from "react"
 import { motion } from "framer-motion"
-import { Clock, Flame, ChevronRight, Play, Star, Filter, Dumbbell, Heart, Zap, RefreshCw, Target } from "lucide-react"
+import { Clock, Flame, ChevronRight, Play, Star, Filter, Dumbbell, Heart, Zap, RefreshCw, Target, Wand2 } from "lucide-react"
 import { getFavorites, toggleFavorite, getWorkouts, formatErr } from "@/lib/store-supabase"
 import { CINEMATIC, staggerChildren } from "@/lib/motion"
 import { pulse } from "@/lib/haptics"
 import { getExercises, type ExerciseItem } from "@/lib/data"
-import { getAICoachIdForStep } from "@/lib/exercise-ai-map"
-import type { ExerciseId } from "@/lib/form-analysis"
+import { getSpecIdForStep } from "@/lib/exercise-ai-map"
 import { WorkoutPlayer } from "@/components/workout-player"
+import {
+  clearWorkoutSessionSnapshot,
+  readWorkoutSessionSnapshot,
+} from "@/lib/workout-session-snapshot"
 import { ExerciseBodyPreview } from "@/components/exercise-body-preview"
 import { toast } from "sonner"
 import type { TabId } from "@/components/bottom-nav"
 import { Button } from "@/components/ui/button"
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty"
-import { Skeleton } from "@/components/ui/skeleton"
+import { EditorialEmpty } from "@/components/brand/editorial-empty"
+import { InlineScreenSkeleton } from "@/components/brand/inline-screen-skeleton"
 
 type Category = "all" | "strength" | "cardio" | "yoga" | "hiit"
 type DurationFilter = "all" | "short" | "medium" | "long"
@@ -70,9 +66,11 @@ const categoryIcons: Record<Category, typeof Dumbbell> = {
 export function ExerciseLibrary({
   onOpenAICoach,
   onNavigate,
+  onCreateCustomExercise,
 }: {
-  onOpenAICoach?: (opts?: { exerciseId?: ExerciseId }) => void
+  onOpenAICoach?: (opts?: { exerciseId?: string }) => void
   onNavigate?: (tab: TabId) => void
+  onCreateCustomExercise?: () => void
 } = {}) {
   const [activeCategory, setActiveCategory] = useState<Category>("all")
   const [durationFilter, setDurationFilter] = useState<DurationFilter>("all")
@@ -83,6 +81,25 @@ export function ExerciseLibrary({
   const [completedTitles, setCompletedTitles] = useState<Set<string>>(new Set())
   const [loadError, setLoadError] = useState<string | null>(null)
   const [initialLoading, setInitialLoading] = useState(true)
+  const [pausedWorkoutSnapshot, setPausedWorkoutSnapshot] = useState(
+    (): ReturnType<typeof readWorkoutSessionSnapshot> =>
+      typeof window !== "undefined" ? readWorkoutSessionSnapshot() : null,
+  )
+  const [preferResumeForExerciseId, setPreferResumeForExerciseId] = useState<number | null>(null)
+
+  const dismissPausedBanner = () => {
+    clearWorkoutSessionSnapshot()
+    setPausedWorkoutSnapshot(null)
+  }
+
+  const continuePausedBanner = () => {
+    const s = pausedWorkoutSnapshot ?? readWorkoutSessionSnapshot()
+    if (!s) return
+    const match = exercises.find((e) => e.id === s.exerciseId)
+    if (!match) return
+    setPreferResumeForExerciseId(s.exerciseId)
+    setSelectedExercise(match)
+  }
 
   const loadFavoritesAndWorkouts = async () => {
     setLoadError(null)
@@ -102,6 +119,12 @@ export function ExerciseLibrary({
   useEffect(() => {
     loadFavoritesAndWorkouts()
   }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (selectedExercise) return
+    setPausedWorkoutSnapshot(readWorkoutSessionSnapshot())
+  }, [selectedExercise])
 
   const filtered = useMemo(() => {
     let list = activeCategory === "all" ? exercises : exercises.filter((e) => e.category === activeCategory)
@@ -135,7 +158,10 @@ export function ExerciseLibrary({
     return (
       <ExerciseDetail
         exercise={selectedExercise}
-        onBack={() => setSelectedExercise(null)}
+        onBack={() => {
+          setSelectedExercise(null)
+          setPreferResumeForExerciseId(null)
+        }}
         isFavorite={favorites.includes(selectedExercise.id)}
         onToggleFavorite={async () => {
           try {
@@ -151,12 +177,32 @@ export function ExerciseLibrary({
         }}
         lastDone={completedTitles.has(selectedExercise.title)}
         onOpenAICoach={onOpenAICoach}
+        preferResumePlayback={preferResumeForExerciseId === selectedExercise.id}
+        onPreferResumeConsumed={() => setPreferResumeForExerciseId(null)}
       />
     )
   }
 
   return (
     <div className="flex flex-col gap-5 px-4 pt-4 pb-28">
+      {pausedWorkoutSnapshot?.exercise && (
+        <div className="flex flex-wrap items-start gap-2 rounded-2xl border border-primary/30 bg-primary/[0.06] p-3 text-sm dark:bg-primary/10">
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-foreground">Paused workout</p>
+            <p className="text-xs text-muted-foreground">
+              Continue &quot;{pausedWorkoutSnapshot.exercise.title}&quot; · step {pausedWorkoutSnapshot.index + 1}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button type="button" size="sm" className="h-9" onClick={() => void continuePausedBanner()}>
+              Resume
+            </Button>
+            <Button type="button" size="sm" variant="ghost" className="h-9" onClick={dismissPausedBanner}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
       {loadError && (
         <div className="rounded-xl bg-destructive/10 text-destructive border border-destructive/20 px-4 py-3 flex items-center justify-between gap-3">
           <p className="text-sm flex-1 min-w-0">{loadError}</p>
@@ -169,6 +215,17 @@ export function ExerciseLibrary({
           </button>
         </div>
       )}
+      {onCreateCustomExercise ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-start gap-2 border-dashed border-primary/40"
+          onClick={onCreateCustomExercise}
+        >
+          <Wand2 className="h-4 w-4 text-primary" />
+          Create custom exercise for AI Coach
+        </Button>
+      ) : null}
       <motion.section
         variants={CINEMATIC.heroEnter}
         initial="hidden"
@@ -330,58 +387,51 @@ export function ExerciseLibrary({
         animate="show"
       >
         {initialLoading ? (
-          <div className="space-y-3" aria-busy="true" aria-label="Loading exercises">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="flex items-center gap-4 rounded-2xl border border-border bg-card p-3">
-                <Skeleton className="h-20 w-20 shrink-0 rounded-xl" />
-                <div className="flex flex-1 flex-col gap-2">
-                  <Skeleton className="h-3 w-20 rounded-full" />
-                  <Skeleton className="h-4 w-40 rounded-md" />
-                  <Skeleton className="h-3 w-32 rounded-full" />
-                </div>
-                <Skeleton className="h-6 w-10 shrink-0 rounded" />
-              </div>
-            ))}
-          </div>
+          <InlineScreenSkeleton
+            label="Loading exercise library…"
+            hint="Curating movement plans and Coach-ready drills."
+            layout="list"
+            className="border-0 bg-transparent p-0 shadow-none"
+          />
         ) : filtered.length === 0 ? (
-          <Empty className="rounded-3xl border border-dashed border-border/80 bg-card/40 py-10 text-primary shadow-[var(--shadow-card)]">
-            <EmptyHeader>
-              <EmptyMedia>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/illustrations/exercises-empty.svg"
-                  alt=""
-                  className="h-[7rem] w-[7rem] opacity-90"
-                />
-              </EmptyMedia>
-              <EmptyTitle className="text-foreground">No moves match yet</EmptyTitle>
-              <EmptyDescription>Loosen filters to see workouts, or open Coach for guided form drills.</EmptyDescription>
-            </EmptyHeader>
-            <EmptyContent className="max-w-none flex-row flex-wrap justify-center gap-2 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-full"
-                onClick={() => {
-                  setActiveCategory("all")
-                  setDurationFilter("all")
-                  setSortBy("default")
-                  setShowFilters(false)
-                }}
-              >
-                Clear filters
-              </Button>
-              {onNavigate ? (
-                <Button type="button" className="rounded-full" onClick={() => onNavigate("ai-coach")}>
-                  Open Coach
+          <EditorialEmpty
+            title="No moves match yet"
+            description="Loosen filters to see workouts, or open Coach for guided form drills."
+            media={
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src="/illustrations/exercises-empty.svg"
+                alt=""
+                className="h-[7rem] w-[7rem] opacity-90"
+              />
+            }
+            secondary={
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-full"
+                  onClick={() => {
+                    setActiveCategory("all")
+                    setDurationFilter("all")
+                    setSortBy("default")
+                    setShowFilters(false)
+                  }}
+                >
+                  Clear filters
                 </Button>
-              ) : (
-                <Button type="button" className="rounded-full" onClick={() => onOpenAICoach?.()}>
-                  Open Coach
-                </Button>
-              )}
-            </EmptyContent>
-          </Empty>
+                {onNavigate ? (
+                  <Button type="button" className="rounded-full" onClick={() => onNavigate("ai-coach")}>
+                    Open Coach
+                  </Button>
+                ) : (
+                  <Button type="button" className="rounded-full" onClick={() => onOpenAICoach?.()}>
+                    Open Coach
+                  </Button>
+                )}
+              </div>
+            }
+          />
         ) : (
           filtered.map((exercise) => (
             <motion.div key={exercise.id} variants={CINEMATIC.statReveal}>
@@ -468,15 +518,20 @@ function ExerciseDetail({
   onToggleFavorite,
   lastDone,
   onOpenAICoach,
+  preferResumePlayback = false,
+  onPreferResumeConsumed,
 }: {
   exercise: (typeof exercises)[0]
   onBack: () => void
   isFavorite: boolean
   onToggleFavorite: () => void
   lastDone: boolean
-  onOpenAICoach?: (opts?: { exerciseId?: ExerciseId }) => void
+  onOpenAICoach?: (opts?: { exerciseId?: string }) => void
+  preferResumePlayback?: boolean
+  onPreferResumeConsumed?: () => void
 }) {
   const [playing, setPlaying] = useState(false)
+  const [playbackResume, setPlaybackResume] = useState(false)
 
   const exerciseSteps = useMemo(
     () =>
@@ -492,18 +547,32 @@ function ExerciseDetail({
 
   const firstCoachId = useMemo(() => {
     for (const step of exerciseSteps) {
-      const id = getAICoachIdForStep(step.name)
+      const id = getSpecIdForStep(step.name)
       if (id) return id
     }
     return null
   }, [exerciseSteps])
 
+  useEffect(() => {
+    if (!preferResumePlayback) return
+    const s = readWorkoutSessionSnapshot()
+    if (!s || s.exerciseId !== exercise.id) {
+      onPreferResumeConsumed?.()
+      return
+    }
+    setPlaybackResume(true)
+    setPlaying(true)
+    onPreferResumeConsumed?.()
+  }, [preferResumePlayback, exercise.id, onPreferResumeConsumed])
+
   if (playing) {
     return (
       <WorkoutPlayer
         exercise={exercise}
+        resume={playbackResume}
         onExit={(completed) => {
           setPlaying(false)
+          setPlaybackResume(false)
           if (completed) onBack()
         }}
       />
@@ -511,6 +580,7 @@ function ExerciseDetail({
   }
 
   const handleStartWorkout = () => {
+    setPlaybackResume(false)
     setPlaying(true)
   }
 
@@ -561,7 +631,7 @@ function ExerciseDetail({
         <h2 className="text-sm font-semibold text-foreground mb-3">Workout Plan</h2>
         <div className="flex flex-col gap-2">
           {exerciseSteps.map((step, i) => {
-            const coachId = getAICoachIdForStep(step.name)
+            const coachId = getSpecIdForStep(step.name)
             return (
             <div key={`${i}-${step.name}`} className="flex items-center gap-3 rounded-xl bg-card p-3 border border-border">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-xs font-bold text-muted-foreground">{i + 1}</div>

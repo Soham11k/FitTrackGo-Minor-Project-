@@ -1,7 +1,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { isSupabaseFetchError, validateSupabaseEnv } from '@/lib/supabase/config'
-import { getSupabaseUrlForRuntime } from '@/lib/supabase/runtime-url'
+import { shouldSkipSupabaseNetwork } from '@/lib/supabase/connectivity-circuit'
+import { getSupabaseUrlForServer } from '@/lib/supabase/runtime-url'
 
 export async function updateSession(request: NextRequest, _requestId?: string) {
   // Skip processing /login route - it doesn't exist and is handled client-side
@@ -19,8 +20,13 @@ export async function updateSession(request: NextRequest, _requestId?: string) {
     return supabaseResponse
   }
 
+  // Dev: client-side auth + mock/offline circuit — skip server refresh (avoids ECONNRESET spam when project is paused).
+  if (process.env.NODE_ENV === 'development') {
+    return supabaseResponse
+  }
+
   const supabase = createServerClient(
-    getSupabaseUrlForRuntime(),
+    getSupabaseUrlForServer(),
     key!,
     {
       cookies: {
@@ -43,6 +49,10 @@ export async function updateSession(request: NextRequest, _requestId?: string) {
   // IMPORTANT: Avoid writing any logic between createServerClient and
   // supabase.auth.getUser(). A simple mistake could make it very hard to debug
   // issues with users being randomly logged out.
+
+  if (shouldSkipSupabaseNetwork()) {
+    return supabaseResponse
+  }
 
   // Refresh the session - this updates the cookies
   try {

@@ -1,0 +1,25 @@
+{
+  "id": "incline_dumbbell_curl",
+  "displayName": "Incline Dumbbell Curl",
+  "category": "upper",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16],
+  "visibleFraction": 0.67,
+  "positiveLine": "Long-head bias — slow negative, no shoulder swing",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 62 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 138 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 62 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 138 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "incline_dumbbell_curl.full_range",
+      "region": "arms",
+      "penalty": 12,
+      "when": { "any": [ { "metric": "elbow_angle_avg", "op": "<=", "value": 30 }, { "metric": "elbow_angle_avg", "op": ">=", "value": 160 } ] },
+      "feedback": "Use full range — extend at bottom, curl without shrugging",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "region": "arms" }
+    }
+  ]
+}

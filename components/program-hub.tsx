@@ -15,12 +15,15 @@ import {
   type Program,
 } from "@/lib/programs"
 import { track } from "@/lib/analytics"
+import { getProgramBlockSpecId } from "@/lib/program-block-coach-map"
+import { getDisplayNameForSpec } from "@/lib/coach-exercise-catalog"
+import { InlineScreenSkeleton } from "@/components/brand/inline-screen-skeleton"
 
 interface ProgramHubProps {
-  onStartSession?: (programDayId: string) => void
+  onStartCoach?: (specId: string) => void
 }
 
-export function ProgramHub({ onStartSession }: ProgramHubProps) {
+export function ProgramHub({ onStartCoach }: ProgramHubProps) {
   const [plan, setPlan] = useState<PlanState | null>(null)
   const [catalog, setCatalog] = useState<Program[]>([])
   const [loading, setLoading] = useState(true)
@@ -47,23 +50,12 @@ export function ProgramHub({ onStartSession }: ProgramHubProps) {
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <Card className="space-y-4 p-5 shadow-[var(--shadow-card)]">
-          <div className="flex items-center justify-between">
-            <div className="space-y-2">
-              <div className="h-3 w-20 animate-pulse rounded bg-muted" />
-              <div className="h-5 w-40 animate-pulse rounded bg-muted" />
-            </div>
-            <div className="h-6 w-16 animate-pulse rounded-full bg-muted" />
-          </div>
-          <div className="h-2 w-full animate-pulse rounded-full bg-muted" />
-          <div className="space-y-2">
-            <div className="h-12 w-full animate-pulse rounded-lg bg-muted" />
-            <div className="h-12 w-full animate-pulse rounded-lg bg-muted" />
-            <div className="h-12 w-full animate-pulse rounded-lg bg-muted" />
-          </div>
-        </Card>
-      </div>
+      <InlineScreenSkeleton
+        label="Loading programs…"
+        hint="Preparing your plan blocks and Coach-ready sessions."
+        layout="list"
+        className="border-0 bg-transparent p-0 shadow-none"
+      />
     )
   }
 
@@ -150,31 +142,48 @@ export function ProgramHub({ onStartSession }: ProgramHubProps) {
 
               {plan.blocks.length > 0 ? (
                 <ul className="space-y-2">
-                  {plan.blocks.map((b) => (
-                    <li
-                      key={b.id}
-                      className="flex items-center justify-between rounded-lg border border-border/60 p-3 text-sm transition-all active:scale-[0.99]"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-base font-bold tabular-nums text-foreground">
-                          {b.sets} × {b.reps ?? `${b.duration_sec}s`}
+                  {plan.blocks.map((b) => {
+                    const mapped = getProgramBlockSpecId(b.exercise_id)
+                    const moveLabel =
+                      mapped != null ? getDisplayNameForSpec(mapped) : `Exercise #${b.exercise_id}`
+                    return (
+                      <li
+                        key={b.id}
+                        className="flex items-center justify-between rounded-lg border border-border/60 p-3 text-sm transition-all active:scale-[0.99]"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-base font-bold tabular-nums text-foreground">
+                            {b.sets} × {b.reps ?? `${b.duration_sec}s`}
+                          </div>
+                          <div className="text-typo-caption text-muted-foreground truncate">
+                            {moveLabel}
+                            {mapped ? " · opens in Coach · " : ""}
+                            Rest {b.rest_sec}s
+                          </div>
                         </div>
-                        <div className="text-typo-caption text-muted-foreground">
-                          Rest {b.rest_sec}s · Exercise #{b.exercise_id}
-                        </div>
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    </li>
-                  ))}
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      </li>
+                    )
+                  })}
                 </ul>
               ) : (
                 <p className="text-xs text-muted-foreground">Follow the session notes above.</p>
               )}
 
               <div className="flex gap-2">
-                {onStartSession && plan.today ? (
-                  <Button onClick={() => onStartSession(plan.today!.id)} className="flex-1">
-                    Start session
+                {onStartCoach && plan.today && plan.blocks.length > 0 ? (
+                  <Button
+                    onClick={() => {
+                      const specId = getProgramBlockSpecId(plan.blocks![0].exercise_id)
+                      if (!specId) {
+                        toast.error("Can't map today's block — update program seed mapping.")
+                        return
+                      }
+                      onStartCoach(specId)
+                    }}
+                    className="flex-1"
+                  >
+                    Start session · Coach
                   </Button>
                 ) : null}
                 <Button variant="outline" onClick={handleComplete} disabled={busy}>

@@ -50,7 +50,7 @@ export const fitbitAdapter: WearableProviderAdapter = {
     })
   },
 
-  async fetchDailySummary(accessToken, date): Promise<ProviderDailyMetrics | null> {
+  async fetchDailySummary(accessToken, date, _opts?: { startMs: number; endMs: number }): Promise<ProviderDailyMetrics | null> {
     const headers = { Authorization: `Bearer ${accessToken}` }
     const [activityRes, hrRes, sleepRes, spo2Res] = await Promise.all([
       fetch(`${API_BASE}/activities/date/${date}.json`, { headers }),

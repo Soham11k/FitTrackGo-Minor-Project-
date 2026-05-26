@@ -46,7 +46,7 @@ export const appleHealthAdapter: WearableProviderAdapter = {
   async refreshTokens() {
     throw new Error("Apple Health does not have refresh tokens.")
   },
-  async fetchDailySummary() {
+  async fetchDailySummary(_accessToken: string, _date: string, _opts?: { startMs: number; endMs: number }) {
     // Pull is driven by the device; nothing to do server-side until an import
     // lands for this date.
     return null

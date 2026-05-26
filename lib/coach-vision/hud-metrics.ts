@@ -5,7 +5,8 @@
  * exercise. `RomTracker` remembers the deepest joint angle in the current
  * rep and converts it into a normalized 0..1 ROM bar.
  */
-import type { Landmark, ExerciseId } from "@/lib/form-analysis"
+import type { Landmark, ExerciseId, CoachExerciseId } from "@/lib/form-analysis"
+import { isLegacyExerciseId } from "@/lib/form-analysis"
 
 export interface JointAngle {
   key: string
@@ -27,12 +28,40 @@ function angle(a: Landmark, b: Landmark, c: Landmark): number {
 const safe = (lm: Landmark[], i: number): Landmark =>
   lm[i] ?? { x: 0, y: 0, z: 0, visibility: 0 }
 
-export function computeJointAngles(lm: Landmark[], exercise: ExerciseId): JointAngle[] {
+/** Map FormSpec ids to a legacy HUD profile (angles shown on rep traces). */
+function normalizeHudExercise(exercise: CoachExerciseId): ExerciseId {
+  if (isLegacyExerciseId(exercise)) return exercise
+  if (exercise.startsWith("pushup")) return "pushup"
+  if (exercise === "side_plank") return "plank"
+  if (["goblet_squat", "front_squat", "wall_sit"].includes(exercise)) return "squat"
+  if (["bulgarian_split_squat", "romanian_split_squat", "step_up"].includes(exercise)) return "lunge"
+  if (["hip_thrust", "glute_bridge"].includes(exercise)) return "deadlift"
+  if (["sit_up", "bicycle_crunch", "dead_bug", "bird_dog"].includes(exercise)) return "crunch"
+  if (["mountain_climber", "burpee"].includes(exercise)) return "plank"
+  if (exercise === "jump_rope" || exercise === "box_jump") return "jumping_jacks"
+  if (["leg_press", "leg_extension", "leg_curl", "calf_raise"].includes(exercise)) return "squat"
+  if (["kettlebell_swing", "farmer_carry"].includes(exercise)) return "deadlift"
+  if (
+    [
+      "bench_press",
+      "incline_bench_press",
+      "lateral_raise",
+      "front_raise",
+      "overhead_tricep_extension",
+      "face_pull",
+      "reverse_fly",
+    ].includes(exercise)
+  )
+    return "shoulder_press"
+  return "pushup"
+}
+
+export function computeJointAngles(lm: Landmark[], exercise: CoachExerciseId): JointAngle[] {
   if (!lm?.length) return []
   const out: JointAngle[] = []
+  const ex = normalizeHudExercise(exercise)
 
-  switch (exercise) {
-    case "squat":
+  switch (ex) {
     case "lunge":
     case "high_knees":
     case "deadlift":

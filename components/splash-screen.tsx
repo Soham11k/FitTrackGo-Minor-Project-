@@ -1,16 +1,18 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { motion, useReducedMotion } from "framer-motion"
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { siteConfig } from "@/lib/data"
-import { StatDisplay } from "@/components/ui/stat-display"
+import { FittrackBrandLockup } from "@/components/brand/fittrack-brand-lockup"
 import { CinematicStage } from "@/components/ui/cinematic-stage"
 import { CINEMATIC, EASE } from "@/lib/motion"
 
 const SPLASH_KEY = "ft-splash-seen"
 
+const STEPS = ["Warming up", "Loading your profile", "Ready"] as const
+
 export function SplashScreen({ onComplete }: { onComplete: () => void }) {
-  const [phase, setPhase] = useState(0)
+  const [step, setStep] = useState(0)
   const reduce = useReducedMotion() ?? false
 
   const finish = useCallback(() => {
@@ -43,8 +45,8 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
     }
 
     if (seen) {
-      setPhase(4)
-      const id = setTimeout(safeFinish, 500)
+      setStep(2)
+      const id = setTimeout(safeFinish, 380)
       return () => {
         cancelled = true
         clearTimeout(id)
@@ -52,11 +54,10 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
     }
 
     const timers = [
-      setTimeout(() => setPhase(1), 80),
-      setTimeout(() => setPhase(2), 520),
-      setTimeout(() => setPhase(3), 980),
-      setTimeout(() => setPhase(4), 1680),
-      setTimeout(() => safeFinish(), 2500),
+      setTimeout(() => setStep(0), 60),
+      setTimeout(() => setStep(1), 900),
+      setTimeout(() => setStep(2), 1700),
+      setTimeout(() => safeFinish(), 2400),
     ]
     return () => {
       cancelled = true
@@ -64,64 +65,13 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
     }
   }, [finish, reduce])
 
-  const progressPct = phase >= 4 ? 100 : phase >= 1 ? Math.min(100, 16 + phase * 24) : 0
-
-  const content = (
-    <div className="relative flex max-w-lg flex-col items-center justify-center px-6 text-center" role="presentation">
-      <motion.div
-        className="relative w-full"
-        variants={CINEMATIC.heroEnter}
-        initial="hidden"
-        animate={phase >= 1 ? "show" : "hidden"}
-      >
-        <p className="text-eyebrow-mega mb-4 text-[color:oklch(1_0_0/0.55)]">FITTRACK</p>
-        <StatDisplay
-          value={
-            <>
-              GO<span className="text-primary">.</span>
-            </>
-          }
-          tone="stage"
-          size="lg"
-          secondary={phase >= 3 ? siteConfig.tagline : undefined}
-        />
-      </motion.div>
-
-      <motion.div
-        className="relative mx-auto mt-12 h-[3px] w-56 overflow-hidden bg-[color:var(--surface-stage-hairline)] sm:w-80"
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(progressPct)}
-        aria-busy={phase < 4}
-        aria-label="Launch progress"
-        initial={{ opacity: reduce ? 1 : 0.35 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.35, ease: [...EASE.cinematic] }}
-      >
-        <motion.div
-          className="h-full bg-primary"
-          initial={{ width: "0%" }}
-          animate={{ width: `${progressPct}%` }}
-          transition={{ duration: 1.1, ease: [...EASE.cinematic] }}
-        />
-      </motion.div>
-
-      <p
-        className={`mt-6 text-center text-typo-eyebrow uppercase tracking-[0.28em] text-[color:oklch(0.92_0_0/0.55)] transition-opacity duration-500 ${
-          phase >= 3 ? "opacity-100" : "opacity-0"
-        }`}
-      >
-        Tap or Enter to skip
-      </p>
-    </div>
-  )
+  const status = STEPS[Math.min(step, STEPS.length - 1)]
 
   return (
     <CinematicStage vignette className="fixed inset-0 z-50 cursor-default">
       <button
         type="button"
-        className="flex h-full min-h-dvh w-full flex-col cursor-pointer items-center justify-center px-6 outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className="flex h-full min-h-dvh w-full flex-col items-center justify-center px-6 outline-none focus-visible:ring-2 focus-visible:ring-primary"
         tabIndex={0}
         aria-label="Splash screen. Press Enter or tap to skip."
         onClick={() => finish()}
@@ -132,7 +82,58 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
           }
         }}
       >
-        {content}
+        <motion.div
+          className="flex max-w-sm flex-col items-center text-center"
+          variants={CINEMATIC.heroEnter}
+          initial="hidden"
+          animate="show"
+          role="presentation"
+        >
+          <FittrackBrandLockup
+            markSize={96}
+            variant="hero"
+            animated
+            tagline={step >= 1 ? siteConfig.tagline : undefined}
+          />
+
+          <div className="mt-10 flex min-h-[1.5rem] items-center justify-center" aria-live="polite">
+            <AnimatePresence mode="wait">
+              <motion.p
+                key={status}
+                className="text-sm font-medium text-[color:oklch(0.92_0_0/0.72)]"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.28, ease: [...EASE.cinematic] }}
+              >
+                {status}
+              </motion.p>
+            </AnimatePresence>
+          </div>
+
+          <div className="mt-8 flex gap-1.5" aria-hidden>
+            {STEPS.map((_, i) => (
+              <motion.span
+                key={i}
+                className="h-1 rounded-full bg-primary"
+                initial={false}
+                animate={{
+                  width: i <= step ? 28 : 8,
+                  opacity: i <= step ? 1 : 0.25,
+                }}
+                transition={{ duration: 0.35, ease: [...EASE.cinematic] }}
+              />
+            ))}
+          </div>
+
+          <p
+            className={`mt-10 text-typo-caption text-[color:oklch(0.92_0_0/0.4)] transition-opacity duration-500 ${
+              step >= 1 ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            Tap to skip
+          </p>
+        </motion.div>
       </button>
     </CinematicStage>
   )

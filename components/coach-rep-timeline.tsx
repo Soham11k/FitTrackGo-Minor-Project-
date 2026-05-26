@@ -3,16 +3,21 @@
 /**
  * Lightweight “replay”: per-rep form scores as a scrubbable bar row (no video).
  */
+import type { RepTracePair } from "@/lib/rep-trace"
+import { InteractiveCue } from "@/components/coach/interactive-cue"
+
 export function CoachRepTimeline({
   repScores,
   selectedRep,
   onRepSelect,
   label = "Rep timeline",
+  repTraces,
 }: {
   repScores: number[]
   selectedRep: number | null
   onRepSelect?: (repIndex: number) => void
   label?: string
+  repTraces?: RepTracePair[]
 }) {
   if (repScores.length === 0) return null
 
@@ -66,6 +71,29 @@ export function CoachRepTimeline({
           <strong className="text-foreground">{repScores[selectedRep]}%</strong> form
         </p>
       )}
+
+      {selectedRep != null && repTraces?.length ? (
+        (() => {
+          const trace = repTraces.find((t) => t.rep === selectedRep + 1)
+          if (!trace) return null
+          const faults = Array.from(new Set([...trace.bottom.faults, ...trace.top.faults].map((f) => f.trim()).filter(Boolean)))
+            .slice(0, 4)
+          if (!faults.length) return null
+
+          return (
+            <div className="pt-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground text-center">
+                Tappable improve cues (this rep)
+              </p>
+              <div className="mt-2 flex flex-wrap justify-center gap-2">
+                {faults.map((f) => (
+                  <InteractiveCue key={f} text={f} kind="improve" className="mx-0 rounded-lg px-2 py-1 text-[0.8125rem] font-semibold" />
+                ))}
+              </div>
+            </div>
+          )
+        })()
+      ) : null}
     </div>
   )
 }

@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import { createServiceRoleClient } from "@/lib/supabase/service-role"
 import { getAdapter } from "@/lib/wearables/providers"
 import type { ProviderId } from "@/lib/wearables/providers"
+import { resolveWearableOAuthRedirectBase } from "@/lib/wearables/app-origin"
+import { rollingUtcDayWindows } from "@/lib/wearables/local-day-windows"
+import { syncGoogleFitForUser } from "@/lib/wearables/sync-google-fit"
 
 export async function GET(
   request: Request,
@@ -12,11 +15,12 @@ export async function GET(
   if (!adapter) return NextResponse.json({ error: "Unknown provider" }, { status: 404 })
 
   const url = new URL(request.url)
+  const appBase = resolveWearableOAuthRedirectBase(request.url)
   const code = url.searchParams.get("code")
   const state = url.searchParams.get("state") ?? ""
   const error = url.searchParams.get("error")
   if (error) {
-    return NextResponse.redirect(`${url.origin}/?wearable_error=${encodeURIComponent(error)}`)
+    return NextResponse.redirect(`${appBase}/?wearable_error=${encodeURIComponent(error)}`)
   }
   if (!code) return NextResponse.json({ error: "Missing code" }, { status: 400 })
 
@@ -27,7 +31,7 @@ export async function GET(
   if (!admin) return NextResponse.json({ error: "Not configured" }, { status: 503 })
 
   try {
-    const redirectUri = `${url.origin}/api/wearables/${provider}/callback`
+    const redirectUri = `${appBase}/api/wearables/${provider}/callback`
     const tokens = await adapter.exchangeCode(code, redirectUri)
 
     const { error: upsertError } = await admin.from("wearable_connections").upsert(
@@ -44,11 +48,19 @@ export async function GET(
     )
     if (upsertError) throw upsertError
 
-    return NextResponse.redirect(`${url.origin}/?wearable_connected=${provider}`)
+    if (provider === "google_fit") {
+      try {
+        await syncGoogleFitForUser(admin, userId, rollingUtcDayWindows(10))
+      } catch (syncErr) {
+        console.warn("[wearables/google_fit/callback] initial sync failed:", syncErr)
+      }
+    }
+
+    return NextResponse.redirect(`${appBase}/?wearable_connected=${provider}`)
   } catch (err) {
     console.error(`[wearables/${provider}/callback] failed:`, err)
     return NextResponse.redirect(
-      `${url.origin}/?wearable_error=${encodeURIComponent(String(err instanceof Error ? err.message : err))}`
+      `${appBase}/?wearable_error=${encodeURIComponent(String(err instanceof Error ? err.message : err))}`
     )
   }
 }

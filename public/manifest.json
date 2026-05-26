@@ -1,11 +1,11 @@
 {
-  "name": "FitTrackGo",
-  "short_name": "FitTrackGo",
+  "name": "FitTrack Go",
+  "short_name": "FitTrack Go",
   "description": "Your Fitness Companion — Track runs, master exercises with AI body detection, and crush your fitness goals.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0a",
-  "theme_color": "#22c55e",
+  "theme_color": "#000000",
   "orientation": "portrait",
   "icons": [
     {

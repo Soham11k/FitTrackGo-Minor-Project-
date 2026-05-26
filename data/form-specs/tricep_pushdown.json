@@ -1,0 +1,25 @@
+{
+  "id": "tricep_pushdown",
+  "displayName": "Tricep Pushdown",
+  "category": "upper",
+  "loadType": "external",
+  "requiredLandmarks": [11, 12, 13, 14, 15, 16],
+  "visibleFraction": 0.67,
+  "positiveLine": "Elbows glued to ribs — extend and control the return",
+  "repPattern": "top_bottom_top",
+  "phases": [
+    { "name": "bottom", "enterWhen": { "metric": "elbow_angle_avg", "op": "<", "value": 72 } },
+    { "name": "top", "enterWhen": { "metric": "elbow_angle_avg", "op": ">", "value": 162 } },
+    { "name": "concentric", "enterWhen": { "all": [ { "metric": "elbow_angle_avg", "op": ">=", "value": 72 }, { "metric": "elbow_angle_avg", "op": "<=", "value": 162 } ] } }
+  ],
+  "rules": [
+    {
+      "id": "tricep_pushdown.range",
+      "region": "arms",
+      "penalty": 10,
+      "when": { "any": [ { "metric": "elbow_angle_avg", "op": "<=", "value": 48 }, { "metric": "elbow_angle_avg", "op": ">=", "value": 175 } ] },
+      "feedback": "Full range — flex elbows, then full lockout without leaning in",
+      "breakdown": { "label": "Elbow angle", "format": "angle", "metric": "elbow_angle_avg", "region": "arms" }
+    }
+  ]
+}
