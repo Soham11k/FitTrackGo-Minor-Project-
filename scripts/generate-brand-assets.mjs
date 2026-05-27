@@ -32,32 +32,33 @@ function ogSvg(width, height, titleText) {
   </svg>`
 }
 
-/** Square app icon — activity rings (matches components/fittrack-logo-mark.tsx). */
+const PULSE_PATH =
+  "M 18 52 L 18 28 L 34 28 L 34 36 L 26 36 L 26 40 L 38 40 L 44 24 L 50 48 L 56 32 L 62 52"
+
+/** Square app icon — pulse glyph (matches components/fittrack-logo-mark.tsx). */
 function iconSvg(size, fg = FG, accent = ACCENT, accent2 = ACCENT2, bg = BG) {
   const sw = Math.max(1, size / 80)
   return `
   <svg width="${size}" height="${size}" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
-    <rect x="6" y="6" width="68" height="68" rx="18" fill="${bg}" stroke="rgba(255,255,255,0.12)" stroke-width="${sw}"/>
+    <rect x="6" y="6" width="68" height="68" rx="18" fill="${bg}" stroke="rgba(0,0,0,0.08)" stroke-width="${sw}"/>
     <defs>
-      <linearGradient id="g" x1="16" y1="58" x2="64" y2="16" gradientUnits="userSpaceOnUse">
+      <linearGradient id="g" x1="14" y1="54" x2="66" y2="22" gradientUnits="userSpaceOnUse">
         <stop stop-color="${accent}"/>
         <stop offset="1" stop-color="${accent2}"/>
       </linearGradient>
     </defs>
-    <path d="M 40 28 A 12 12 0 1 1 34 50" fill="none" stroke="${fg}" stroke-opacity="0.12" stroke-width="2" stroke-linecap="round"/>
-    <path d="M 40 20 A 20 20 0 1 1 26 54" fill="none" stroke="${fg}" stroke-opacity="0.18" stroke-width="2.5" stroke-linecap="round"/>
-    <path d="M 40 12 A 28 28 0 1 1 18 56" fill="none" stroke="url(#g)" stroke-width="4.5" stroke-linecap="round"/>
-    <circle cx="18" cy="56" r="4.5" fill="${accent}"/>
+    <path d="${PULSE_PATH}" fill="none" stroke="url(#g)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="62" cy="52" r="4" fill="${accent}"/>
   </svg>`
 }
 
-/** Safari pinned tab — simplified rings on black. */
+/** Safari pinned tab — simplified pulse on black. */
 function safariPinnedSvg() {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="64" height="64" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
   <rect x="6" y="6" width="68" height="68" rx="18" fill="#000"/>
-  <path d="M 40 12 A 28 28 0 1 1 18 56" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/>
-  <circle cx="18" cy="56" r="4.5" fill="#fff"/>
+  <path d="${PULSE_PATH}" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="62" cy="52" r="4" fill="#fff"/>
 </svg>`
 }
 

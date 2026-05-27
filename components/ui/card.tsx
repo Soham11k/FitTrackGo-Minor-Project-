@@ -5,9 +5,8 @@ import { cn } from '@/lib/utils'
 type CardVariant = 'default' | 'compact'
 
 const cardVariants: Record<CardVariant, string> = {
-  default: 'flex flex-col gap-6 rounded-xl border py-6 shadow-sm',
-  compact:
-    'flex flex-col gap-3 rounded-2xl border p-4 shadow-[var(--shadow-card)]',
+  default: 'nrc-card flex flex-col gap-6 py-6',
+  compact: 'nrc-card flex flex-col gap-3 p-4',
 }
 
 function Card({
@@ -19,11 +18,7 @@ function Card({
     <div
       data-slot="card"
       data-variant={variant}
-      className={cn(
-        'bg-card text-card-foreground',
-        cardVariants[variant],
-        className,
-      )}
+      className={cn('text-card-foreground', cardVariants[variant], className)}
       {...props}
     />
   )
@@ -43,7 +38,6 @@ function CardHeader({ className, ...props }: React.ComponentProps<'div'>) {
 }
 
 type CardTitleProps = React.HTMLAttributes<HTMLElement> & {
-  /** Default h3 for document outline; use `div` when nested inside an existing heading. */
   as?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'div'
 }
 

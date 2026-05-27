@@ -33,7 +33,8 @@ export function MetricTrendMini({
         <AreaChart data={data} margin={{ top: 6, right: 4, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id={`fill-${gid}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={stopColor} stopOpacity={0.35} />
+              <stop offset="0%" stopColor={stopColor} stopOpacity={0.42} />
+              <stop offset="55%" stopColor={stopColor} stopOpacity={0.12} />
               <stop offset="100%" stopColor={stopColor} stopOpacity={0} />
             </linearGradient>
           </defs>

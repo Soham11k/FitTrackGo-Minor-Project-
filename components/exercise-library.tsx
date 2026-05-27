@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { motion } from "framer-motion"
+import { motion, useReducedMotion } from "framer-motion"
 import { Clock, Flame, ChevronRight, Play, Star, Filter, Dumbbell, Heart, Zap, RefreshCw, Target, Wand2 } from "lucide-react"
+import { ExerciseIllustration, type ExerciseIllustrationId } from "@/components/animated/ExerciseIllustration"
 import { getFavorites, toggleFavorite, getWorkouts, formatErr } from "@/lib/store-supabase"
 import { CINEMATIC, staggerChildren } from "@/lib/motion"
 import { pulse } from "@/lib/haptics"
@@ -48,11 +49,11 @@ function DifficultyBadge({ level }: { level: string }) {
 }
 
 const categoryMetricTint: Record<Category, string> = {
-  all: "from-metric-move/35 to-metric-run/20",
-  strength: "from-metric-move/40 to-metric-move/10",
-  cardio: "from-metric-run/40 to-metric-run/12",
-  yoga: "from-metric-coach/38 to-metric-coach/12",
-  hiit: "from-metric-streak/40 to-metric-streak/15",
+  all:      "from-primary/55 via-metric-run/30 to-metric-run/10",
+  strength: "from-metric-move/65 to-metric-move/25",
+  cardio:   "from-metric-run/65 to-metric-run/25",
+  yoga:     "from-metric-coach/60 to-metric-coach/20",
+  hiit:     "from-metric-hr/60 to-metric-hr/20",
 }
 
 const categoryIcons: Record<Category, typeof Dumbbell> = {
@@ -61,6 +62,14 @@ const categoryIcons: Record<Category, typeof Dumbbell> = {
   cardio: Flame,
   yoga: Heart,
   hiit: Zap,
+}
+
+const categoryToIllustration: Record<Category, ExerciseIllustrationId> = {
+  all:      "default",
+  strength: "squat",
+  cardio:   "run",
+  yoga:     "yoga",
+  hiit:     "high_knees",
 }
 
 export function ExerciseLibrary({
@@ -184,7 +193,7 @@ export function ExerciseLibrary({
   }
 
   return (
-    <div className="flex flex-col gap-5 px-4 pt-4 pb-28">
+    <div className="flex flex-col gap-5 bg-background px-4 pt-4 pb-28">
       {pausedWorkoutSnapshot?.exercise && (
         <div className="flex flex-wrap items-start gap-2 rounded-2xl border border-primary/30 bg-primary/[0.06] p-3 text-sm dark:bg-primary/10">
           <div className="min-w-0 flex-1">
@@ -230,7 +239,7 @@ export function ExerciseLibrary({
         variants={CINEMATIC.heroEnter}
         initial="hidden"
         animate="show"
-        className="surface-stage-gradient flex flex-col gap-4 rounded-3xl border border-border/70 p-5 shadow-[var(--shadow-card)]"
+        className="nrc-card flex flex-col gap-4 p-5"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -299,18 +308,29 @@ export function ExerciseLibrary({
         </div>
       )}
 
-      <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4">
-        {categories.map((cat) => (
-          <button
-            key={cat.id}
-            onClick={() => setActiveCategory(cat.id)}
-            className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-all ${
-              activeCategory === cat.id ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground border border-border hover:text-foreground"
-            }`}
-          >
-            {cat.label}
-          </button>
-        ))}
+      <div className="-mx-4 border-y border-border px-4">
+        <div className="flex gap-0 overflow-x-auto no-scrollbar">
+          {categories.map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => setActiveCategory(cat.id)}
+              className={`relative shrink-0 border-r border-border px-4 py-3 text-typo-eyebrow font-bold uppercase tracking-[0.2em] transition-colors last:border-r-0 ${
+                activeCategory === cat.id
+                  ? "bg-foreground text-background"
+                  : "bg-background text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {cat.label}
+              {activeCategory === cat.id && (
+                <motion.div
+                  layoutId="ex-cat-underline"
+                  className="absolute inset-x-0 bottom-0 h-0.5 bg-primary"
+                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                />
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       <article className="relative overflow-hidden rounded-2xl border border-border/60 text-left shadow-sm">
@@ -321,10 +341,12 @@ export function ExerciseLibrary({
           onClick={() => setSelectedExercise(featured)}
         />
         <div className={`relative z-0 pointer-events-none h-48 w-full bg-gradient-to-br ${categoryMetricTint[featured.category]} flex items-center justify-center`}>
-          {(() => {
-            const Icon = categoryIcons[featured.category]
-            return <Icon className="h-16 w-16 text-white/40" />
-          })()}
+          <ExerciseIllustration
+            id={categoryToIllustration[featured.category as Category] ?? "default"}
+            size={96}
+            animate
+            color="rgba(255,255,255,0.75)"
+          />
         </div>
         <div className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
         <div className="absolute top-3 right-3 z-20">
@@ -381,7 +403,7 @@ export function ExerciseLibrary({
       </article>
 
       <motion.div
-        className="flex flex-col gap-3"
+        className="grid grid-cols-2 gap-3"
         variants={staggerChildren(0.06, 0.05)}
         initial="hidden"
         animate="show"
@@ -391,9 +413,10 @@ export function ExerciseLibrary({
             label="Loading exercise library…"
             hint="Curating movement plans and Coach-ready drills."
             layout="list"
-            className="border-0 bg-transparent p-0 shadow-none"
+            className="col-span-2 border-0 bg-transparent p-0 shadow-none"
           />
         ) : filtered.length === 0 ? (
+          <div className="col-span-2">
           <EditorialEmpty
             title="No moves match yet"
             description="Loosen filters to see workouts, or open Coach for guided form drills."
@@ -432,76 +455,58 @@ export function ExerciseLibrary({
               </div>
             }
           />
+          </div>
         ) : (
           filtered.map((exercise) => (
-            <motion.div key={exercise.id} variants={CINEMATIC.statReveal}>
-            <div
-              className="flex items-stretch gap-0.5 rounded-2xl border border-border bg-card transition-colors hover:border-primary/30"
-            >
-              <button
-                type="button"
-                className="flex min-w-0 flex-1 items-center gap-4 rounded-2xl p-3 text-left transition-transform active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                onClick={() => setSelectedExercise(exercise)}
-              >
-                <div
-                  className={`h-20 w-20 shrink-0 rounded-xl bg-gradient-to-br flex items-center justify-center ${
-                    categoryMetricTint[exercise.category as Category]
-                  }`}
+            <motion.div key={exercise.id} variants={CINEMATIC.statReveal} className="min-w-0">
+              <article className="nrc-card relative flex h-full flex-col overflow-hidden p-0">
+                <button
+                  type="button"
+                  className="flex flex-1 flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
+                  onClick={() => setSelectedExercise(exercise)}
                 >
-                  {(() => {
-                    const Icon = categoryIcons[exercise.category]
-                    return <Icon className="h-8 w-8 text-white/50" />
-                  })()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <DifficultyBadge level={exercise.difficulty} />
-                    {completedTitles.has(exercise.title) && (
-                      <span className="rounded-full px-2 py-0.5 text-typo-eyebrow font-semibold bg-metric-move/15 text-metric-move">Done</span>
-                    )}
+                  <div
+                    className={`flex h-24 w-full items-center justify-center bg-gradient-to-br ${categoryMetricTint[exercise.category as Category]}`}
+                  >
+                    <ExerciseIllustration
+                      id={categoryToIllustration[exercise.category as Category] ?? "default"}
+                      size={56}
+                      animate={false}
+                      color="rgba(255,255,255,0.8)"
+                    />
                   </div>
-                  <h3 className="mt-1 truncate text-sm font-semibold text-foreground">{exercise.title}</h3>
-                  <div className="mt-0.5 flex items-center gap-1 text-typo-caption text-muted-foreground">
-                    <Clock className="h-3 w-3" />
-                    <span>{exercise.duration}</span>
+                  <div className="flex flex-1 flex-col gap-2 p-3">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <DifficultyBadge level={exercise.difficulty} />
+                      <span className="rounded-sm border border-border px-1.5 py-0.5 text-typo-micro font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                        {exercise.durationMin}m
+                      </span>
+                    </div>
+                    <h3 className="line-clamp-2 text-sm font-bold leading-snug text-foreground">{exercise.title}</h3>
+                    <p className="line-clamp-1 text-typo-caption capitalize text-muted-foreground">{exercise.category}</p>
+                    <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+                      <span className="text-typo-micro font-bold uppercase tracking-[0.16em] text-metric-hr tabular-nums">
+                        {exercise.calories} kcal
+                      </span>
+                      {completedTitles.has(exercise.title) ? (
+                        <span className="text-typo-micro font-bold uppercase text-metric-move">Done</span>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-                <div className="shrink-0 text-right">
-                  <div className="flex items-baseline justify-end gap-1">
-                    <span
-                      className="text-lg font-bold tabular-nums leading-none text-foreground"
-                      style={{ fontFamily: "var(--font-heading)" }}
-                    >
-                      {exercise.durationMin}
-                    </span>
-                    <span className="text-typo-micro font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                      min
-                    </span>
-                  </div>
-                  <div className="mt-1 flex items-baseline justify-end gap-1">
-                    <span className="text-sm font-semibold tabular-nums leading-none text-metric-hr">
-                      {exercise.calories}
-                    </span>
-                    <span className="text-typo-micro font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                      kcal
-                    </span>
-                  </div>
-                </div>
-                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-              </button>
-              <button
-                type="button"
-                className="shrink-0 self-center rounded-full p-2 hover:bg-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                onClick={(e) => handleToggleFavorite(e, exercise.id)}
-                aria-label={
-                  favorites.includes(exercise.id)
-                    ? `Unfavorite ${exercise.title}`
-                    : `Favorite ${exercise.title}`
-                }
-              >
-                <Star className={`h-4 w-4 ${favorites.includes(exercise.id) ? "fill-metric-streak text-metric-streak" : "text-muted-foreground"}`} />
-              </button>
-            </div>
+                </button>
+                <button
+                  type="button"
+                  className="absolute top-2 right-2 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/90"
+                  onClick={(e) => handleToggleFavorite(e, exercise.id)}
+                  aria-label={
+                    favorites.includes(exercise.id)
+                      ? `Unfavorite ${exercise.title}`
+                      : `Favorite ${exercise.title}`
+                  }
+                >
+                  <Star className={`h-3.5 w-3.5 ${favorites.includes(exercise.id) ? "fill-metric-streak text-metric-streak" : "text-muted-foreground"}`} />
+                </button>
+              </article>
             </motion.div>
           ))
         )}
@@ -588,7 +593,7 @@ function ExerciseDetail({
     <div className="flex flex-col pb-28">
       <div className="relative h-64 overflow-hidden">
         <div className={`h-full w-full bg-gradient-to-br flex items-center justify-center ${categoryMetricTint[exercise.category]}`}>
-          {(() => { const Icon = categoryIcons[exercise.category]; return <Icon className="h-20 w-20 text-white/40" /> })()}
+          {(() => { const Icon = categoryIcons[exercise.category]; return <Icon className="h-20 w-20 text-white/75" /> })()}
         </div>
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
         <button onClick={onBack} className="absolute top-4 left-4 flex h-10 w-10 items-center justify-center rounded-full bg-background/80 backdrop-blur-sm text-foreground" aria-label="Back">

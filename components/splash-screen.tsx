@@ -1,106 +1,164 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { siteConfig } from "@/lib/data"
-import { FittrackBrandLockup } from "@/components/brand/fittrack-brand-lockup"
-import { CinematicStage } from "@/components/ui/cinematic-stage"
 import { CINEMATIC, EASE } from "@/lib/motion"
+import { ParticleBurst } from "@/components/animated/ParticleBurst"
 
 const SPLASH_KEY = "ft-splash-seen"
-
 const STEPS = ["Warming up", "Loading your profile", "Ready"] as const
 
 export function SplashScreen({ onComplete }: { onComplete: () => void }) {
   const [step, setStep] = useState(0)
+  const [burst, setBurst] = useState(false)
+  const [wordmarkDone, setWordmarkDone] = useState(false)
   const reduce = useReducedMotion() ?? false
+  const finished = useRef(false)
 
   const finish = useCallback(() => {
-    try {
-      sessionStorage.setItem(SPLASH_KEY, "1")
-    } catch {
-      /* private mode */
-    }
+    if (finished.current) return
+    finished.current = true
+    try { sessionStorage.setItem(SPLASH_KEY, "1") } catch { /* private mode */ }
     onComplete()
   }, [onComplete])
 
   useEffect(() => {
     let cancelled = false
-    const safeFinish = () => {
-      if (!cancelled) finish()
-    }
+    const safe = () => { if (!cancelled) finish() }
 
-    if (reduce) {
-      safeFinish()
-      return () => {
-        cancelled = true
-      }
-    }
+    if (reduce) { safe(); return () => { cancelled = true } }
 
     let seen = false
-    try {
-      seen = sessionStorage.getItem(SPLASH_KEY) === "1"
-    } catch {
-      seen = false
-    }
+    try { seen = sessionStorage.getItem(SPLASH_KEY) === "1" } catch {}
 
     if (seen) {
       setStep(2)
-      const id = setTimeout(safeFinish, 380)
-      return () => {
-        cancelled = true
-        clearTimeout(id)
-      }
+      const id = setTimeout(safe, 380)
+      return () => { cancelled = true; clearTimeout(id) }
     }
 
     const timers = [
       setTimeout(() => setStep(0), 60),
       setTimeout(() => setStep(1), 900),
       setTimeout(() => setStep(2), 1700),
-      setTimeout(() => safeFinish(), 2400),
+      // trigger particle burst just before finish
+      setTimeout(() => { if (!cancelled) setBurst(true) }, 2000),
+      setTimeout(safe, 2600),
     ]
-    return () => {
-      cancelled = true
-      timers.forEach(clearTimeout)
-    }
+    return () => { cancelled = true; timers.forEach(clearTimeout) }
   }, [finish, reduce])
 
   const status = STEPS[Math.min(step, STEPS.length - 1)]
 
   return (
-    <CinematicStage vignette className="fixed inset-0 z-50 cursor-default">
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black cursor-default overflow-hidden">
+      {/* Background radial glow */}
+      <motion.div
+        className="pointer-events-none absolute inset-0"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 1.2 }}
+        style={{
+          background: "radial-gradient(ellipse 60% 50% at 50% 50%, oklch(0.72 0.22 130 / 0.15) 0%, transparent 70%)"
+        }}
+      />
+
+      {/* Particle burst centered */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <ParticleBurst trigger={burst} count={80} size={400} />
+      </div>
+
       <button
         type="button"
-        className="flex h-full min-h-dvh w-full flex-col items-center justify-center px-6 outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        tabIndex={0}
-        aria-label="Splash screen. Press Enter or tap to skip."
+        className="relative z-10 flex flex-col items-center text-center outline-none focus-visible:ring-2 focus-visible:ring-primary px-6"
+        aria-label="Splash screen. Tap to skip."
         onClick={() => finish()}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault()
-            finish()
-          }
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); finish() }
         }}
       >
         <motion.div
-          className="flex max-w-sm flex-col items-center text-center"
+          className="flex flex-col items-center gap-6"
           variants={CINEMATIC.heroEnter}
           initial="hidden"
           animate="show"
           role="presentation"
         >
-          <FittrackBrandLockup
-            markSize={96}
-            variant="hero"
-            animated
-            tagline={step >= 1 ? siteConfig.tagline : undefined}
-          />
+          {/* Large ECG-style heartbeat SVG — draws stroke-by-stroke */}
+          <div className="relative flex items-center justify-center">
+            <svg
+              width="240"
+              height="100"
+              viewBox="0 0 240 100"
+              fill="none"
+              aria-hidden
+              className="drop-shadow-[0_0_20px_oklch(0.72_0.22_130/0.6)]"
+            >
+              {/* Background dim track */}
+              <path
+                d="M0,50 L52,50 L70,12 L92,88 L110,50 L132,22 L150,50 L240,50"
+                stroke="oklch(0.72 0.22 130 / 0.15)"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+              {/* Animated drawing path */}
+              <motion.path
+                d="M0,50 L52,50 L70,12 L92,88 L110,50 L132,22 L150,50 L240,50"
+                stroke="oklch(0.72 0.22 130)"
+                strokeWidth="3.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+                initial={reduce ? { pathLength: 1 } : { pathLength: 0, opacity: 0 }}
+                animate={{ pathLength: 1, opacity: 1 }}
+                transition={{ duration: 1.1, ease: [...EASE.cinematic] }}
+                onAnimationComplete={() => setWordmarkDone(true)}
+              />
+              {/* Moving pulse dot */}
+              {!reduce && (
+                <motion.circle
+                  cx="150" cy="50" r="5"
+                  fill="oklch(0.72 0.22 130)"
+                  animate={{
+                    cx: [0, 52, 70, 92, 110, 132, 150, 240],
+                    cy: [50, 50, 12, 88, 50, 22, 50, 50],
+                    opacity: [0, 1, 1, 1, 1, 1, 1, 0],
+                  }}
+                  transition={{ duration: 1.1, ease: "linear", times: [0, 0.22, 0.29, 0.38, 0.46, 0.55, 0.63, 1] }}
+                />
+              )}
+            </svg>
+          </div>
 
-          <div className="mt-10 flex min-h-[1.5rem] items-center justify-center" aria-live="polite">
+          {/* Wordmark — fades in after ECG draw completes */}
+          <AnimatePresence>
+            {(wordmarkDone || reduce) && (
+              <motion.div
+                key="wordmark"
+                className="flex flex-col items-center gap-1"
+                initial={reduce ? false : { opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, ease: [...EASE.cinematic] }}
+              >
+                <p className="text-3xl font-black tracking-[-0.05em] text-white">
+                  FITTRACK <span className="text-[oklch(0.72_0.22_130)]">GO</span>
+                </p>
+                <p className="text-xs font-medium tracking-[0.22em] uppercase text-white/40">
+                  {siteConfig.tagline}
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Step status */}
+          <div className="flex min-h-[1.5rem] items-center justify-center" aria-live="polite">
             <AnimatePresence mode="wait">
               <motion.p
                 key={status}
-                className="text-sm font-medium text-[color:oklch(0.92_0_0/0.72)]"
+                className="text-sm font-medium text-white/60"
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
@@ -111,30 +169,24 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
             </AnimatePresence>
           </div>
 
-          <div className="mt-8 flex gap-1.5" aria-hidden>
+          {/* Progress dots */}
+          <div className="flex gap-1.5" aria-hidden>
             {STEPS.map((_, i) => (
               <motion.span
                 key={i}
                 className="h-1 rounded-full bg-primary"
                 initial={false}
-                animate={{
-                  width: i <= step ? 28 : 8,
-                  opacity: i <= step ? 1 : 0.25,
-                }}
+                animate={{ width: i <= step ? 28 : 8, opacity: i <= step ? 1 : 0.25 }}
                 transition={{ duration: 0.35, ease: [...EASE.cinematic] }}
               />
             ))}
           </div>
 
-          <p
-            className={`mt-10 text-typo-caption text-[color:oklch(0.92_0_0/0.4)] transition-opacity duration-500 ${
-              step >= 1 ? "opacity-100" : "opacity-0"
-            }`}
-          >
+          <p className={`text-typo-caption text-white/30 transition-opacity duration-500 ${step >= 1 ? "opacity-100" : "opacity-0"}`}>
             Tap to skip
           </p>
         </motion.div>
       </button>
-    </CinematicStage>
+    </div>
   )
 }

@@ -7,6 +7,8 @@ import { MetricGrid, MetricTile } from "@/components/brand/metric-panel"
 import { Button } from "@/components/ui/button"
 import { CelebrationBurst } from "@/components/ui/celebration-burst"
 import { PbSticker } from "@/components/ui/pb-sticker"
+import { AnimatedCounter } from "@/components/animated/AnimatedCounter"
+import { ParticleBurst } from "@/components/animated/ParticleBurst"
 import { toast } from "sonner"
 import { pathToSvgD } from "@/lib/run-path-svg"
 import { composeRunShareFile } from "@/lib/share-card"
@@ -182,7 +184,7 @@ export function RunFinishRecap({
 
   return (
     <motion.div
-      className="fixed inset-0 z-[80] flex flex-col bg-[color:var(--surface-stage)] text-[color:var(--surface-stage-fg)]"
+      className="fixed inset-0 z-[80] flex flex-col bg-background text-foreground"
       initial={reduceMotion ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={reduceMotion ? undefined : { opacity: 0 }}
@@ -191,33 +193,29 @@ export function RunFinishRecap({
       aria-modal="true"
       aria-labelledby="run-finish-title"
     >
-      <div className="flex items-center justify-between px-4 py-3">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div>
-          <p className="text-sm text-white/55">{dateLabel}</p>
-          <h2 id="run-finish-title" className="text-xl font-bold text-[color:var(--surface-stage-fg)]" style={{ fontFamily: "var(--font-heading)" }}>
-            Run saved
+          <p className="text-typo-eyebrow font-bold uppercase tracking-[0.22em] text-muted-foreground">{dateLabel}</p>
+          <h2
+            id="run-finish-title"
+            className="text-lg font-bold text-foreground"
+            style={{ fontFamily: "var(--font-display), var(--font-heading)" }}
+          >
+            {t("run.saved.title")}
           </h2>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="text-[color:var(--surface-stage-fg)] hover:bg-white/10"
-          onClick={() => onOpenChange(false)}
-        >
+        <Button type="button" variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
           {t("run.saved.close")}
         </Button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-safe pb-28 pt-4">
         <div className="relative mx-auto max-w-lg">
-          <p className="text-sm text-white/55">{dateLabel}</p>
-          <h3 className="mt-1 text-lg font-semibold text-[color:var(--surface-stage-fg)]" style={{ fontFamily: "var(--font-heading)" }}>
-            {t("run.saved.title")}
-          </h3>
-          <div className="my-5 h-px bg-[color:var(--surface-stage-hairline)]" />
-
           <div className="relative mx-auto flex flex-col items-start gap-1">
+            {/* Particle burst on PB */}
+            <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center">
+              <ParticleBurst trigger={burstOn} count={100} size={320} />
+            </div>
             {burstOn ? <CelebrationBurst className="absolute -top-4 right-0" /> : null}
             {pbResult ? <PbSticker variant={pbResult.variant} className="relative z-[1] mb-2" /> : null}
             <motion.div
@@ -227,23 +225,37 @@ export function RunFinishRecap({
               animate={reduceMotion ? "show" : statsPhase === "show" ? "show" : "hidden"}
             >
               <motion.div variants={CINEMATIC.statReveal}>
-                <p className="text-sm text-white/55">{t("run.stat.distance")}</p>
-                <p className="text-5xl font-bold tabular-nums text-[color:var(--surface-stage-fg)]" style={{ fontFamily: "var(--font-heading)" }}>
-                  {distanceKm.toFixed(2)}
-                  <span className="ml-2 text-lg font-semibold text-white/55">km</span>
+                {/* Trophy icon on any completed run */}
+                <motion.div
+                  className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-metric-streak/20 text-2xl"
+                  initial={reduceMotion ? false : { scale: 0, rotate: -20 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 18, delay: 0.2 }}
+                >
+                  🏃
+                </motion.div>
+                <p className="text-typo-eyebrow font-bold uppercase tracking-[0.28em] text-muted-foreground">{t("run.stat.distance")}</p>
+                <p
+                  className="text-display-stat-lg mt-1 tabular-nums text-foreground"
+                  style={{ fontFamily: "var(--font-display), var(--font-heading)" }}
+                >
+                  {statsPhase === "show" ? (
+                    <AnimatedCounter value={distanceKm} decimals={2} duration={1.2} />
+                  ) : "0.00"}
+                  <span className="ml-2 text-xl font-semibold text-muted-foreground">km</span>
                 </p>
               </motion.div>
-              <motion.div variants={CINEMATIC.statReveal} className="mt-6">
+              <motion.div variants={CINEMATIC.statReveal} className="mt-6 border-y border-border py-4">
                 <MetricGrid cols={3}>
-                  <MetricTile tone="stage" label={t("run.stat.pace")} value={pacePerKm} unit="/km" />
-                  <MetricTile tone="stage" label={t("run.stat.time")} value={formatDur(durationSec)} />
-                  <MetricTile tone="stage" label={t("run.stat.energy")} value={String(calories)} unit="kcal" />
+                  <MetricTile label={t("run.stat.pace")} value={pacePerKm} unit="/km" />
+                  <MetricTile label={t("run.stat.time")} value={formatDur(durationSec)} />
+                  <MetricTile label={t("run.stat.energy")} value={String(calories)} unit="kcal" />
                 </MetricGrid>
               </motion.div>
             </motion.div>
           </div>
 
-          <div className="relative mt-8 aspect-[16/10] w-full overflow-hidden rounded-2xl border bg-black/40" style={{ borderColor: "var(--surface-stage-hairline)" }}>
+          <div className="relative mt-8 aspect-[16/10] w-full overflow-hidden rounded-2xl border border-border bg-muted/30 nrc-card">
             {d ? (
               <svg viewBox="0 0 100 100" className="h-full w-full" aria-hidden>
                 <motion.path
@@ -265,32 +277,28 @@ export function RunFinishRecap({
                 />
               </svg>
             ) : (
-              <div className="flex h-full items-center justify-center px-6 text-center text-typo-caption text-white/60">
+              <div className="flex h-full items-center justify-center px-6 text-center text-typo-caption text-muted-foreground">
                 {t("run.saved.noTrail")}
               </div>
             )}
           </div>
 
           <div className="mt-8">
-            <RunSplitBars splits={splits} tone="stage" />
+            <RunSplitBars splits={splits} tone="card" />
             {weeklyImpactLine ? (
-              <p className="mt-4 text-center text-typo-caption text-[color:oklch(0.92_0_0/0.7)]">{weeklyImpactLine}</p>
+              <p className="mt-4 text-center text-typo-caption text-muted-foreground">{weeklyImpactLine}</p>
             ) : null}
           </div>
         </div>
       </div>
 
       <div
-        className="fixed bottom-0 left-0 right-0 z-[81] flex flex-wrap gap-2 border-t px-4 py-4 backdrop-blur-md"
-        style={{
-          borderColor: "var(--surface-stage-hairline)",
-          backgroundColor: "color-mix(in oklab, var(--surface-stage) 92%, transparent)",
-          paddingBottom: "max(1rem, env(safe-area-inset-bottom))",
-        }}
+        className="fixed bottom-0 left-0 right-0 z-[81] flex flex-wrap gap-2 border-t border-border bg-background/95 px-4 py-4 backdrop-blur-md"
+        style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
       >
         <Button
           type="button"
-          className="btn-lift min-h-12 flex-1 rounded-lg font-bold uppercase tracking-[0.18em] text-xs"
+          className="press-magnetic btn-lift min-h-12 flex-1 rounded-lg font-bold uppercase tracking-[0.18em] text-xs"
           onClick={() => onOpenChange(false)}
         >
           <Check className="h-4 w-4" />
@@ -299,7 +307,7 @@ export function RunFinishRecap({
         <Button
           type="button"
           variant="outline"
-          className="btn-lift min-h-12 flex-1 rounded-lg border-white/25 bg-transparent text-[color:var(--surface-stage-fg)] font-bold uppercase tracking-[0.18em] text-xs hover:bg-white/10"
+          className="press-magnetic btn-lift min-h-12 flex-1 rounded-lg font-bold uppercase tracking-[0.18em] text-xs"
           onClick={() => void handleShare()}
         >
           <Share2 className="h-4 w-4" />
@@ -308,7 +316,7 @@ export function RunFinishRecap({
         <Button
           type="button"
           variant="ghost"
-          className="min-h-12 min-w-[9rem] rounded-lg text-[color:var(--surface-stage-fg)] font-bold uppercase tracking-[0.18em] text-xs"
+          className="min-h-12 min-w-[9rem] rounded-lg font-bold uppercase tracking-[0.18em] text-xs"
           disabled={!d}
           title={t("run.saved.routeTooltip")}
         >

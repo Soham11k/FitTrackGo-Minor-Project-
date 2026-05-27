@@ -38,10 +38,15 @@ export function HomeWeekChart({
     <ChartContainer config={chartConfig} className="aspect-auto mx-auto h-[9.75rem] w-full">
       <BarChart accessibilityLayer data={data} margin={{ top: 4, right: 4, left: -4, bottom: 0 }}>
         <defs>
-          {/* Vertical gradient on active bars — move token fading to primary at the cap. */}
+          {/* Active bar: bright volt-lime top fading to slightly deeper lime */}
           <linearGradient id="home-week-active" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--primary)" />
-            <stop offset="100%" stopColor="var(--metric-move)" />
+            <stop offset="0%" stopColor="var(--primary)" stopOpacity="1" />
+            <stop offset="100%" stopColor="var(--metric-move)" stopOpacity="0.85" />
+          </linearGradient>
+          {/* Today bar (same session, slightly brighter) */}
+          <linearGradient id="home-week-today" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--primary)" stopOpacity="1" />
+            <stop offset="60%" stopColor="var(--metric-run)" stopOpacity="0.9" />
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="4 4" vertical={false} className="stroke-border/40" />
@@ -93,8 +98,10 @@ export function HomeWeekChart({
               key={i}
               fill={
                 d.active
-                  ? "url(#home-week-active)"
-                  : "color-mix(in oklch, var(--muted-foreground) 14%, transparent)"
+                  ? i === data.length - 1
+                    ? "url(#home-week-today)"
+                    : "url(#home-week-active)"
+                  : "oklch(0.88 0 0)"
               }
               className="transition-[fill] duration-500"
             />

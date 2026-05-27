@@ -37,7 +37,7 @@ export function TodayTripleRing({
   return (
     <motion.div
       className={cn(
-        "flex flex-wrap items-start justify-between gap-4 rounded-3xl border border-border/80 bg-card/60 p-4 backdrop-blur-sm dark:border-white/10",
+        "nrc-card flex flex-wrap items-start justify-between gap-4 p-4",
         className
       )}
       initial={reduce ? false : { opacity: 0, y: 8 }}
@@ -69,7 +69,14 @@ export function TodayTripleRing({
       </div>
       <div className="flex min-w-[5.5rem] flex-1 flex-col items-center gap-1">
         <span className="text-typo-micro font-bold uppercase tracking-wider text-muted-foreground">Sessions</span>
-        <RingGauge value={sessPct} max={100} size={88} thickness={7} spring progressClassName="stroke-primary">
+        <RingGauge
+          value={sessPct}
+          max={100}
+          size={88}
+          thickness={7}
+          spring
+          progressClassName={sessions > 0 ? "live-pulse stroke-primary" : "stroke-primary"}
+        >
           <Activity className="h-4 w-4 text-primary" />
           <span className="text-lg font-bold tabular-nums text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
             {sessions}

@@ -79,19 +79,27 @@ export function BottomNav({
                 pulse("tick")
                 onTabChange(item.id)
               }}
-              className={`relative z-[1] flex min-h-[52px] flex-col items-center justify-center gap-0.5 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${
+              className={`press-magnetic relative z-[1] flex min-h-[52px] flex-col items-center justify-center gap-0.5 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${
                 isActive ? "text-foreground" : "text-muted-foreground"
               }`}
               aria-label={label}
               title={label}
             >
+              {/* Volt glow spot under active icon */}
+              {isActive && !prefersReducedMotion && (
+                <motion.span
+                  className="pointer-events-none absolute inset-x-2 top-0 h-0.5 rounded-b-full bg-primary blur-[2px]"
+                  layoutId="nav-glow"
+                  transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                />
+              )}
               <motion.span
-                className="flex items-center justify-center"
+                className="relative flex items-center justify-center"
                 animate={
                   prefersReducedMotion
                     ? undefined
                     : isActive
-                      ? { scale: 1.14, y: -1 }
+                      ? { scale: 1.18, y: -2 }
                       : { scale: 1, y: 0 }
                 }
                 transition={

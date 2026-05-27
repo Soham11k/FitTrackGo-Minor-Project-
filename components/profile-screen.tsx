@@ -42,6 +42,7 @@ import { getFaq, getAchievements, siteConfig, type AchievementDef } from "@/lib/
 import { ContactForm } from "@/components/contact-form"
 import { MetricTrendMini } from "@/components/metric-trend-mini"
 import { DURATION, EASE, staggerDelaySec, staggerChildren, CINEMATIC } from "@/lib/motion"
+import { AnimatedCounter } from "@/components/animated/AnimatedCounter"
 import { useChartEnterOnce } from "@/hooks/use-chart-enter-once"
 import { LanguageSelector } from "@/components/language-selector"
 import { UnitSelector } from "@/components/unit-selector"
@@ -770,13 +771,28 @@ export function ProfileScreen({
     <motion.div className="flex flex-col gap-5 px-4 pt-4 pb-28 animate-fade-in-up" data-testid="screen-profile">
       <ScreenTitle title="Profile" subtitle="Account, fitness summary, and settings." />
 
-      <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-[var(--shadow-card)]">
-        <div className="flex gap-4 items-start">
-          <div
-            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-2xl font-bold text-primary"
-            aria-hidden
-          >
-            {profileInitial}
+      <div className="nrc-card p-5">
+        <div className="flex items-start gap-4">
+          {/* Avatar with orbiting Volt ring */}
+          <div className="relative h-20 w-20 shrink-0" aria-hidden>
+            {/* Orbiting ring */}
+            <motion.div
+              className="pointer-events-none absolute inset-[-6px] rounded-3xl border-2 border-primary/40"
+              animate={{ rotate: 360 }}
+              transition={{ duration: 12, repeat: Infinity, ease: "linear" }}
+            />
+            {/* Volt dot on the ring */}
+            <motion.div
+              className="absolute h-2.5 w-2.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)] z-10"
+              style={{ top: -3, left: "50%", translateX: "-50%" }}
+              animate={{ rotate: 360 }}
+              transition={{ duration: 12, repeat: Infinity, ease: "linear" }}
+            />
+            <div
+              className="flex h-20 w-20 items-center justify-center rounded-2xl bg-foreground text-2xl font-bold text-background shadow-[0_12px_32px_-16px_oklch(0_0_0/0.45)]"
+            >
+              {profileInitial}
+            </div>
           </div>
           <div className="flex-1 min-w-0">
           {editingName ? (
@@ -805,7 +821,10 @@ export function ProfileScreen({
             </div>
           ) : (
             <>
-              <h2 className="text-xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
+              <h2
+                className="text-2xl font-bold tracking-[-0.02em] text-foreground sm:text-3xl"
+                style={{ fontFamily: "var(--font-display), var(--font-heading)" }}
+              >
                 {displayName}
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">Member since {joinYear}</p>
@@ -836,13 +855,13 @@ export function ProfileScreen({
         </div>
       </div>
 
-      <section className="rounded-3xl border border-border/80 bg-card p-4 shadow-[var(--shadow-card)]">
+      <section className="nrc-card p-4">
         <h2 className="mb-3 text-sm font-semibold text-foreground">Fitness summary</h2>
         <MetricGrid cols={2}>
-          <MetricTile label="Sessions" value={String(totalSessions)} tone="coach" icon={Dumbbell} />
-          <MetricTile label="Distance" value={totalDistance.toFixed(1)} unit="km" tone="run" icon={MapPin} />
-          <MetricTile label="Streak" value={String(stats.streak)} unit="days" tone="streak" icon={Flame} />
-          <MetricTile label="Active days" value={String(activeDays)} unit="/ 7" tone="move" icon={Calendar} />
+          <MetricTile label="Sessions" value={String(totalSessions)} numericValue={totalSessions} tone="coach" icon={Dumbbell} />
+          <MetricTile label="Distance" value={totalDistance.toFixed(1)} numericValue={totalDistance} unit="km" tone="run" icon={MapPin} />
+          <MetricTile label="Streak" value={String(stats.streak)} numericValue={stats.streak} unit="days" tone="streak" icon={Flame} />
+          <MetricTile label="Active days" value={String(activeDays)} numericValue={activeDays} unit="/ 7" tone="move" icon={Calendar} />
         </MetricGrid>
       </section>
 

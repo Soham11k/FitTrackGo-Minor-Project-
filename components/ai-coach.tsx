@@ -131,6 +131,22 @@ import { ExerciseBodyPreview } from "@/components/exercise-body-preview"
 import { ScreenTitle } from "@/components/brand/screen-title"
 import { CinematicStage } from "@/components/ui/cinematic-stage"
 import { FittrackLogoMark } from "@/components/fittrack-logo-mark"
+import { ExerciseIllustration, type ExerciseIllustrationId } from "@/components/animated/ExerciseIllustration"
+import { AnimatedCounter } from "@/components/animated/AnimatedCounter"
+import { ParticleBurst } from "@/components/animated/ParticleBurst"
+
+const FAMILY_TO_ILLUSTRATION: Record<string, ExerciseIllustrationId> = {
+  pushup_family:         "pushup",
+  squat_family:          "squat",
+  plank_family:          "plank",
+  lunge_family:          "lunge",
+  deadlift_family:       "deadlift",
+  bicep_curl_family:     "bicep_curl",
+  shoulder_press_family: "shoulder_press",
+  jumping_jacks_family:  "jumping_jacks",
+  high_knees_family:     "high_knees",
+  crunch_family:         "crunch",
+}
 const POSTURE_PENALTY_THRESHOLD = 75
 const POSTURE_PENALTY_NO_ACCUM_THRESHOLD = 85
 /** Require this many consecutive frames at top before a rep can complete (reduces single-frame noise). */
@@ -1535,7 +1551,7 @@ export function AICoach({
         {coachTrack === "mobility" ? (
           <MobilityCoach onBack={() => setCoachTrack("strength")} />
         ) : (
-      <div data-testid="screen-ai-coach" className="flex flex-col gap-4 px-4 pt-4 pb-28">
+      <div data-testid="screen-ai-coach" className="flex flex-col gap-4 bg-background px-4 pt-4 pb-28">
         <ScreenTitle title="Coach" subtitle="Choose movement and start form tracking." />
         <p className="text-xs leading-snug text-muted-foreground">{t("coach.privacyBanner")}</p>
         <div className="flex rounded-2xl border border-border bg-card p-1">
@@ -1611,41 +1627,65 @@ export function AICoach({
         ) : (
           <motion.div
             key="families-grid"
-            className="flex flex-col gap-2"
-            variants={staggerChildren(0.06, 0.05)}
+            className="flex flex-col gap-3"
+            variants={staggerChildren(0.04, 0.05)}
             initial={reduceMotion ? false : "hidden"}
             animate="show"
             exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
           >
+            {/* Custom exercise button — full width */}
             <button
               type="button"
               onClick={() => setCustomBuilderOpen(true)}
-              className="flex min-h-[76px] items-center gap-3 rounded-xl border border-primary/35 bg-card px-4 py-3 text-left text-sm font-semibold text-primary transition-colors hover:border-primary/60"
+              className="flex min-h-[56px] items-center gap-3 rounded-xl border border-primary/35 bg-card px-4 py-3 text-left text-sm font-semibold text-primary transition-colors hover:border-primary/60"
             >
               <Sparkles className="h-4 w-4 shrink-0" />
               <span className="flex-1">Create custom exercise</span>
               <ChevronRight className="h-4 w-4" />
             </button>
-            {pickerFamilies.map((fam) => {
-              return (
-                <motion.button
-                  key={fam.id}
-                  variants={CINEMATIC.statReveal}
-                  type="button"
-                  onClick={() => handleSelectFamily(fam.id)}
-                  className="group flex min-h-[76px] items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left transition-colors hover:border-primary active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                >
-                  <div className={`h-10 w-1.5 shrink-0 rounded-full bg-gradient-to-b ${fam.gradient}`} />
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
-                      {fam.name}
-                    </h3>
-                    <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{fam.description}</p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </motion.button>
-              )
-            })}
+
+            {/* 2-column graphical exercise cards */}
+            <div className="grid grid-cols-2 gap-2">
+              {pickerFamilies.map((fam, i) => {
+                const illustId: ExerciseIllustrationId = FAMILY_TO_ILLUSTRATION[fam.id] ?? "default"
+                return (
+                  <motion.button
+                    key={fam.id}
+                    variants={CINEMATIC.statReveal}
+                    type="button"
+                    onClick={() => handleSelectFamily(fam.id)}
+                    className={`group relative flex min-h-[120px] flex-col items-start justify-between overflow-hidden rounded-2xl border bg-card px-3 pb-3 pt-2 text-left transition-colors hover:border-primary/50 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary border-border`}
+                    style={{ animationDelay: `${i * 0.04}s` }}
+                    whileTap={{ scale: 0.97 }}
+                  >
+                    {/* Tone gradient background */}
+                    <div
+                      className={`pointer-events-none absolute inset-0 rounded-[inherit] bg-gradient-to-br ${fam.gradient} opacity-60`}
+                      aria-hidden
+                    />
+                    {/* Animated illustration in corner */}
+                    <div className="pointer-events-none absolute right-1 top-1 opacity-40">
+                      <ExerciseIllustration id={illustId} size={64} animate={!reduceMotion} />
+                    </div>
+                    <div className="relative z-10 flex-1">
+                      <h3
+                        className="text-sm font-bold leading-tight text-foreground"
+                        style={{ fontFamily: "var(--font-heading)" }}
+                      >
+                        {fam.name}
+                      </h3>
+                      <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-muted-foreground">{fam.description}</p>
+                    </div>
+                    <div className="relative z-10 flex w-full items-center justify-between">
+                      <span className="inline-block rounded-sm bg-foreground/8 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                        {fam.category}
+                      </span>
+                      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/60" />
+                    </div>
+                  </motion.button>
+                )
+              })}
+            </div>
           </motion.div>
         )}
         </AnimatePresence>
@@ -1857,7 +1897,7 @@ export function AICoach({
           onHighlightChange={setCueHighlight}
         >
       <div className="flex min-h-[calc(100vh-80px)] flex-col pb-24 lg:flex-row lg:items-start lg:gap-4 lg:px-3 lg:pt-2">
-        <div className="relative mx-2 mt-2 h-[78vh] min-h-[450px] max-h-[85vh] min-w-0 flex-1 overflow-hidden rounded-lg border-2 border-primary bg-secondary lg:mx-0 lg:mt-0">
+        <div className="surface-stage-gradient relative mx-2 mt-2 h-[78vh] min-h-[450px] max-h-[85vh] min-w-0 flex-1 overflow-hidden rounded-2xl border border-[color:var(--surface-stage-hairline)] bg-[color:var(--surface-stage)] lg:mx-0 lg:mt-0">
           {useCamera && (
             <video
               ref={videoRef}
@@ -1915,7 +1955,7 @@ export function AICoach({
             </div>
           )}
           <div
-            className={`absolute top-3 right-3 z-20 flex items-center gap-2 rounded-2xl border px-3 py-2 shadow-lg backdrop-blur-md transition-all duration-300 ${
+            className={`absolute top-3 left-3 z-20 flex items-center gap-2 rounded-2xl border px-3 py-2 shadow-lg backdrop-blur-md transition-all duration-300 ${
               isGoodForm
                 ? "border-primary bg-primary text-primary-foreground"
                 : "border-destructive bg-black/80 text-destructive"
@@ -1924,7 +1964,7 @@ export function AICoach({
             {isGoodForm ? <CheckCircle2 className="h-4 w-4 shrink-0 text-primary-foreground" /> : <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />}
             <span className="text-typo-eyebrow font-bold uppercase tracking-[0.2em]">{isGoodForm ? "Good form" : "Adjust form"}</span>
           </div>
-          <div className="absolute top-3 left-3 z-20 w-[min(calc(100%-7rem),15.5rem)]">
+          <div className="absolute top-3 right-3 z-20 w-[min(calc(100%-7rem),15.5rem)]">
             <div
               className={`overflow-hidden rounded-2xl border border-white/25 bg-black/50 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-md ${
                 repBounce && !a11yPrefs.reduceMotion ? "motion-safe:animate-rep-bounce" : ""
@@ -2006,6 +2046,14 @@ export function AICoach({
               </p>
             </div>
           )}
+          {!isGoodForm && coachLivePrimary ? (
+            <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-[25] rounded-2xl border border-primary/45 bg-black/80 px-4 py-3 shadow-[0_12px_40px_-16px_oklch(0_0_0/0.75)] backdrop-blur-md motion-safe:backdrop-blur-lg">
+              <p className="text-typo-eyebrow font-bold uppercase tracking-[0.22em] text-primary">Form cue</p>
+              <p className="mt-1 text-sm font-medium leading-snug text-[color:var(--surface-stage-fg)] motion-safe:blur-[0.2px]">
+                {coachLivePrimary}
+              </p>
+            </div>
+          ) : null}
         </div>
         <div className="flex w-full flex-col space-y-4 px-4 pt-4 lg:max-h-[min(85vh,calc(100vh-7rem))] lg:w-[min(100%,340px)] lg:shrink-0 lg:overflow-y-auto lg:py-2 lg:pl-2 lg:pr-4 lg:pt-2">
           {useCamera && (
@@ -2254,18 +2302,53 @@ export function AICoach({
   const recapCues = traceCues.length
     ? traceCues
     : topCuesFromBreakdown(recapBreakdown.length ? recapBreakdown : breakdown, feedback, 4)
+  const finalScore = sessionDna?.score ?? avgRepScore
+
   return (
     <>
       {coachFocusBar}
     <div className="flex flex-col items-center gap-6 px-4 pt-8 pb-28">
+      {/* Animated success check mark */}
+      <motion.div
+        className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/15 shadow-[0_0_32px_oklch(0.72_0.22_130/0.3)]"
+        initial={reduceMotion ? false : { scale: 0, rotate: -30 }}
+        animate={{ scale: 1, rotate: 0 }}
+        transition={{ type: "spring", stiffness: 400, damping: 18 }}
+      >
+        <svg viewBox="0 0 48 48" width={44} height={44} fill="none" aria-hidden>
+          <motion.circle cx="24" cy="24" r="20" stroke="var(--primary)" strokeWidth="3"
+            initial={reduceMotion ? { pathLength: 1 } : { pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+          />
+          <motion.path d="M14 24 L21 31 L34 17" stroke="var(--primary)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"
+            initial={reduceMotion ? { pathLength: 1 } : { pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 0.5, ease: "easeOut", delay: 0.5 }}
+          />
+        </svg>
+      </motion.div>
+
+      {/* Cascading headline */}
       <div className="text-center space-y-1">
-        <h2 className="text-xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
-          Workout Complete
-        </h2>
-        <p className="text-sm text-muted-foreground">
+        <motion.h2
+          className="text-2xl font-black text-foreground"
+          style={{ fontFamily: "var(--font-heading)" }}
+          initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+        >
+          Workout Complete 💪
+        </motion.h2>
+        <motion.p
+          className="text-sm text-muted-foreground"
+          initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        >
           {reps} reps · {exerciseName}
           {effLine ? ` · ${effLine}` : ""}
-        </p>
+        </motion.p>
         <p className="mx-auto max-w-sm pt-1 text-[11px] leading-snug text-muted-foreground">
           <strong className="font-semibold text-foreground/80">Replay set</strong> and the saved video only appear after you finish with{" "}
           <strong className="font-semibold text-foreground/80">at least one rep</strong>, camera preview on, and{" "}
@@ -2280,6 +2363,36 @@ export function AICoach({
           </div>
         </MotionCelebrate>
       ) : null}
+
+      {/* Counting form score ring */}
+      <motion.div
+        className="relative flex items-center justify-center"
+        initial={reduceMotion ? false : { opacity: 0, scale: 0.85 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5, delay: 0.6, type: "spring", stiffness: 300, damping: 20 }}
+      >
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <ParticleBurst trigger={sessionCelebrateBurst && finalScore >= 90} count={60} size={240} />
+        </div>
+        <svg width="160" height="160" viewBox="0 0 144 144" aria-hidden className="absolute inset-0">
+          <circle cx="72" cy="72" r="64" fill="none" stroke="var(--secondary)" strokeWidth="8" />
+          <motion.circle
+            cx="72" cy="72" r="64" fill="none"
+            stroke="var(--primary)" strokeWidth="8" strokeLinecap="round"
+            transform="rotate(-90 72 72)"
+            initial={{ strokeDasharray: "0 402" }}
+            animate={{ strokeDasharray: `${(finalScore / 100) * 402} 402` }}
+            transition={{ duration: 1.2, delay: 0.7, ease: "easeOut" }}
+          />
+        </svg>
+        <div className="relative flex h-40 w-40 flex-col items-center justify-center text-center">
+          <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-muted-foreground">FORM SCORE</p>
+          <p className="text-4xl font-black tabular-nums text-foreground" style={{ fontFamily: "var(--font-display)" }}>
+            <AnimatedCounter value={finalScore} duration={1.2} />
+            <span className="text-xl font-bold text-muted-foreground">%</span>
+          </p>
+        </div>
+      </motion.div>
 
       <CueFocusProvider exerciseId={selectedSpecId ?? "unknown"} breakdown={recapBreakdown.length ? recapBreakdown : breakdown}>
       <div className="relative w-full max-w-sm overflow-hidden rounded-[1.35rem] border border-[color:var(--surface-stage-hairline)] bg-[color:var(--surface-stage)] px-5 py-10 shadow-xl">

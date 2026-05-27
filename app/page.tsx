@@ -9,6 +9,7 @@ import { Dashboard } from "@/components/dashboard"
 import { BrandedTabLoad } from "@/components/app-tab-skeleton"
 import { FittrackBrandLockup } from "@/components/brand/fittrack-brand-lockup"
 import { LaunchHydrateScreen } from "@/components/brand/launch-hydrate-screen"
+import { AppHydrateScreen } from "@/components/animated/AppHydrateScreen"
 
 const RunTracker = dynamic(() => import("@/components/run-tracker").then((m) => m.RunTracker), {
   ssr: false,
@@ -370,12 +371,7 @@ export default function Page() {
   }
 
   if (appState === "app" && needsOnboarding === null) {
-    return (
-      <LaunchHydrateScreen
-        label="Syncing your training profile…"
-        hint="Loading streaks, recent sessions, and personalized coaching surfaces."
-      />
-    )
+    return <AppHydrateScreen />
   }
 
   return (

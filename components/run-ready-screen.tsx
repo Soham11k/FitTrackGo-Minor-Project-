@@ -82,7 +82,7 @@ export function RunReadyScreen({
           type="button"
           layoutId="run-start-button"
           onClick={onStartRun}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-[1.125rem] text-base font-bold uppercase tracking-[0.1em] text-primary-foreground shadow-[0_12px_40px_-12px_color-mix(in_oklab,var(--primary)_65%,transparent)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary"
+          className="press-magnetic flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-[1.125rem] text-base font-bold uppercase tracking-[0.1em] text-primary-foreground shadow-[0_12px_40px_-12px_color-mix(in_oklab,var(--primary)_65%,transparent)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary"
           aria-label="Start run"
           whileTap={{ scale: 0.98 }}
           transition={{ duration: DURATION.micro, ease: [...EASE.out] }}

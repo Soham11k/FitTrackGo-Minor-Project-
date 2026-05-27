@@ -485,8 +485,11 @@ export function WearableLiveHome({
             >
               <Heart className="mx-auto h-5 w-5 text-metric-hr/90" strokeWidth={2} />
               <span
-                className="mt-0.5 text-xl font-bold tabular-nums leading-none text-foreground"
-                style={{ fontFamily: "var(--font-heading)" }}
+                className={cn(
+                  "mt-0.5 text-xl font-bold tabular-nums leading-none text-foreground",
+                  displayHeartBpm != null && "live-pulse rounded-sm",
+                )}
+                style={{ fontFamily: "var(--font-display), var(--font-heading)" }}
               >
                 {displayHeartBpm != null ? displayHeartBpm : "—"}
               </span>

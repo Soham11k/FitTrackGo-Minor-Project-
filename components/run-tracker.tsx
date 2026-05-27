@@ -16,6 +16,8 @@ import { RunFinishRecap, type RunFinishLap } from "@/components/run-finish-recap
 import { RunReadyScreen, type RunReadyGpsStatus } from "@/components/run-ready-screen"
 import { MetricGrid, MetricTile } from "@/components/brand/metric-panel"
 import { StatDisplay } from "@/components/ui/stat-display"
+import { AnimatedCounter } from "@/components/animated/AnimatedCounter"
+import { PulseHeart } from "@/components/animated/PulseHeart"
 import { staggerChildren, CINEMATIC } from "@/lib/motion"
 import { computeWeeklyRunKmImpact, weeklyImpactSentence } from "@/lib/run-week-impact"
 import { detectRunPersonalBest } from "@/lib/run-pb"
@@ -62,6 +64,7 @@ export function RunTracker() {
   const [pace, setPace] = useState("0:00")
   const [calories, setCalories] = useState(0)
   const [splits, setSplits] = useState<Lap[]>([])
+  const [latestSplitToast, setLatestSplitToast] = useState<{ km: number; pace: string } | null>(null)
   const [path, setPath] = useState<[number, number][]>([])
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null)
   const [gpsStatus, setGpsStatus] = useState<"off" | "searching" | "good" | "simulated">("off")
@@ -248,6 +251,8 @@ export function RunTracker() {
           pace: lapPace,
         },
       ])
+      setLatestSplitToast({ km: lapKm, pace: lapPace })
+      setTimeout(() => setLatestSplitToast(null), 4000)
       announceRunKmSplit(lapKm, lapPace)
     }
   }, [runState, distance, seconds, paceFromDistTime])
@@ -407,7 +412,7 @@ export function RunTracker() {
   const statsCardClass =
     runState === "idle"
       ? "relative z-[20] mx-4 -mt-12 rounded-3xl border border-border/80 bg-card p-6 shadow-[var(--shadow-card)] backdrop-blur-xl"
-      : "relative z-[20] mx-4 -mt-12 overflow-hidden rounded-3xl border border-border/80 bg-[color:var(--surface-stage)] text-[color:var(--surface-stage-fg)] shadow-[var(--shadow-card)]"
+      : "relative z-[20] mx-4 -mt-12 overflow-hidden rounded-2xl border border-[color:var(--surface-stage-hairline)] bg-[color:var(--surface-stage)] text-[color:var(--surface-stage-fg)] shadow-[0_24px_48px_-24px_oklch(0_0_0/0.65)]"
 
   const primaryMetricLabel = primaryMetric === "pace" ? t("run.stat.pace") : primaryMetric === "distance" ? t("run.stat.distance") : t("run.stat.time")
   const primaryMetricValue =
@@ -422,7 +427,14 @@ export function RunTracker() {
         className="w-full border border-transparent py-2 text-center transition-colors hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         aria-label="Cycle primary statistic"
       >
-        {renderMetricCell(primaryMetric, { hero: true })}
+        <StatDisplay
+          eyebrow={primaryMetric === "pace" ? t("run.stat.pace") : primaryMetric === "distance" ? t("run.stat.distance") : t("run.stat.time")}
+          value={primaryMetric === "pace" ? pace : primaryMetric === "distance" ? distance.toFixed(2) : formatTime(seconds)}
+          unit={primaryMetric === "pace" ? "/km" : primaryMetric === "distance" ? "km" : undefined}
+          size="lg"
+          tone={runState === "idle" ? "default" : "stage"}
+          layoutId={primaryMetric === "pace" ? "run-stat-pace" : primaryMetric === "distance" ? "run-stat-distance" : "run-stat-time"}
+        />
       </button>
       <div className="mt-5 grid grid-cols-3 hairline-divide-x border-t border-border pt-5">
         {secondaryMetrics.map((m) => (
@@ -444,12 +456,37 @@ export function RunTracker() {
         aria-label="Cycle primary statistic"
       >
         <p className="text-xs font-semibold uppercase tracking-[0.14em] opacity-80">{primaryMetricLabel}</p>
-        <p className="mt-1 text-4xl font-bold tabular-nums" style={{ fontFamily: "var(--font-heading)" }}>
-          {primaryMetricValue}
+        <p
+          className="mt-1 text-display-stat-lg tabular-nums text-primary-foreground"
+          style={{ fontFamily: "var(--font-display), var(--font-heading)" }}
+        >
+          {primaryMetricUnit === undefined || primaryMetric === "pace" ? primaryMetricValue : (
+            <AnimatedCounter
+              value={parseFloat(primaryMetricValue) || 0}
+              decimals={2}
+              className="text-primary-foreground"
+            />
+          )}
           {primaryMetricUnit ? <span className="ml-1 text-lg font-semibold opacity-80">{primaryMetricUnit}</span> : null}
         </p>
       </button>
-      <div className="mt-4 px-1">
+
+      {/* Live HR card with animated heartbeat */}
+      <div className="mt-3 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+        <PulseHeart bpm={null} size={36} color="var(--metric-hr)" />
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-white/40">LIVE HR</p>
+          <p className="text-sm font-bold text-white/80">— bpm</p>
+        </div>
+        <div className="ml-auto text-right">
+          <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-white/40">CALORIES</p>
+          <p className="text-sm font-bold tabular-nums text-white/80">
+            <AnimatedCounter value={Math.round(calories)} /> kcal
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 px-1">
         <MetricGrid cols={3}>
           {secondaryMetrics.map((m) => (
             <MetricTile
@@ -460,7 +497,6 @@ export function RunTracker() {
               unit={m === "pace" ? "/km" : m === "distance" ? "km" : undefined}
             />
           ))}
-          <MetricTile tone="stage" label={t("run.stat.cal")} value={String(Math.round(calories))} unit="kcal" />
         </MetricGrid>
       </div>
     </>
@@ -492,7 +528,7 @@ export function RunTracker() {
       {/* Real map — NRC scale; taller while running */}
       <div className={cn(
         "relative overflow-hidden bg-secondary transition-[height,min-height] duration-300",
-        runState === "idle" ? "h-[40vh] min-h-[280px]" : "h-[48vh] min-h-[320px]",
+        runState === "idle" ? "h-[40vh] min-h-[280px]" : "h-[55vh] min-h-[360px]",
       )}>
         {mapReady && (
           <RunMap
@@ -535,17 +571,41 @@ export function RunTracker() {
       {runState === "idle" ? (
         <div className={statsCardClass}>{statsBody}</div>
       ) : (
-        <motion.div
-          key={liveHudAnimKey}
-          className={statsCardClass}
-          variants={hudVariants}
-          initial={reducedMotionPref ? false : "hidden"}
-          animate="show"
-        >
-          <motion.div variants={CINEMATIC.statReveal} className="p-4">
-            {liveStatsBody}
+        <div className="relative">
+          <motion.div
+            key={liveHudAnimKey}
+            className={statsCardClass}
+            variants={hudVariants}
+            initial={reducedMotionPref ? false : "hidden"}
+            animate="show"
+          >
+            <motion.div variants={CINEMATIC.statReveal} className="p-4">
+              {liveStatsBody}
+            </motion.div>
           </motion.div>
-        </motion.div>
+
+          {/* Km-split fly-in toast */}
+          <AnimatePresence>
+            {latestSplitToast && (
+              <motion.div
+                key={`split-${latestSplitToast.km}`}
+                className="pointer-events-none absolute right-4 top-4 z-30 flex items-center gap-2 rounded-xl border border-primary/40 bg-black/90 px-4 py-3 shadow-[0_8px_32px_oklch(0_0_0/0.6)] backdrop-blur-md"
+                initial={{ x: 80, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: 80, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 400, damping: 28 }}
+              >
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-black text-black">
+                  {latestSplitToast.km}
+                </div>
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/50">KM SPLIT</p>
+                  <p className="text-sm font-bold tabular-nums text-white">{latestSplitToast.pace}<span className="text-xs text-white/60">/km</span></p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       )}
 
       {splits.length > 0 && (

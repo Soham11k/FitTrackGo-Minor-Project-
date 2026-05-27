@@ -34,6 +34,9 @@ import { consumeArenaDuelExerciseLabel } from "@/lib/arena-duel-intent"
 import { listArenaDuelMovementOptions } from "@/lib/coach-exercise-catalog"
 import { ScreenTitle } from "@/components/brand/screen-title"
 import { MetricPanel, MetricRow } from "@/components/brand/metric-panel"
+import { AnimatedCounter } from "@/components/animated/AnimatedCounter"
+import { ParticleBurst } from "@/components/animated/ParticleBurst"
+import { ExerciseIllustration, type ExerciseIllustrationId } from "@/components/animated/ExerciseIllustration"
 import { EditorialEmpty } from "@/components/brand/editorial-empty"
 import { PbSticker } from "@/components/ui/pb-sticker"
 import { StatDisplay } from "@/components/ui/stat-display"
@@ -344,8 +347,55 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
     }
   }
 
+  const compositeScore = totalEffective > 0 ? Math.round(totalEffective / Math.max(1, sessions.length)) : 0
+
   return (
-    <div className="flex flex-col gap-5 px-4 pt-4 pb-28 max-w-lg mx-auto">
+    <div className="mx-auto flex max-w-lg flex-col gap-5 bg-background px-4 pt-4 pb-28">
+      <section className="nrc-card overflow-hidden p-0">
+        <div className="border-b border-border bg-foreground px-4 py-4 text-background">
+          <p className="text-typo-eyebrow font-bold uppercase tracking-[0.28em] text-primary">Rank tension</p>
+          <p
+            className="mt-2 text-4xl font-bold tabular-nums leading-none"
+            style={{ fontFamily: "var(--font-display), var(--font-heading)" }}
+          >
+            <AnimatedCounter value={compositeScore} duration={1} className="text-background" />
+            <span className="ml-2 text-sm font-semibold text-background/60">avg composite</span>
+          </p>
+          <p className="mt-1 text-xs text-background/65">
+            <AnimatedCounter value={verifiedStreak} duration={0.8} className="text-background/65" />d verified streak · <AnimatedCounter value={sessions.length} duration={0.8} className="text-background/65" /> coach sessions logged
+          </p>
+        </div>
+      </section>
+      {bestByExercise.length > 0 ? (
+        <section aria-label="Challenge picks" className="-mx-4 px-4">
+          <p className="mb-2 text-typo-eyebrow font-bold uppercase tracking-[0.28em] text-muted-foreground">Challenges</p>
+          <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
+            {bestByExercise.map(([ex, { composite }]) => {
+              const illustId = ex.toLowerCase().replace(/[\s-]/g, "_") as ExerciseIllustrationId
+              return (
+                <button
+                  key={ex}
+                  type="button"
+                  onClick={scrollToDuels}
+                  className="neon-edge relative shrink-0 overflow-hidden rounded-2xl border border-border bg-card px-4 pb-3 pt-2 text-left transition-transform active:scale-[0.98]"
+                  style={{ minWidth: "9rem" }}
+                >
+                  {/* Illustration in bg */}
+                  <div className="pointer-events-none absolute right-1 top-1 opacity-20">
+                    <ExerciseIllustration id={illustId} size={52} animate={false} />
+                  </div>
+                  <p className="text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-muted-foreground">Duel</p>
+                  <p className="mt-1 max-w-[9rem] truncate text-sm font-bold text-foreground">{ex}</p>
+                  <p className="mt-1 text-lg font-bold tabular-nums text-primary" style={{ fontFamily: "var(--font-display), var(--font-heading)" }}>
+                    <AnimatedCounter value={composite} decimals={0} duration={1} className="text-primary" />
+                    <span className="ml-1 text-xs text-muted-foreground">pts</span>
+                  </p>
+                </button>
+              )
+            })}
+          </div>
+        </section>
+      ) : null}
       <ScreenTitle
         title="Arena"
         subtitle="Form duels with the same composite score you earn in Coach."
@@ -411,10 +461,7 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
         </ol>
       </section>
 
-      <section
-        className="rounded-3xl border border-border/80 bg-card p-4 shadow-[var(--shadow-card)]"
-        aria-label="Your arena stats"
-      >
+      <section className="nrc-card p-4" aria-label="Your arena stats">
         <div className="mb-1 flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-foreground">Your arena stats</h2>
           <Sheet>
@@ -598,7 +645,7 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
               const matchSes = coachSessionForDuelExercise(sessions, d.exercise)
 
               return (
-                <li key={d.id} className="text-typo-caption space-y-2 rounded-2xl border border-border/80 bg-card px-4 py-3 shadow-[var(--shadow-card)]">
+                <li key={d.id} className="text-typo-caption space-y-2 nrc-card px-4 py-3">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
                     <span className="text-foreground">{d.exercise}</span>
                     <span className="text-muted-foreground">·</span>
@@ -636,7 +683,29 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
                   )}
                   {d.settled && d.challengerScore != null && d.opponentScore != null && (
                     <>
-                      <div className="relative mt-1 -mx-2 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2">
+                      <div className="relative mt-2 overflow-hidden rounded-xl border border-[color:var(--surface-stage-hairline)] bg-[color:var(--surface-stage)] px-3 py-4 text-[color:var(--surface-stage-fg)]">
+                        {/* Winner particle burst */}
+                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                          <ParticleBurst trigger={d.settled} count={50} size={250} />
+                        </div>
+                        <p className="text-center text-typo-eyebrow font-bold uppercase tracking-[0.28em] text-primary">VS</p>
+                        <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                          <div className={`text-center ${(d.challengerScore ?? 0) >= (d.opponentScore ?? 0) ? "" : "opacity-40"}`}>
+                            <p className="truncate text-xs font-semibold text-white/70">{d.challengerName}</p>
+                            <p className="mt-1 text-2xl font-bold tabular-nums text-primary" style={{ fontFamily: "var(--font-display), var(--font-heading)" }}>
+                              <AnimatedCounter value={d.challengerScore} duration={1} className="text-primary" />
+                            </p>
+                          </div>
+                          <Swords className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+                          <div className={`text-center ${(d.opponentScore ?? 0) > (d.challengerScore ?? 0) ? "" : "opacity-40"}`}>
+                            <p className="truncate text-xs font-semibold text-white/70">{d.opponentName ?? "Opponent"}</p>
+                            <p className="mt-1 text-2xl font-bold tabular-nums text-[color:var(--surface-stage-fg)]" style={{ fontFamily: "var(--font-display), var(--font-heading)" }}>
+                              <AnimatedCounter value={d.opponentScore} duration={1} />
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="relative mt-2 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2">
                         <Trophy className="h-5 w-5 shrink-0 text-primary" />
                         <div className="flex-1 min-w-0">
                           <StatDisplay

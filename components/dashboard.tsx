@@ -54,8 +54,10 @@ import { useChartEnterOnce } from "@/hooks/use-chart-enter-once"
 import { useLocale } from "@/components/locale-provider"
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt"
 import { resolveTodayPrompt } from "@/lib/today-prompt"
-import { MetricPanel, MetricRow, MetricGrid, MetricTile } from "@/components/brand/metric-panel"
+import { MetricGrid, MetricTile } from "@/components/brand/metric-panel"
+import { ExerciseIllustration } from "@/components/animated/ExerciseIllustration"
 import { cn } from "@/lib/utils"
+import { DataScreen } from "@/components/brand/data-screen"
 
 /**
  * NRC-style quick actions: the first (Run) is a hero black tile with a Volt CTA;
@@ -439,7 +441,7 @@ export function Dashboard({
   }
 
   return (
-    <div className="relative z-[1] flex flex-col gap-4 px-4 pt-3 pb-28">
+    <DataScreen className="pt-3">
       <PwaInstallPrompt />
       {loadError ? (
         <Alert variant="destructive" role="alert" className="border-destructive/40">
@@ -460,13 +462,16 @@ export function Dashboard({
         </Alert>
       ) : null}
       <motion.header variants={CINEMATIC.heroEnter} initial="hidden" animate="show" className="-mx-1">
-        <p className="text-sm text-muted-foreground">{todayDateLine}</p>
-        <h1
-          className="mt-1 text-3xl font-bold text-foreground sm:text-4xl"
-          style={{ fontFamily: "var(--font-heading)" }}
+        <p className="text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-muted-foreground">{todayDateLine}</p>
+        <motion.h1
+          className="mt-1 text-3xl font-bold tracking-[-0.02em] text-foreground sm:text-4xl"
+          style={{ fontFamily: "var(--font-display), var(--font-heading)" }}
+          initial={{ opacity: 0, x: -12 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: 0.1 }}
         >
           {greeting}, {displayName === "there" ? "let's move" : titleCaseFirstName(displayName)}
-        </h1>
+        </motion.h1>
         {todayPrompt ? (
           <button
             type="button"
@@ -479,16 +484,79 @@ export function Dashboard({
                 onNavigate("ai-coach")
               }
             }}
-            className="mt-4 w-full rounded-2xl border border-border/80 bg-card px-4 py-3 text-left shadow-[var(--shadow-card)] transition-colors hover:bg-muted/40"
+            className="press-magnetic nrc-card mt-4 w-full px-4 py-3 text-left transition-colors hover:bg-muted/30"
           >
-            <p className="text-sm font-semibold text-foreground">{todayPrompt.title}</p>
+            <p className="text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-primary">Today&apos;s focus</p>
+            <p className="mt-1 text-sm font-semibold text-foreground">{todayPrompt.title}</p>
             <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{todayPrompt.hint}</p>
           </button>
         ) : null}
       </motion.header>
 
       <motion.section
-        className="rounded-3xl border border-border/80 bg-card p-4 shadow-[var(--shadow-card)] dark:border-white/10"
+        aria-label="Today's metrics"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: EASE.out }}
+      >
+        <MetricGrid cols={3} className="sm:grid-cols-3">
+          <MetricTile
+            label="Calories"
+            value={`${moveRingCalories}`}
+            numericValue={moveRingCalories}
+            tone="move"
+            icon={Flame}
+            delta={`Goal ${dailyCalorieGoal}`}
+            progress={Math.min(100, (moveRingCalories / dailyCalorieGoal) * 100)}
+          />
+          <MetricTile
+            label="Active"
+            value={`${today.activeMinutes}`}
+            numericValue={today.activeMinutes}
+            unit="m"
+            tone="coach"
+            icon={Activity}
+            progress={Math.min(100, (today.activeMinutes / dailyActiveMinGoal) * 100)}
+          />
+          <MetricTile
+            label="Steps"
+            value={googleFitSteps != null ? googleFitSteps.toLocaleString() : "—"}
+            numericValue={googleFitSteps ?? undefined}
+            tone="steps"
+            icon={TrendingUp}
+            progress={googleFitSteps != null ? Math.min(100, (googleFitSteps / 8000) * 100) : 0}
+          />
+          <MetricTile
+            label="Coach"
+            value={latestCoach ? `${latestCoach.score}%` : "—"}
+            numericValue={latestCoach ? latestCoach.score : undefined}
+            tone="coach"
+            icon={Shield}
+            progress={latestCoach ? latestCoach.score : 0}
+          />
+          <MetricTile
+            label="Streak"
+            value={`${stats.streak}`}
+            numericValue={stats.streak}
+            unit="d"
+            tone="streak"
+            icon={Flame}
+            progress={streakProgressPct}
+          />
+          <MetricTile
+            label="This week"
+            value={`${thisWeekTotal}`}
+            numericValue={thisWeekTotal}
+            tone="run"
+            icon={Timer}
+            delta={weekCompare !== 0 ? `${weekCompare >= 0 ? "↑" : "↓"} ${Math.abs(weekCompare)}%` : undefined}
+            progress={weekProgressPct}
+          />
+        </MetricGrid>
+      </motion.section>
+
+      <motion.section
+        className="nrc-card p-4"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: EASE.out }}
@@ -506,23 +574,6 @@ export function Dashboard({
         />
       </motion.section>
 
-      <MetricPanel title="Key metrics">
-        <MetricGrid cols={3}>
-          <MetricTile label="Calories" value={`${today.calories}`} tone="move" icon={Flame} />
-          <MetricTile label="Active min" value={`${today.activeMinutes}`} unit="m" tone="coach" icon={Activity} />
-          <MetricTile label="Coach score" value={latestCoach ? `${latestCoach.score}%` : "—"} tone="coach" icon={Shield} />
-        </MetricGrid>
-        <div className="mt-4 space-y-2 border-t border-border/60 pt-4">
-          <MetricRow
-            icon={Activity}
-            label="Weekly sessions"
-            value={`${thisWeekTotal}`}
-            delta={weekCompare !== 0 ? `${weekCompare >= 0 ? "↑" : "↓"} ${Math.abs(weekCompare)}% vs last week` : `${Math.max(0, dailyCalorieGoal - today.calories)} cal to daily target`}
-            points={weekly.map((w) => ({ v: w.count }))}
-          />
-        </div>
-      </MetricPanel>
-
       <WearableLiveHome
         sessionsLast7d={sessionsLast7d}
         onNavigate={onNavigate}
@@ -532,7 +583,7 @@ export function Dashboard({
 
       {onStartProgramCoach ? (
         <motion.section
-          className="rounded-3xl border border-border/80 bg-card p-3 sm:p-4 dark:border-white/10"
+          className="nrc-card p-3 sm:p-4"
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.42, ease: EASE.out }}
@@ -546,7 +597,7 @@ export function Dashboard({
         <motion.button
           type="button"
           onClick={() => setRingSheet("week")}
-          className="flex flex-col gap-3 rounded-3xl border border-border/80 bg-card p-4 text-left shadow-sm transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:border-white/10"
+          className="press-magnetic nrc-card flex flex-col gap-3 p-4 text-left transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:border-white/10"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.38, delay: 0.02, ease: [0.22, 1, 0.36, 1] }}
@@ -583,7 +634,7 @@ export function Dashboard({
         <motion.button
           type="button"
           onClick={() => setRingSheet("streak")}
-          className="flex flex-col gap-3 rounded-3xl border border-border/80 bg-card p-4 text-left shadow-sm transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:border-white/10"
+          className="press-magnetic nrc-card flex flex-col gap-3 p-4 text-left transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:border-white/10"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.38, delay: 0.04, ease: [0.22, 1, 0.36, 1] }}
@@ -613,7 +664,7 @@ export function Dashboard({
         <motion.button
           type="button"
           onClick={() => onNavigate("ai-coach")}
-          className="col-span-1 flex flex-col gap-3 rounded-3xl border border-chart-3/35 bg-gradient-to-br from-chart-3/12 via-card to-card p-4 text-left shadow-sm transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:col-span-2 dark:border-white/10"
+          className="nrc-card col-span-1 flex flex-col gap-3 p-4 text-left transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:col-span-2"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.38, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
@@ -755,7 +806,7 @@ export function Dashboard({
       </motion.div>
 
       <motion.section
-        className="rounded-3xl border border-border/80 bg-card p-3 shadow-sm dark:border-white/10"
+        className="nrc-card p-3"
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.42, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
@@ -780,7 +831,7 @@ export function Dashboard({
 
       {fourWeekTrend.some((w) => w.count > 0) && (
         <motion.section
-          className="rounded-3xl border border-border/80 bg-card p-3 shadow-sm dark:border-white/10"
+          className="nrc-card p-3"
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.42, delay: 0.125, ease: [0.22, 1, 0.36, 1] }}
@@ -831,7 +882,7 @@ export function Dashboard({
 
       {profile?.goals && profile.goals.length > 0 && (
         <motion.section
-          className="rounded-3xl border border-border/80 bg-card/45 p-3 backdrop-blur-xl dark:border-white/10"
+          className="nrc-card p-3"
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.42, delay: 0.13, ease: [0.22, 1, 0.36, 1] }}
@@ -857,7 +908,7 @@ export function Dashboard({
 
       {(personalBests.longestRunKm > 0 || personalBests.bestCoachScore > 0 || personalBests.longestStreak > 0 || personalBests.fastestPace) && (
         <motion.section
-          className="rounded-3xl border border-border/80 bg-card/45 p-3 backdrop-blur-xl dark:border-white/10"
+          className="nrc-card p-3"
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.42, delay: 0.13, ease: [0.22, 1, 0.36, 1] }}
@@ -916,18 +967,26 @@ export function Dashboard({
                 key={hero.labelKey}
                 type="button"
                 onClick={() => onNavigate(hero.tab)}
-                className="relative flex min-h-[120px] w-full items-end overflow-hidden rounded-lg border border-border bg-foreground text-background transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                className="relative flex min-h-[140px] w-full items-end overflow-hidden rounded-2xl border border-border bg-foreground text-background transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                style={{ background: "linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)" }}
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ ...SPRING.list, delay: 0.16 }}
                 whileTap={{ scale: 0.99 }}
               >
-                <span className="absolute right-4 top-4 inline-flex">
-                  <HeroIcon className="h-10 w-10 text-primary" strokeWidth={2} aria-hidden />
-                </span>
+                {/* Animated runner silhouette in background */}
+                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 opacity-25">
+                  <ExerciseIllustration id="run" size={100} animate color="var(--primary)" />
+                </div>
+                {/* Volt glow radial */}
+                <div
+                  className="pointer-events-none absolute inset-0"
+                  style={{ background: "radial-gradient(ellipse 50% 60% at 80% 50%, oklch(0.72 0.22 130 / 0.12) 0%, transparent 70%)" }}
+                  aria-hidden
+                />
                 <div className="flex w-full items-end justify-between gap-2 p-4">
                   <div>
-                    <p className="text-typo-eyebrow font-bold uppercase tracking-[0.32em] text-background/60">Start</p>
+                    <p className="text-typo-eyebrow font-bold uppercase tracking-[0.32em] text-background/50">Start</p>
                     <span
                       className="block text-3xl font-bold uppercase leading-none tracking-tight text-background"
                       style={{ fontFamily: "var(--font-display), var(--font-heading)" }}
@@ -935,10 +994,18 @@ export function Dashboard({
                       {t(hero.labelKey)}
                     </span>
                   </div>
-                  <span className="inline-flex items-center gap-1 rounded-sm bg-primary px-3 py-2 text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-primary-foreground">
+                  <motion.span
+                    className="inline-flex items-center gap-1 rounded-sm bg-primary px-3 py-2 text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-primary-foreground shadow-[0_0_16px_oklch(0.72_0.22_130/0.5)]"
+                    animate={{ boxShadow: [
+                      "0 0 8px oklch(0.72 0.22 130 / 0.3)",
+                      "0 0 20px oklch(0.72 0.22 130 / 0.6)",
+                      "0 0 8px oklch(0.72 0.22 130 / 0.3)",
+                    ]}}
+                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                  >
                     Go
                     <Zap className="h-3.5 w-3.5" aria-hidden />
-                  </span>
+                  </motion.span>
                 </div>
               </motion.button>
             )
@@ -972,7 +1039,7 @@ export function Dashboard({
         <motion.button
           type="button"
           onClick={() => onEnterCoachFocus()}
-          className="flex w-full flex-col gap-1 rounded-3xl border border-metric-coach/35 bg-gradient-to-br from-metric-coach/15 to-chart-2/10 p-4 text-left shadow-sm transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-metric-coach focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:border-metric-coach/25"
+          className="nrc-card flex w-full flex-col gap-1 border-metric-coach/25 p-4 text-left transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-metric-coach focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.38, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
@@ -1092,6 +1159,6 @@ export function Dashboard({
         onOpenChange={(o) => !o && setFeedDetailActivity(null)}
         activity={feedDetailActivity}
       />
-    </div>
+    </DataScreen>
   )
 }
