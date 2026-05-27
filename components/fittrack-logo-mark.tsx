@@ -102,7 +102,7 @@ export function FittrackLogoMark({
 /** Static SVG for raster brand export (matches in-app mark). */
 export function fittrackIconSvgMarkup(
   size: number,
-  fg = "#000000",
+  _fg = "#000000",
   accent = "#c8f135",
   accent2 = "#0ea5e9",
   bg = "#ffffff",

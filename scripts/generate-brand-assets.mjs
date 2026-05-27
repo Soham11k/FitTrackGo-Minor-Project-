@@ -36,7 +36,7 @@ const PULSE_PATH =
   "M 18 52 L 18 28 L 34 28 L 34 36 L 26 36 L 26 40 L 38 40 L 44 24 L 50 48 L 56 32 L 62 52"
 
 /** Square app icon — pulse glyph (matches components/fittrack-logo-mark.tsx). */
-function iconSvg(size, fg = FG, accent = ACCENT, accent2 = ACCENT2, bg = BG) {
+function iconSvg(size, _fg = FG, accent = ACCENT, accent2 = ACCENT2, bg = BG) {
   const sw = Math.max(1, size / 80)
   return `
   <svg width="${size}" height="${size}" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">

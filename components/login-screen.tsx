@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Chrome, Loader2 } from "lucide-react"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { Button } from "@/components/ui/button"
@@ -199,8 +199,8 @@ export function LoginScreen({
   const [fieldError, setFieldError] = useState<{ email?: string; password?: string; name?: string }>({})
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const [authClientEpoch, setAuthClientEpoch] = useState(0)
-  const supabase = useMemo(() => createClient(), [authClientEpoch])
+  const [, setAuthClientEpoch] = useState(0)
+  const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
     markSupabaseReachable()

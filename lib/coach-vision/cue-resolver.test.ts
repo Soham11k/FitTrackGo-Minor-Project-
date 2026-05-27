@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { resolveGoodHighlight, resolveImproveHighlight, type HighlightSpec } from "./cue-resolver"
 import { regionToSegmentPairs } from "./faults"
+import type { FormBreakdown } from "@/lib/form-analysis"
 
 describe("cue-resolver: improve highlights", () => {
   it("maps cue text → a template fault id", () => {
@@ -21,7 +22,11 @@ describe("cue-resolver: improve highlights", () => {
       },
     ] as const
 
-    const spec = resolveImproveHighlight("Depth short", "squat", breakdown as any) as HighlightSpec | null
+    const spec = resolveImproveHighlight(
+      "Depth short",
+      "squat",
+      breakdown as unknown as FormBreakdown[],
+    ) as HighlightSpec | null
     expect(spec).not.toBeNull()
     expect(spec!.faultId).toBe("breakdown.legs")
     expect(spec!.segmentPairs).toEqual(regionToSegmentPairs("legs"))
@@ -39,7 +44,11 @@ describe("cue-resolver: good vs improve", () => {
       },
     ] as const
 
-    const spec = resolveGoodHighlight("Back Neutral", "squat", breakdown as any)
+    const spec = resolveGoodHighlight(
+      "Back Neutral",
+      "squat",
+      breakdown as unknown as FormBreakdown[],
+    )
     expect(spec).not.toBeNull()
     expect(spec!.kind).toBe("good")
     expect(spec!.faultId).toBe("good.torso")

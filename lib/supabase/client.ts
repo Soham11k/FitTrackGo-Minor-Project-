@@ -1,7 +1,6 @@
 import { createBrowserClient } from '@supabase/ssr'
 import { validateSupabaseEnv, normalizePublicEnvScalar } from '@/lib/supabase/config'
 import {
-  markSupabaseUnreachable,
   shouldSkipSupabaseNetwork,
 } from '@/lib/supabase/connectivity-circuit'
 import { getSupabaseUrlForRuntime } from '@/lib/supabase/runtime-url'

@@ -154,7 +154,7 @@ export function ExerciseBodyPreview(props: { exerciseId?: string | null; autoEna
     return () => {
       cancelled = true
     }
-  }, [mode])
+  }, [mode, reducedMotion])
 
   useEffect(() => {
     if (mode !== "on") return
@@ -270,7 +270,7 @@ export function ExerciseBodyPreview(props: { exerciseId?: string | null; autoEna
       runningRef.current = false
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
     }
-  }, [mode])
+  }, [mode, reducedMotion])
 
   return (
     <section className="rounded-2xl border border-border bg-card overflow-hidden" aria-labelledby="exercise-body-check-heading">

@@ -5,7 +5,6 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import Link from "next/link"
 import {
   Camera,
-  ScanLine,
   CheckCircle2,
   AlertCircle,
   Play,
@@ -15,21 +14,11 @@ import {
   Target,
   Shield,
   Info,
-  Dumbbell,
-  Flame,
-  Activity,
-  BicepsFlexed,
-  CircleDot,
-  Move,
-  Footprints,
-  LayoutList,
-  Weight,
   UserCheck,
   Phone,
   Crosshair,
   User,
   X,
-  GripVertical,
   Columns2,
   Swords,
   Sparkles,
@@ -1696,7 +1685,6 @@ export function AICoach({
   }
 
   if (state === "setup") {
-    const family = catalogCtx?.family ?? (selectedFamilyId ? getCoachFamily(selectedFamilyId) : undefined)
     const tips = resolvedExerciseTips
     const memoryTip = exerciseName ? getCoachMemoryTip(exerciseName) : null
     const culturalExtras = selectedSpecId ? getCulturalTipExtras(locale, selectedSpecId) : []

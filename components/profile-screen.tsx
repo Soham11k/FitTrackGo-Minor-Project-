@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import Image from "next/image"
 import { motion, useReducedMotion } from "framer-motion"
 import {
-  User,
   Settings,
   Bell,
   Award,
@@ -42,7 +41,6 @@ import { getFaq, getAchievements, siteConfig, type AchievementDef } from "@/lib/
 import { ContactForm } from "@/components/contact-form"
 import { MetricTrendMini } from "@/components/metric-trend-mini"
 import { DURATION, EASE, staggerDelaySec, staggerChildren, CINEMATIC } from "@/lib/motion"
-import { AnimatedCounter } from "@/components/animated/AnimatedCounter"
 import { useChartEnterOnce } from "@/hooks/use-chart-enter-once"
 import { LanguageSelector } from "@/components/language-selector"
 import { UnitSelector } from "@/components/unit-selector"

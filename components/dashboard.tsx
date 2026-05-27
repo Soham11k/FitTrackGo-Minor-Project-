@@ -88,11 +88,6 @@ type DashboardFeedRow = {
   activity: ActivityDetailPayload
 }
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 10 },
-  show: { opacity: 1, y: 0, transition: { duration: DURATION.medium, ease: EASE.out } },
-}
-
 function toLocalDateStr(isoOrDate: string | Date): string {
   const d = typeof isoOrDate === "string" ? new Date(isoOrDate) : isoOrDate
   const y = d.getFullYear()
@@ -961,7 +956,6 @@ export function Dashboard({
         <div className="space-y-2">
           {(() => {
             const hero = quickActionDefs[0]
-            const HeroIcon = hero.icon
             return (
               <motion.button
                 key={hero.labelKey}

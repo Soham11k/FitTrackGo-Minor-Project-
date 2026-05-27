@@ -342,7 +342,7 @@ export function WorkoutStepCamera({
       const videoEl = videoRef.current
       if (videoEl) videoEl.srcObject = null
     }
-  }, [isActive, cameraRetryNonce])
+  }, [isActive, cameraRetryNonce, reducedMotion])
 
   if (!isActive) return null
 

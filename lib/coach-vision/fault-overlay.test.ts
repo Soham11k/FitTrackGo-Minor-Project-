@@ -12,7 +12,7 @@ describe("fault-overlay: renderPositiveHighlight", () => {
       lineJoin: "",
       strokeStyle: "",
       lineWidth: 0,
-    } as any
+    } as unknown as CanvasRenderingContext2D
 
     expect(() =>
       renderPositiveHighlight(ctx, [], [], {
@@ -34,7 +34,7 @@ describe("fault-overlay: renderPositiveHighlight", () => {
       lineJoin: "",
       strokeStyle: "",
       lineWidth: 0,
-    } as any
+    } as unknown as CanvasRenderingContext2D
 
     expect(() =>
       renderPositiveHighlight(ctx, [{ x: 0.5, y: 0.5, visibility: 1 }], [], {
