@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState, useEffect, useCallback, useLayoutEffect } from "react"
-import { Camera, ScanLine, Loader2 } from "lucide-react"
+import { Camera, Eye, Loader2 } from "lucide-react"
 import { useReducedMotion } from "framer-motion"
 import {
   initPoseDetection,
@@ -17,13 +17,19 @@ import type { HighlightSpec } from "@/lib/coach-vision/cue-resolver"
 import { useCueFocusOptional } from "@/components/coach/cue-focus-context"
 import type { Landmark } from "@/lib/form-analysis"
 import { COACH_FRAME_INTERVAL_MS } from "@/lib/pose-config"
+import { WORKOUTS } from "@/lib/workouts-theme"
+import { cn } from "@/lib/utils"
 
 type PreviewMode = "off" | "loading" | "on" | "error"
 
 const NEUTRAL_FORM_SCORE = 85
 
-export function ExerciseBodyPreview(props: { exerciseId?: string | null; autoEnable?: boolean }) {
-  const { exerciseId = null, autoEnable = false } = props
+export function ExerciseBodyPreview(props: {
+  exerciseId?: string | null
+  autoEnable?: boolean
+  theme?: "default" | "workouts"
+}) {
+  const { exerciseId = null, autoEnable = false, theme = "default" } = props
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -272,27 +278,71 @@ export function ExerciseBodyPreview(props: { exerciseId?: string | null; autoEna
     }
   }, [mode, reducedMotion])
 
+  const isWorkouts = theme === "workouts"
+
   return (
-    <section className="rounded-2xl border border-border bg-card overflow-hidden" aria-labelledby="exercise-body-check-heading">
+    <section
+      className={cn(
+        "overflow-hidden rounded-2xl border",
+        isWorkouts ? "border-t-[3px]" : "border-border bg-card",
+      )}
+      style={
+        isWorkouts
+          ? {
+              backgroundColor: WORKOUTS.card,
+              borderColor: WORKOUTS.cardBorder,
+              borderTopColor: WORKOUTS.accent,
+            }
+          : undefined
+      }
+      aria-labelledby="exercise-body-check-heading"
+    >
       <div className="flex items-center gap-2 px-4 pt-4 pb-2">
-        <ScanLine className="h-4 w-4 text-metric-coach shrink-0" aria-hidden />
-        <h2 id="exercise-body-check-heading" className="text-sm font-semibold text-foreground">
+        <Eye
+          className="h-4 w-4 shrink-0"
+          style={isWorkouts ? { color: WORKOUTS.accent } : undefined}
+          aria-hidden
+        />
+        <h2
+          id="exercise-body-check-heading"
+          className={isWorkouts ? "text-sm font-black uppercase tracking-[0.06em]" : "text-sm font-semibold text-foreground"}
+          style={isWorkouts ? { color: WORKOUTS.accent } : undefined}
+        >
           Body check
         </h2>
       </div>
-      <p className="px-4 pb-3 text-xs text-muted-foreground">
-        Preview your position with live body tracking. For rep counts and form scoring, use Open AI Coach below.
+      <p
+        className={cn("px-4 pb-3 text-xs leading-relaxed", !isWorkouts && "text-muted-foreground")}
+        style={isWorkouts ? { color: WORKOUTS.muted } : undefined}
+      >
+        {isWorkouts
+          ? "Preview position with live body tracking. Use AI Coach below for rep counts and form scoring."
+          : "Preview your position with live body tracking. For rep counts and form scoring, use Open AI Coach below."}
       </p>
 
       {mode === "off" || mode === "error" ? (
-        <div className="px-4 pb-4 space-y-3">
+        <div className="space-y-3 px-4 pb-4">
           {mode === "error" && errorMessage && (
-            <p className="text-xs text-destructive">{errorMessage}</p>
+            <p
+              className={cn("text-xs", !isWorkouts && "text-destructive")}
+              style={isWorkouts ? { color: WORKOUTS.accent } : undefined}
+            >
+              {errorMessage}
+            </p>
           )}
           <button
             type="button"
             onClick={startCamera}
-            className="w-full flex items-center justify-center gap-2 rounded-xl border border-metric-coach/35 bg-metric-coach/10 py-3 text-sm font-semibold text-metric-coach hover:bg-metric-coach/15"
+            className={
+              isWorkouts
+                ? "flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-black uppercase tracking-[0.08em]"
+                : "flex w-full items-center justify-center gap-2 rounded-xl border border-metric-coach/35 bg-metric-coach/10 py-3 text-sm font-semibold text-metric-coach hover:bg-metric-coach/15"
+            }
+            style={
+              isWorkouts
+                ? { backgroundColor: WORKOUTS.white, color: "#111111" }
+                : undefined
+            }
           >
             <Camera className="h-4 w-4 shrink-0" />
             Enable camera
@@ -301,8 +351,14 @@ export function ExerciseBodyPreview(props: { exerciseId?: string | null; autoEna
       ) : null}
 
       {mode === "loading" || mode === "on" ? (
-        <div className="px-4 pb-4 space-y-3">
-          <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-secondary">
+        <div className="space-y-3 px-4 pb-4">
+          <div
+            className={cn(
+              "relative aspect-video w-full overflow-hidden rounded-xl",
+              !isWorkouts && "bg-secondary",
+            )}
+            style={isWorkouts ? { backgroundColor: WORKOUTS.black } : undefined}
+          >
             <video
               ref={videoRef}
               className="absolute inset-0 h-full w-full object-cover"

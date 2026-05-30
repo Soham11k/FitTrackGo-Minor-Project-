@@ -4,8 +4,6 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import Link from "next/link"
 import { CHROME } from "@/lib/app-chrome"
-import { ChromeHeader } from "@/components/chrome/ChromeHeader"
-import { HeroAccentLines } from "@/components/animated/HeroAccentLines"
 import {
   Camera,
   CheckCircle2,
@@ -45,9 +43,8 @@ import { RepReplayBuffer, type RepFrame } from "@/lib/coach-vision/rep-replay"
 import { drawCueFocusOverlay } from "@/lib/coach-vision/canvas-highlight"
 import type { HighlightSpec } from "@/lib/coach-vision/cue-resolver"
 import { skeletonAnim } from "@/lib/skeleton-animations"
-import { addCoachSession, formatErr, getCoachSessions } from "@/lib/store-supabase"
+import { addCoachSession, formatErr, getCoachSessions, getTotalStats } from "@/lib/store-supabase"
 import { isNetworkError } from "@/lib/network-status"
-import { LoadChip } from "@/components/ai-coach/load-chip"
 import { hasSpec as coachHasSpec, loadSpec as coachLoadSpecRaw } from "@/lib/form-engine/registry"
 import { effectiveRepCount, isVerifiedMovement } from "@/lib/competition"
 import { recordCoachSessionMemory, getCoachMemoryTip } from "@/lib/coach-memory"
@@ -99,7 +96,7 @@ import type { TabId } from "@/components/bottom-nav"
 import { StatDisplay } from "@/components/ui/stat-display"
 import { CelebrationBurst } from "@/components/ui/celebration-burst"
 import { MotionCelebrate } from "@/components/motion-celebrate"
-import { CINEMATIC, staggerChildren } from "@/lib/motion"
+import { CINEMATIC } from "@/lib/motion"
 import { MobilityCoach } from "@/components/mobility-coach"
 import { agentDebugLog } from "@/lib/debug-agent-log"
 import {
@@ -122,25 +119,28 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { ExerciseBodyPreview } from "@/components/exercise-body-preview"
-// ScreenTitle replaced by ChromeHeader hero section
-import { CinematicStage } from "@/components/ui/cinematic-stage"
-import { FittrackLogoMark } from "@/components/fittrack-logo-mark"
-import { ExerciseIllustration, type ExerciseIllustrationId } from "@/components/animated/ExerciseIllustration"
+// ScreenTitle replaced by coach form chrome
 import { AnimatedCounter } from "@/components/animated/AnimatedCounter"
 import { ParticleBurst } from "@/components/animated/ParticleBurst"
+import {
+  COACH_FORM,
+  CoachBackButton,
+  CoachDarkPanel,
+  CoachFaceStatus,
+  CoachFormCues,
+  CoachFormHeader,
+  CoachHeroTitle,
+  CoachMovementRow,
+  CoachOutlineCta,
+  CoachPrivacyBanner,
+  CoachRedToggle,
+  CoachRepGoalInput,
+  CoachSectionLabel,
+  CoachSetLoadRow,
+  CoachTipBox,
+  CoachTrackTabs,
+} from "@/components/ai-coach/coach-form-ui"
 
-const FAMILY_TO_ILLUSTRATION: Record<string, ExerciseIllustrationId> = {
-  pushup_family:         "pushup",
-  squat_family:          "squat",
-  plank_family:          "plank",
-  lunge_family:          "lunge",
-  deadlift_family:       "deadlift",
-  bicep_curl_family:     "bicep_curl",
-  shoulder_press_family: "shoulder_press",
-  jumping_jacks_family:  "jumping_jacks",
-  high_knees_family:     "high_knees",
-  crunch_family:         "crunch",
-}
 const POSTURE_PENALTY_THRESHOLD = 75
 const POSTURE_PENALTY_NO_ACCUM_THRESHOLD = 85
 /** Require this many consecutive frames at top before a rep can complete (reduces single-frame noise). */
@@ -230,6 +230,8 @@ export function AICoach({
   // Per-rep timing info for Motion DNA (durationMs, rom-approximation, symmetry)
   const repDnaDataRef = useRef<RepSample[]>([])
   const [state, setState] = useState<DetectionState>("select")
+  const [setupPhase, setSetupPhase] = useState<"exercise" | "accessibility">("exercise")
+  const [streakDays, setStreakDays] = useState(0)
   const [coachTrack, setCoachTrack] = useState<"strength" | "mobility">("strength")
   const [a11yPrefs, setA11yPrefs] = useState<CoachA11yPrefs>(() =>
     typeof window !== "undefined" ? getCoachA11yPrefs() : { hapticOnRep: true, announceReps: true, reduceMotion: false, highContrastVideo: false }
@@ -463,6 +465,11 @@ export function AICoach({
     })
   }, [state, coachTrack, coachPickerStep, selectedFamilyId])
 
+  useEffect(() => {
+    void getTotalStats()
+      .then((s) => setStreakDays(s.streak))
+      .catch(() => {})
+  }, [])
 
   const handleOpenArenaFromRecap = useCallback(() => {
     setArenaDuelExerciseLabel(exerciseName)
@@ -512,9 +519,14 @@ export function AICoach({
       }
     })()
     setState("setup")
+    setSetupPhase("exercise")
   }
 
   const handleSetupBack = () => {
+    if (setupPhase === "accessibility") {
+      setSetupPhase("exercise")
+      return
+    }
     setState("select")
     setSelectedSpecId(null)
     setLoadKg(undefined)
@@ -905,6 +917,7 @@ export function AICoach({
         .then(async ({ data: { user } }: { data: { user: { id: string } | null } }) => {
           if (!user) {
             toast.error("Sign in to enroll your face")
+            setSetupPhase("accessibility")
             setState("setup")
             return
           }
@@ -912,17 +925,20 @@ export function AICoach({
           if (cancelled) return
           if (!ok) {
             toast.error("Could not save face (storage blocked). Check browser site settings and try again.")
+            setSetupPhase("accessibility")
             setState("setup")
             return
           }
           faceSignatureRef.current = sig
           faceEmbeddingVersionRef.current = embeddingVersion
           setFaceEnrolled(true)
+          setSetupPhase("accessibility")
           setState("setup")
           toast.success("Face enrolled — only your reps will count")
         })
         .catch(() => {
           toast.error("Could not enroll face")
+          setSetupPhase("accessibility")
           setState("setup")
         })
     }
@@ -1594,162 +1610,99 @@ export function AICoach({
     ) : null
 
   if (state === "select") {
+    const selectedFamily = selectedFamilyId ? getCoachFamily(selectedFamilyId) : null
+    const variantCategory = selectedFamily?.category ?? "upper"
+
     return (
       <>
         {coachFocusBar}
         {coachTrack === "mobility" ? (
           <MobilityCoach onBack={() => setCoachTrack("strength")} />
         ) : (
-      <div data-testid="screen-ai-coach" className="flex min-h-dvh flex-col" style={{ backgroundColor: CHROME.black }}>
-        <ChromeHeader />
-        {/* Coach hero */}
-        <div className="relative overflow-hidden px-5 pb-5 pt-4" style={{ backgroundColor: CHROME.black }}>
-          <HeroAccentLines height={120} strokeColor={CHROME.border} />
-          <div className="relative z-10">
-            <p className="text-[10px] font-bold uppercase tracking-[0.28em]" style={{ color: CHROME.muted }}>AI Coach</p>
-            <h1 className="text-4xl font-black uppercase leading-none text-white" style={{ fontFamily: "var(--font-display), var(--font-heading), sans-serif" }}>
-              {coachPickerStep === "families" ? "Choose movement" : "Pick variation"}
-            </h1>
-            <p className="mt-1 text-xs" style={{ color: CHROME.muted }}>{t("coach.privacyBanner")}</p>
-          </div>
-        </div>
-        {/* Track toggles */}
-        <div className="flex gap-2 px-4 pb-3 pt-1">
-          {(["strength", "mobility"] as const).map((track) => (
-            <button
-              key={track}
-              type="button"
-              onClick={() => setCoachTrack(track)}
-              className="flex-1 rounded-xl py-2.5 text-[11px] font-bold uppercase tracking-[0.14em] transition-colors"
-              style={
-                coachTrack === track
-                  ? { backgroundColor: CHROME.orange, color: CHROME.white }
-                  : { backgroundColor: CHROME.focusBg, color: CHROME.muted, border: `1px solid ${CHROME.border}` }
-              }
-            >
-              {track}
-            </button>
-          ))}
-        </div>
-        <div className="flex flex-col gap-3 px-4 pb-28">
-        <AnimatePresence mode="wait">
-        {coachPickerStep === "variants" ? (
-          <motion.div
-            key="variants-wrap"
-            className="flex w-full flex-col gap-3"
-            initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
-            transition={{ duration: 0.2 }}
+          <div
+            data-testid="screen-ai-coach"
+            className="flex min-h-dvh flex-col pb-28"
+            style={{ backgroundColor: CHROME.black }}
           >
-            <button
-              type="button"
-              onClick={handlePickerBackToFamilies}
-              className="flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground"
-            >
-              <ChevronRight className="h-4 w-4 rotate-180" />
-              All movements
-            </button>
-            <motion.div
-              key="variants-grid"
-              className="flex flex-col gap-2"
-              variants={staggerChildren(0.06, 0.05)}
-              initial={reduceMotion ? false : "hidden"}
-              animate="show"
-              exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
-            >
-              {activePickerVariants.map((v) => {
-                const variantTitle =
-                  v.specId === "deadlift" ? t("coach.deadlift.name") : v.specId === "rdl" ? t("coach.rdl.name") : v.name
-                return (
-                  <motion.button
-                    key={v.specId}
-                    variants={CINEMATIC.statReveal}
-                    type="button"
-                    onClick={() => handleSelectVariant(v.specId)}
-                    className="group relative flex min-h-[72px] items-center gap-3 rounded-2xl px-4 py-3 text-left active:scale-[0.99] focus-visible:outline-none"
-                    style={{ backgroundColor: CHROME.cardBg, border: `1px solid ${CHROME.border}` }}
-                  >
-                    <div className="h-10 w-1 shrink-0 rounded-full" style={{ backgroundColor: CHROME.orange }} />
-                    <div className="min-w-0 flex-1">
-                      <h3 className="text-sm font-semibold text-white" style={{ fontFamily: "var(--font-heading)" }}>
-                        {variantTitle}
-                      </h3>
-                      <p className="mt-0.5 line-clamp-2 text-xs" style={{ color: CHROME.muted }}>{v.description}</p>
-                    </div>
-                    <ChevronRight className="h-4 w-4" style={{ color: CHROME.muted }} />
-                  </motion.button>
-                )
-              })}
-            </motion.div>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="families-grid"
-            className="flex flex-col gap-3"
-            variants={staggerChildren(0.04, 0.05)}
-            initial={reduceMotion ? false : "hidden"}
-            animate="show"
-            exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
-          >
-            {/* Custom exercise button — full width */}
-            <button
-              type="button"
-              onClick={() => setCustomBuilderOpen(true)}
-              className="flex min-h-[56px] items-center gap-3 rounded-xl border border-primary/35 bg-card px-4 py-3 text-left text-sm font-semibold text-primary transition-colors hover:border-primary/60"
-            >
-              <Sparkles className="h-4 w-4 shrink-0" />
-              <span className="flex-1">Create custom exercise</span>
-              <ChevronRight className="h-4 w-4" />
-            </button>
+            <CoachFormHeader streakDays={streakDays} />
+            <CoachHeroTitle
+              eyebrow="AI Coach"
+              title={coachPickerStep === "families" ? "Choose movement" : "Choose movement"}
+            />
+            <CoachPrivacyBanner text={t("coach.privacyBanner")} />
+            <CoachTrackTabs track={coachTrack} onTrack={setCoachTrack} />
 
-            {/* 2-column graphical exercise cards */}
-            <div className="grid grid-cols-2 gap-2">
-              {pickerFamilies.map((fam, i) => {
-                const illustId: ExerciseIllustrationId = FAMILY_TO_ILLUSTRATION[fam.id] ?? "default"
-                return (
-                  <motion.button
-                    key={fam.id}
-                    variants={CINEMATIC.statReveal}
-                    type="button"
-                    onClick={() => handleSelectFamily(fam.id)}
-                    className={`group relative flex min-h-[120px] flex-col items-start justify-between overflow-hidden rounded-2xl border bg-card px-3 pb-3 pt-2 text-left transition-colors hover:border-primary/50 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary border-border`}
-                    style={{ animationDelay: `${i * 0.04}s` }}
-                    whileTap={{ scale: 0.97 }}
+            <div className="flex flex-col gap-2.5 px-0">
+              <AnimatePresence mode="wait">
+                {coachPickerStep === "variants" ? (
+                  <motion.div
+                    key="variants"
+                    className="flex flex-col gap-2.5"
+                    initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
                   >
-                    {/* Tone gradient background */}
-                    <div
-                      className={`pointer-events-none absolute inset-0 rounded-[inherit] bg-gradient-to-br ${fam.gradient} opacity-60`}
-                      aria-hidden
-                    />
-                    {/* Animated illustration in corner */}
-                    <div className="pointer-events-none absolute right-1 top-1 opacity-40">
-                      <ExerciseIllustration id={illustId} size={64} animate={!reduceMotion} />
-                    </div>
-                    <div className="relative z-10 flex-1">
-                      <h3
-                        className="text-sm font-bold leading-tight text-foreground"
-                        style={{ fontFamily: "var(--font-heading)" }}
+                    <CoachBackButton label="All movements" onClick={handlePickerBackToFamilies} />
+                    {activePickerVariants.map((v, i) => {
+                      const variantTitle =
+                        v.specId === "deadlift"
+                          ? t("coach.deadlift.name")
+                          : v.specId === "rdl"
+                            ? t("coach.rdl.name")
+                            : v.name
+                      return (
+                        <div key={v.specId} className="px-4">
+                          <CoachMovementRow
+                            index={i}
+                            title={variantTitle}
+                            subtitle={v.description.toUpperCase()}
+                            category={variantCategory}
+                            onClick={() => handleSelectVariant(v.specId)}
+                            delay={i * 0.04}
+                          />
+                        </div>
+                      )
+                    })}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="families"
+                    className="flex flex-col gap-2.5"
+                    initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
+                  >
+                    <CoachSectionLabel>Custom exercise</CoachSectionLabel>
+                    <div className="px-4">
+                      <button
+                        type="button"
+                        onClick={() => setCustomBuilderOpen(true)}
+                        className="flex w-full items-center gap-3 rounded-2xl border px-3.5 py-3.5 text-left"
+                        style={{ backgroundColor: COACH_FORM.card, borderColor: COACH_FORM.cardBorder }}
                       >
-                        {fam.name}
-                      </h3>
-                      <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-muted-foreground">{fam.description}</p>
+                        <Sparkles className="h-4 w-4 shrink-0" style={{ color: COACH_FORM.accent }} />
+                        <span className="flex-1 text-sm font-bold text-white">Create custom exercise</span>
+                        <ChevronRight className="h-4 w-4" style={{ color: COACH_FORM.muted }} />
+                      </button>
                     </div>
-                    <div className="relative z-10 flex w-full items-center justify-between">
-                      <span className="inline-block rounded-sm bg-foreground/8 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                        {fam.category}
-                      </span>
-                      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/60" />
-                    </div>
-                  </motion.button>
-                )
-              })}
+
+                    {pickerFamilies.map((fam, i) => (
+                      <div key={fam.id} className="px-4">
+                        <CoachMovementRow
+                          index={i}
+                          title={fam.name}
+                          subtitle={(fam.variants[0]?.description ?? fam.description).toUpperCase()}
+                          category={fam.category}
+                          onClick={() => handleSelectFamily(fam.id)}
+                          delay={i * 0.04}
+                        />
+                      </div>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-          </motion.div>
-        )}
-        </AnimatePresence>
-        </div>
-        </div>
+          </div>
         )}
       </>
     )
@@ -1757,175 +1710,113 @@ export function AICoach({
 
   if (state === "setup") {
     const tips = resolvedExerciseTips
-    const memoryTip = exerciseName ? getCoachMemoryTip(exerciseName) : null
-    const culturalExtras = selectedSpecId ? getCulturalTipExtras(locale, selectedSpecId) : []
     const spec = selectedSpecId ? coachLoadSpec(selectedSpecId) : null
     const showLoadChip = spec?.loadType === "external"
+    const exerciseTitle = (exerciseName || "Exercise").toUpperCase()
+    const exerciseDescription =
+      catalogCtx?.variant.description ??
+      "Position your full body in the camera frame for best rep detection."
+    const cameraNote =
+      catalogCtx?.variant.cameraNote ??
+      "Stand 6–8 ft from camera, full body in frame for best rep detection."
+
+    if (setupPhase === "accessibility") {
+      return (
+        <>
+          {coachFocusBar}
+          <div className="flex min-h-dvh flex-col pb-32" style={{ backgroundColor: CHROME.black }}>
+            <CoachFormHeader streakDays={streakDays} />
+            <CoachHeroTitle
+              eyebrow="Coach"
+              title="Accessibility"
+              subtitle="Preferences saved on this device only."
+            />
+            <div className="flex flex-col gap-4 px-4">
+              <CoachDarkPanel className="space-y-4">
+                {(
+                  [
+                    ["hapticOnRep", "Haptic on rep", "Short vibration when a rep counts"] as const,
+                    ["announceReps", "Announce reps", "Speak rep milestones out loud"] as const,
+                    ["reduceMotion", "Reduce motion", "Lighter skeleton and UI motion"] as const,
+                    ["highContrastVideo", "High-contrast video", "Boost camera contrast while detecting"] as const,
+                  ] as const
+                ).map(([key, label, desc]) => (
+                  <CoachRedToggle
+                    key={key}
+                    label={label}
+                    description={desc}
+                    checked={a11yPrefs[key]}
+                    onChange={(v) => applyA11yPrefs({ [key]: v })}
+                  />
+                ))}
+              </CoachDarkPanel>
+
+              <CoachDarkPanel>
+                <p
+                  className="text-[10px] font-bold uppercase tracking-[0.24em]"
+                  style={{ color: COACH_FORM.accent }}
+                >
+                  Optional
+                </p>
+                <CoachRepGoalInput value={targetReps} onChange={setTargetReps} />
+              </CoachDarkPanel>
+
+              <CoachDarkPanel>
+                <p
+                  className="text-[10px] font-bold uppercase tracking-[0.24em]"
+                  style={{ color: COACH_FORM.accent }}
+                >
+                  Identity
+                </p>
+                <p className="mt-2 text-[11px] leading-relaxed" style={{ color: COACH_FORM.muted }}>
+                  One account, one face. Enroll your face so only your reps count.
+                </p>
+                <CoachFaceStatus enrolled={faceEnrolled} onEnroll={() => setState("enrolling")} />
+              </CoachDarkPanel>
+            </div>
+
+            <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-0 right-0 z-20 px-4">
+              <CoachOutlineCta label="Start session" onClick={handleStartDetection} />
+            </div>
+          </div>
+        </>
+      )
+    }
+
     return (
       <>
         {coachFocusBar}
-      <div className="flex flex-col items-center gap-6 px-4 pt-8 pb-28">
-        <button
-          type="button"
-          onClick={handleSetupBack}
-          className="self-start flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ChevronRight className="h-4 w-4 rotate-180" />
-          Back
-        </button>
-        <CinematicStage
-          className="w-full max-w-sm rounded-3xl border border-border/70 p-5"
-          brandMark={<FittrackLogoMark size={30} animated />}
-        >
-          <h2 className="text-xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
-            {exerciseName || "Exercise"}
-          </h2>
-          {catalogCtx?.variant.description ? (
-            <p className="mt-2 text-sm text-muted-foreground">{catalogCtx.variant.description}</p>
-          ) : null}
-          {catalogCtx?.variant.cameraNote ? (
-            <p className="mt-2 text-xs text-muted-foreground">
-              <span className="font-semibold text-foreground/80">Camera:</span> {catalogCtx.variant.cameraNote}
-            </p>
-          ) : null}
-          <p className="mt-2 text-sm text-muted-foreground">
-            Position your full body in the camera frame. Stand 6–8 ft away for best detection.
-          </p>
-        </CinematicStage>
-        {showLoadChip && selectedSpecId && (
-          <div className="flex flex-col items-center gap-2">
-            <span className="text-typo-eyebrow font-semibold uppercase tracking-wide text-muted-foreground">Set load</span>
-            <LoadChip
-              exerciseId={selectedSpecId}
-              unit={weightUnitPref}
-              value={loadKg}
-              onChange={setLoadKg}
-            />
+        <div className="flex min-h-dvh flex-col pb-32" style={{ backgroundColor: CHROME.black }}>
+          <CoachFormHeader streakDays={streakDays} />
+          <CoachBackButton onClick={handleSetupBack} />
+          <div className="px-4">
+            <CoachDarkPanel>
+              <p
+                className="text-[10px] font-bold uppercase tracking-[0.28em]"
+                style={{ color: COACH_FORM.accent }}
+              >
+                Exercise
+              </p>
+              <h2
+                className="mt-1 text-[1.75rem] font-black uppercase leading-none text-white"
+                style={{ fontFamily: "var(--font-display), var(--font-heading), sans-serif" }}
+              >
+                {exerciseTitle}
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed" style={{ color: COACH_FORM.muted }}>
+                {exerciseDescription}
+              </p>
+              <CoachTipBox>{cameraNote}</CoachTipBox>
+              {showLoadChip && selectedSpecId ? (
+                <CoachSetLoadRow unit={weightUnitPref} valueKg={loadKg} onChange={setLoadKg} />
+              ) : null}
+              <CoachFormCues tips={tips} />
+            </CoachDarkPanel>
           </div>
-        )}
-        <div className="w-full max-w-sm space-y-2">
-          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <Info className="h-4 w-4 text-primary" />
-            Form tips for this exercise
-          </h3>
-          {tips.map((tip, i) => (
-            <div key={i} className="flex items-start gap-3 rounded-xl bg-card p-3 border border-border">
-              <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-              <span className="text-sm text-foreground">{tip}</span>
-            </div>
-          ))}
-          {culturalExtras.map((tip, i) => (
-            <div key={`c-${i}`} className="flex items-start gap-3 rounded-xl bg-primary/5 p-3 border border-primary/20">
-              <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-              <span className="text-sm text-foreground">{tip}</span>
-            </div>
-          ))}
-          {memoryTip && (
-            <div className="flex items-start gap-3 rounded-xl bg-chart-2/10 p-3 border border-chart-2/25">
-              <Zap className="h-4 w-4 text-chart-2 shrink-0 mt-0.5" />
-              <div>
-                <span className="text-typo-eyebrow font-semibold uppercase text-chart-2">From your last sessions</span>
-                <p className="text-sm text-foreground mt-0.5">{memoryTip}</p>
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="w-full max-w-sm rounded-xl bg-card p-3 border border-border space-y-3">
-          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <Columns2 className="h-4 w-4 text-primary" />
-            Ghost rep overlay
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            Shows your best verified rep as a semi-transparent skeleton on the live camera — train against your own personal best form.
-          </p>
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-sm font-medium text-foreground">Enable ghost rep</span>
-            <Switch
-              checked={ghostEnabled}
-              onCheckedChange={setGhostEnabled}
-              aria-label="Ghost rep overlay"
-            />
+          <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-0 right-0 z-20">
+            <CoachOutlineCta label="Start exercise" onClick={() => setSetupPhase("accessibility")} />
           </div>
         </div>
-
-        <div className="w-full max-w-sm rounded-xl bg-card p-3 border border-border space-y-4">
-          <h3 className="text-sm font-semibold text-foreground">Coach accessibility</h3>
-          <p className="text-xs text-muted-foreground -mt-2">Saved on this device only.</p>
-          {(
-            [
-              ["hapticOnRep", "Haptic on rep", "Short vibration when a rep counts"] as const,
-              ["announceReps", "Announce reps", "Speak rep milestones out loud"] as const,
-              ["reduceMotion", "Reduce motion", "Lighter skeleton and UI motion"] as const,
-              ["highContrastVideo", "High-contrast video", "Boost camera contrast while detecting"] as const,
-            ] as const
-          ).map(([key, label, desc]) => (
-            <div key={key} className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">{label}</p>
-                <p className="text-xs text-muted-foreground">{desc}</p>
-              </div>
-              <Switch
-                checked={a11yPrefs[key]}
-                onCheckedChange={(v) => applyA11yPrefs({ [key]: v })}
-                aria-label={label}
-              />
-            </div>
-          ))}
-        </div>
-        <div className="w-full max-w-sm rounded-xl bg-card p-3 border border-border space-y-3">
-          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <Target className="h-4 w-4 text-primary" />
-            Rep goal (optional)
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            Set a target number of reps. Leave 0 for no goal.
-          </p>
-          <div className="flex items-center gap-3">
-            <input
-              type="number"
-              min={0}
-              max={999}
-              value={targetReps || ""}
-              onChange={(e) => setTargetReps(Math.max(0, Math.min(999, parseInt(e.target.value, 10) || 0)))}
-              placeholder="0"
-              className="w-24 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              aria-label="Target reps"
-            />
-            <span className="text-sm text-muted-foreground">reps</span>
-          </div>
-        </div>
-        <div className="w-full max-w-sm rounded-xl bg-card p-3 border border-border space-y-2">
-          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <UserCheck className="h-4 w-4 text-primary" />
-            One account, one face
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            Enroll your face so only your reps count. Stay centered in frame; wrong posture reduces rep by 1.
-          </p>
-          {faceEnrolled ? (
-            <p className="text-xs text-primary font-medium flex items-center gap-1.5">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Face enrolled — only your reps will count
-            </p>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setState("enrolling")}
-              className="w-full flex items-center justify-center gap-2 rounded-lg bg-secondary py-2.5 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
-            >
-              <UserCheck className="h-4 w-4" />
-              Enroll your face
-            </button>
-          )}
-        </div>
-        <button
-          onClick={handleStartDetection}
-          className="mt-4 flex items-center gap-2 rounded-xl bg-primary px-8 py-4 font-semibold text-primary-foreground text-base transition-all hover:bg-primary/90 active:scale-[0.98]"
-        >
-          <Play className="h-5 w-5" fill="currentColor" />
-          Start Detection
-        </button>
-      </div>
       </>
     )
   }
@@ -1955,7 +1846,7 @@ export function AICoach({
             <p className="text-sm text-white/80 mt-1 text-center px-4">Keep your face clearly visible. Stored on this device only (see Profile).</p>
           </div>
         </div>
-        <button onClick={() => setState("setup")} className="mx-4 mt-4 flex items-center justify-center gap-2 rounded-xl bg-secondary py-3 text-sm font-medium">
+        <button onClick={() => { setSetupPhase("accessibility"); setState("setup") }} className="mx-4 mt-4 flex items-center justify-center gap-2 rounded-xl bg-secondary py-3 text-sm font-medium">
           <ChevronRight className="h-4 w-4 rotate-180" />
           Cancel
         </button>
@@ -2787,6 +2678,7 @@ export function AICoach({
         setSelectedFamilyId(MY_EXERCISES_FAMILY_ID)
         setSelectedSpecId(specId)
         setCoachPickerStep("variants")
+        setSetupPhase("exercise")
         setState("setup")
       }}
     />

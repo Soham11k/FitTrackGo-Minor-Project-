@@ -16,18 +16,9 @@ import { clearGuestMode } from "@/lib/guest-mode"
 import { SupabaseConnectivityBanner } from "@/components/supabase-connectivity-banner"
 import { cn } from "@/lib/utils"
 import { getBrowserAuthRedirectOrigin } from "@/lib/auth-redirect-origin"
-
-/** Login-only palette — matches reference mock (orange on black + white sheet). */
-const LOGIN = {
-  bg: "#0d0d0d",
-  orange: "#f97316",
-  orangeDim: "rgba(249, 115, 22, 0.35)",
-  sheet: "#fafaf8",
-  border: "#e8e4dc",
-  text: "#111111",
-  muted: "#737373",
-  tagline: "rgba(255,255,255,0.38)",
-} as const
+import { CHROME } from "@/lib/app-chrome"
+import { siteConfig } from "@/lib/data"
+import Link from "next/link"
 
 function GoogleGlyph({ className }: { className?: string }) {
   return (
@@ -40,6 +31,18 @@ function GoogleGlyph({ className }: { className?: string }) {
   )
 }
 
+function AppleGlyph({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.76-3.74 4.25z" />
+    </svg>
+  )
+}
+
+/** Cream-sheet inputs must stay dark-on-light even when the app theme is dark. */
+const loginFieldClass =
+  "rounded-xl border-[#e8e4dc] bg-[#f5f5f3] text-[#111111] caret-[#111111] placeholder:text-[#9a9a9a] shadow-none focus-visible:border-[#111111]/25 focus-visible:ring-[#111111]/10 autofill:text-[#111111] autofill:shadow-[inset_0_0_0px_1000px_#f5f5f3] [-webkit-text-fill-color:#111111]"
+
 function AnimatedEcgIcon({ size = 28, animate = true }: { size?: number; animate?: boolean }) {
   const reduce = useReducedMotion() ?? false
   const d = "M2 16 L8 16 L11 8 L16 24 L20 12 L24 16 L30 16"
@@ -49,7 +52,7 @@ function AnimatedEcgIcon({ size = 28, animate = true }: { size?: number; animate
       {animate && !reduce ? (
         <motion.path
           d={d}
-          stroke={LOGIN.orange}
+          stroke={CHROME.orange}
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -61,7 +64,7 @@ function AnimatedEcgIcon({ size = 28, animate = true }: { size?: number; animate
           }}
         />
       ) : (
-        <path d={d} stroke={LOGIN.orange} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={d} stroke={CHROME.orange} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
       )}
     </svg>
   )
@@ -87,7 +90,7 @@ function HeroAccentLines() {
         <motion.path
           key={i}
           d={d}
-          stroke={LOGIN.orange}
+          stroke={CHROME.orange}
           strokeWidth="1.5"
           strokeLinecap="round"
           fill="none"
@@ -117,7 +120,7 @@ function LoginHero() {
   return (
     <div
       className="relative flex min-h-0 flex-[1.32] flex-col items-center overflow-hidden pt-[max(3.5rem,env(safe-area-inset-top))]"
-      style={{ backgroundColor: LOGIN.bg }}
+      style={{ backgroundColor: CHROME.black }}
     >
       <HeroAccentLines />
 
@@ -129,7 +132,7 @@ function LoginHero() {
         <motion.div
           key={i}
           className="pointer-events-none absolute h-1.5 w-1.5 rounded-full"
-          style={{ ...pos, backgroundColor: LOGIN.orange }}
+          style={{ ...pos, backgroundColor: CHROME.orange }}
           initial={reduce ? { opacity: 0.6 } : { opacity: 0, scale: 0 }}
           animate={
             reduce
@@ -153,7 +156,7 @@ function LoginHero() {
       {/* Icon — top center, rounded square with orange border */}
       <motion.div
         className="relative z-10 flex h-14 w-14 items-center justify-center rounded-[1.1rem] border-2 bg-black/40"
-        style={{ borderColor: LOGIN.orangeDim, boxShadow: `0 0 24px ${LOGIN.orangeDim}` }}
+        style={{ borderColor: CHROME.orangeDim, boxShadow: `0 0 24px ${CHROME.orangeDim}` }}
         initial={reduce ? false : { opacity: 0, scale: 0.6, y: -20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.7, ease: [...EASE.cinematic] }}
@@ -174,7 +177,7 @@ function LoginHero() {
         </motion.p>
         <motion.p
           className="text-[2.15rem] font-black uppercase leading-[0.95] tracking-[-0.05em] sm:text-[2.5rem]"
-          style={{ fontFamily: "var(--font-display), var(--font-heading)", color: LOGIN.orange }}
+          style={{ fontFamily: "var(--font-display), var(--font-heading)", color: CHROME.orange }}
           initial={reduce ? false : { opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, delay: 0.22, ease: [...EASE.cinematic] }}
@@ -186,7 +189,7 @@ function LoginHero() {
       {/* Tagline */}
       <motion.p
         className="relative z-10 mt-5 text-[0.62rem] font-semibold uppercase tracking-[0.28em]"
-        style={{ color: LOGIN.tagline }}
+        style={{ color: CHROME.tagline }}
         initial={reduce ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.38, ease: [...EASE.cinematic] }}
@@ -355,13 +358,13 @@ export function LoginScreen({
     "flex h-[3.25rem] w-full items-center justify-center gap-3 rounded-2xl border bg-white text-[0.9375rem] font-semibold transition-colors hover:bg-[#f5f5f3] disabled:opacity-50"
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col overflow-hidden" style={{ backgroundColor: LOGIN.bg }}>
+    <div className="fixed inset-0 z-40 flex flex-col overflow-hidden" style={{ backgroundColor: CHROME.black }}>
       <LoginHero />
 
       {/* Bottom sheet — ~42% of screen, white, large rounded top */}
       <motion.div
         className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto rounded-t-[2rem] px-6 pt-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
-        style={{ backgroundColor: LOGIN.sheet }}
+        style={{ backgroundColor: CHROME.sheet }}
         initial={reduce ? false : { y: "105%" }}
         animate={{ y: 0 }}
         transition={{ type: "spring", stiffness: 260, damping: 30, delay: 0.05 }}
@@ -380,7 +383,7 @@ export function LoginScreen({
             custom={0}
             variants={sheetStagger}
             className="text-center text-[1.4rem] font-bold leading-tight"
-            style={{ fontFamily: "var(--font-heading)", color: LOGIN.text }}
+            style={{ fontFamily: "var(--font-heading)", color: CHROME.text }}
           >
             Welcome back
           </motion.h1>
@@ -388,7 +391,7 @@ export function LoginScreen({
             custom={1}
             variants={sheetStagger}
             className="mt-1.5 text-center text-[0.9375rem]"
-            style={{ color: LOGIN.muted }}
+            style={{ color: CHROME.mutedDark }}
           >
             Sign in to continue your journey
           </motion.p>
@@ -403,7 +406,7 @@ export function LoginScreen({
                 <button
                   type="button"
                   className={btnBase}
-                  style={{ borderColor: LOGIN.border, color: LOGIN.text }}
+                  style={{ borderColor: CHROME.cardBorder, color: CHROME.text }}
                   onClick={() => onGuestEnter()}
                 >
                   Continue as guest — works without cloud
@@ -411,15 +414,30 @@ export function LoginScreen({
               </motion.div>
             ) : null}
 
-            {/* Google */}
+            {/* Apple */}
             <motion.div custom={3} variants={sheetStagger}>
+              <motion.button
+                type="button"
+                disabled={loading}
+                onClick={() => handleSocialLogin("apple")}
+                whileTap={reduce ? {} : { scale: 0.985 }}
+                className={btnBase}
+                style={{ borderColor: CHROME.cardBorder, color: CHROME.text }}
+              >
+                <AppleGlyph className="h-[1.35rem] w-[1.35rem] shrink-0" />
+                Continue with Apple
+              </motion.button>
+            </motion.div>
+
+            {/* Google */}
+            <motion.div custom={4} variants={sheetStagger}>
               <motion.button
                 type="button"
                 disabled={loading}
                 onClick={() => handleSocialLogin("google")}
                 whileTap={reduce ? {} : { scale: 0.985 }}
                 className={btnBase}
-                style={{ borderColor: LOGIN.border, color: LOGIN.text }}
+                style={{ borderColor: CHROME.cardBorder, color: CHROME.text }}
               >
                 <GoogleGlyph className="h-[1.35rem] w-[1.35rem] shrink-0" />
                 Continue with Google
@@ -427,23 +445,23 @@ export function LoginScreen({
             </motion.div>
 
             {/* OR */}
-            <motion.div custom={4} variants={sheetStagger} className="flex items-center gap-4 py-1">
-              <div className="h-px flex-1" style={{ backgroundColor: LOGIN.border }} />
-              <span className="text-xs font-medium uppercase tracking-[0.15em]" style={{ color: LOGIN.muted }}>
+            <motion.div custom={5} variants={sheetStagger} className="flex items-center gap-4 py-1">
+              <div className="h-px flex-1" style={{ backgroundColor: CHROME.cardBorder }} />
+              <span className="text-xs font-medium uppercase tracking-[0.15em]" style={{ color: CHROME.mutedDark }}>
                 Or
               </span>
-              <div className="h-px flex-1" style={{ backgroundColor: LOGIN.border }} />
+              <div className="h-px flex-1" style={{ backgroundColor: CHROME.cardBorder }} />
             </motion.div>
 
             {/* FitTrack — orange icon + orange label like reference */}
-            <motion.div custom={5} variants={sheetStagger}>
+            <motion.div custom={6} variants={sheetStagger}>
               <motion.button
                 type="button"
                 disabled={loading}
                 onClick={() => setShowEmailForm((v) => !v)}
                 whileTap={reduce ? {} : { scale: 0.985 }}
                 className={btnBase}
-                style={{ borderColor: LOGIN.border, color: LOGIN.orange }}
+                style={{ borderColor: CHROME.cardBorder, color: CHROME.orange }}
               >
                 <AnimatedEcgIcon size={22} animate={!reduce} />
                 Sign in with FitTrack
@@ -456,7 +474,7 @@ export function LoginScreen({
                   key={isSignUp ? "signup" : "signin"}
                   onSubmit={handleSubmit}
                   className="space-y-3 rounded-2xl border bg-white p-4"
-                  style={{ borderColor: LOGIN.border }}
+                  style={{ borderColor: CHROME.cardBorder }}
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
@@ -469,7 +487,7 @@ export function LoginScreen({
                         "flex-1 rounded-xl py-2 text-xs font-bold uppercase tracking-[0.14em]",
                         !isSignUp ? "text-white" : "text-[#737373]",
                       )}
-                      style={{ backgroundColor: !isSignUp ? LOGIN.text : "transparent" }}
+                      style={{ backgroundColor: !isSignUp ? CHROME.text : "transparent" }}
                       onClick={() => {
                         setIsSignUp(false)
                         setFieldError({})
@@ -483,7 +501,7 @@ export function LoginScreen({
                         "flex-1 rounded-xl py-2 text-xs font-bold uppercase tracking-[0.14em]",
                         isSignUp ? "text-white" : "text-[#737373]",
                       )}
-                      style={{ backgroundColor: isSignUp ? LOGIN.text : "transparent" }}
+                      style={{ backgroundColor: isSignUp ? CHROME.text : "transparent" }}
                       onClick={() => {
                         setIsSignUp(true)
                         setFieldError({})
@@ -504,7 +522,7 @@ export function LoginScreen({
                           setName(e.target.value)
                           setFieldError((err) => ({ ...err, name: undefined }))
                         }}
-                        className="rounded-xl border-[#e8e4dc] bg-[#f5f5f3] pl-10"
+                        className={cn(loginFieldClass, "pl-10")}
                         aria-invalid={!!fieldError.name}
                       />
                       {fieldError.name ? (
@@ -525,7 +543,7 @@ export function LoginScreen({
                         setEmail(e.target.value)
                         setFieldError((err) => ({ ...err, email: undefined }))
                       }}
-                      className="rounded-xl border-[#e8e4dc] bg-[#f5f5f3] pl-10"
+                      className={cn(loginFieldClass, "pl-10")}
                       aria-invalid={!!fieldError.email}
                     />
                   </div>
@@ -545,7 +563,7 @@ export function LoginScreen({
                         setPassword(e.target.value)
                         setFieldError((err) => ({ ...err, password: undefined }))
                       }}
-                      className="rounded-xl border-[#e8e4dc] bg-[#f5f5f3] pl-10 pr-10"
+                      className={cn(loginFieldClass, "pl-10 pr-10")}
                       aria-invalid={!!fieldError.password}
                     />
                     <button
@@ -570,7 +588,7 @@ export function LoginScreen({
                         onClick={handleForgotPassword}
                         disabled={loading}
                         className="text-xs hover:underline"
-                        style={{ color: LOGIN.orange }}
+                        style={{ color: CHROME.orange }}
                       >
                         Forgot password?
                       </button>
@@ -580,7 +598,7 @@ export function LoginScreen({
                   <Button
                     type="submit"
                     className="h-11 w-full rounded-2xl text-white hover:opacity-90"
-                    style={{ backgroundColor: LOGIN.text }}
+                    style={{ backgroundColor: CHROME.text }}
                     disabled={loading}
                   >
                     {loading ? (
@@ -596,26 +614,28 @@ export function LoginScreen({
                     )}
                   </Button>
 
-                  <Button
+                  <motion.button
                     type="button"
-                    variant="outline"
-                    className="h-11 w-full rounded-2xl border-[#e8e4dc] bg-white hover:bg-[#f5f5f3]"
                     disabled={loading}
                     onClick={() => handleSocialLogin("apple")}
+                    whileTap={reduce ? {} : { scale: 0.985 }}
+                    className={btnBase}
+                    style={{ borderColor: CHROME.cardBorder, color: CHROME.text }}
                   >
+                    <AppleGlyph className="h-[1.35rem] w-[1.35rem] shrink-0" />
                     Continue with Apple
-                  </Button>
+                  </motion.button>
                 </motion.form>
               ) : null}
             </AnimatePresence>
 
             {onGuestEnter && !supabaseCloudOffline ? (
               <motion.button
-                custom={6}
+                custom={7}
                 variants={sheetStagger}
                 type="button"
                 className="mt-3 w-full py-2 text-center text-[0.9375rem] font-medium transition-colors hover:opacity-80"
-                style={{ color: LOGIN.muted }}
+                style={{ color: CHROME.mutedDark }}
                 onClick={() => onGuestEnter()}
               >
                 Continue as guest

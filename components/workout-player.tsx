@@ -19,6 +19,7 @@ import {
   clearWorkoutSessionSnapshot,
   readWorkoutSessionSnapshot,
 } from "@/lib/workout-session-snapshot"
+import { WORKOUTS } from "@/lib/workouts-theme"
 
 /** Parse a "45 sec" / "3 min" / "1:30" string into seconds. Defaults to 45s. */
 function parseDurationToSeconds(value: string | undefined): number {
@@ -235,29 +236,44 @@ export function WorkoutPlayer({
     <div
       data-testid="screen-workout-player"
       className={cn(
-        "fixed inset-0 z-50 grid h-[100dvh] bg-background",
+        "fixed inset-0 z-50 grid h-[100dvh]",
         phase === "done"
           ? "grid-rows-[auto_minmax(0,1fr)]"
           : "grid-rows-[auto_auto_minmax(0,1fr)_auto]",
       )}
+      style={{ backgroundColor: WORKOUTS.bg, color: WORKOUTS.white }}
     >
-      <header className="flex items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur-xl">
+      <header
+        className="flex items-center justify-between gap-3 px-4 py-3 backdrop-blur-xl"
+        style={{ borderBottom: `1px solid ${WORKOUTS.cardBorder}`, backgroundColor: WORKOUTS.black }}
+      >
         <button
           type="button"
           onClick={() => onExit(false)}
           aria-label="Exit workout"
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="flex h-9 w-9 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2"
+          style={{
+            border: `1px solid ${WORKOUTS.cardBorder}`,
+            backgroundColor: WORKOUTS.card,
+            color: WORKOUTS.white,
+          }}
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <p
+            className="truncate text-xs font-bold uppercase tracking-[0.18em]"
+            style={{ color: WORKOUTS.muted }}
+          >
             {exercise.title}
           </p>
-          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+          <div
+            className="mt-1 h-1.5 overflow-hidden rounded-full"
+            style={{ backgroundColor: WORKOUTS.card }}
+          >
             <div
-              className="h-full rounded-full bg-primary transition-all duration-500"
-              style={{ width: `${Math.min(100, progress)}%` }}
+              className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(100, progress)}%`, backgroundColor: WORKOUTS.accent }}
               role="progressbar"
               aria-label="Workout progress"
               aria-valuemin={0}
@@ -266,7 +282,10 @@ export function WorkoutPlayer({
             />
           </div>
         </div>
-        <span className="whitespace-nowrap text-xs font-semibold tabular-nums text-muted-foreground">
+        <span
+          className="whitespace-nowrap text-xs font-bold tabular-nums"
+          style={{ color: WORKOUTS.muted }}
+        >
           {Math.min(index + 1, totalSteps)}/{totalSteps}
         </span>
       </header>
@@ -322,27 +341,39 @@ export function WorkoutPlayer({
         </div>
       ) : (
         <>
-          <div className="border-b border-border/60 bg-muted/25 px-4 py-3 text-center dark:bg-black/25">
-            <p className="text-typo-caption font-bold uppercase tracking-[0.25em] text-muted-foreground">
+          <div
+            className="px-4 py-3 text-center"
+            style={{ borderBottom: `1px solid ${WORKOUTS.cardBorder}`, backgroundColor: WORKOUTS.black }}
+          >
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em]" style={{ color: WORKOUTS.muted }}>
               {isRest ? "Rest" : `Step ${index + 1} of ${totalSteps}`}
             </p>
             <h2
               data-testid="workout-step-name"
-              className="mt-2 text-xl font-bold leading-tight text-foreground sm:text-2xl"
-              style={{ fontFamily: "var(--font-heading)" }}
+              className="mt-2 text-xl font-black uppercase leading-tight sm:text-2xl"
+              style={{ fontFamily: "var(--font-display), var(--font-heading), sans-serif", color: WORKOUTS.white }}
               aria-live="polite"
             >
               {isRest ? "Catch your breath" : currentStep.name}
             </h2>
             {!isRest ? (
-              <p className="mt-2 line-clamp-2 text-sm leading-snug text-muted-foreground">{currentStep.reps}</p>
+              <p className="mt-2 line-clamp-2 text-sm leading-snug" style={{ color: WORKOUTS.muted }}>
+                {currentStep.reps}
+              </p>
             ) : (
-              <p className="mt-2 text-sm text-muted-foreground">Next interval starts automatically after rest.</p>
+              <p className="mt-2 text-sm" style={{ color: WORKOUTS.muted }}>
+                Next interval starts automatically after rest.
+              </p>
             )}
             {!isRest && steps[index + 1] ? (
-              <p className="mt-3 rounded-full bg-background/55 px-3 py-1 text-xs text-muted-foreground dark:bg-white/5">
+              <p
+                className="mt-3 rounded-full px-3 py-1 text-xs"
+                style={{ color: WORKOUTS.muted, backgroundColor: WORKOUTS.card }}
+              >
                 Up next:{" "}
-                <span className="font-semibold text-foreground">{steps[index + 1].name}</span>
+                <span className="font-semibold" style={{ color: WORKOUTS.white }}>
+                  {steps[index + 1].name}
+                </span>
               </p>
             ) : null}
           </div>
@@ -351,15 +382,30 @@ export function WorkoutPlayer({
             {phase === "active" ? (
               <section className="shrink-0 space-y-2 px-4 pb-2 pt-2" aria-label="Live pose and camera">
                 <div className="flex flex-col items-center gap-1">
-                  <p className="flex items-center gap-2 text-[0.65rem] font-bold uppercase tracking-[0.22em] text-primary">
+                  <p
+                    className="flex items-center gap-2 text-[0.65rem] font-bold uppercase tracking-[0.22em]"
+                    style={{ color: WORKOUTS.accent }}
+                  >
+                    <span
+                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px]"
+                      style={{ backgroundColor: WORKOUTS.accentDim, border: `1px solid ${WORKOUTS.accentBorder}` }}
+                    >
+                      ● Live
+                    </span>
                     <ScanLine className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                    Live body tracking
+                    Camera feed
                   </p>
-                  <p className="max-w-[20rem] text-center text-[0.6875rem] leading-snug text-muted-foreground">
-                    Front camera mirror + skeleton when the model finishes loading. Lighting helps detection.
+                  <p
+                    className="max-w-[20rem] text-center text-[0.6875rem] leading-snug"
+                    style={{ color: WORKOUTS.muted }}
+                  >
+                    Loading. Lighting helps detection.
                   </p>
                 </div>
-                <div className="flex min-h-[12rem] justify-center">
+                <div
+                  className="flex min-h-[12rem] justify-center overflow-hidden rounded-2xl border"
+                  style={{ borderColor: WORKOUTS.cardBorder, backgroundColor: WORKOUTS.card }}
+                >
                   <CueFocusProvider
                     key={getAICoachIdForStep(currentStep.name) ?? currentStep.name}
                     exerciseId={getAICoachIdForStep(currentStep.name) ?? "unknown"}
@@ -371,27 +417,29 @@ export function WorkoutPlayer({
               </section>
             ) : (
               <section className="shrink-0 px-4 pb-2 pt-3 text-center" aria-label="Rest period">
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs" style={{ color: WORKOUTS.muted }}>
                   Camera pauses during rest — you&apos;ll see live tracking again on the next work step.
                 </p>
               </section>
             )}
 
             <div className="flex shrink-0 flex-col items-center justify-center gap-3 px-6 py-4 pb-6 text-center">
-              <p className="text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-muted-foreground">Timer</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: WORKOUTS.muted }}>
+                Timer
+              </p>
               <div role="timer" aria-live="polite" className="shrink-0">
                 <RingGauge
                   value={timerProgressRemaining}
                   max={1}
                   size={168}
                   thickness={11}
-                  progressClassName={isRest ? "stroke-metric-spo2" : "stroke-metric-move"}
-                  trackClassName={isRest ? "stroke-metric-spo2/10" : "stroke-metric-move/10"}
+                  progressClassName={isRest ? "stroke-[#5ac8fa]" : "stroke-[#34c759]"}
+                  trackClassName={isRest ? "stroke-[#5ac8fa]/10" : "stroke-[#34c759]/10"}
                 >
                   <motion.span
                     key={secondsLeft}
-                    className="text-4xl font-bold tabular-nums text-foreground sm:text-5xl"
-                    style={{ fontFamily: "var(--font-heading)" }}
+                    className="text-4xl font-black tabular-nums sm:text-5xl"
+                    style={{ fontFamily: "var(--font-display), var(--font-heading), sans-serif", color: WORKOUTS.white }}
                     initial={reduceMotion ? false : { scale: 0.96, opacity: 0.7 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ duration: DURATION.fast, ease: EASE.out }}
@@ -403,13 +451,21 @@ export function WorkoutPlayer({
             </div>
           </div>
 
-          <footer className="border-t border-border bg-background/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-xl">
+          <footer
+            className="px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-xl"
+            style={{ borderTop: `1px solid ${WORKOUTS.cardBorder}`, backgroundColor: WORKOUTS.black }}
+          >
             <div className="mx-auto grid w-full max-w-md grid-cols-[3rem_1fr_3rem] items-center gap-3 sm:gap-4">
               <button
                 type="button"
                 onClick={() => setPaused((p) => !p)}
                 aria-label={paused ? "Resume" : "Pause"}
-                className="flex h-12 w-full items-center justify-center rounded-full border border-border bg-card text-foreground transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="flex h-12 w-full items-center justify-center rounded-xl transition-transform active:scale-95"
+                style={{
+                  border: `1px solid ${WORKOUTS.cardBorder}`,
+                  backgroundColor: WORKOUTS.card,
+                  color: WORKOUTS.white,
+                }}
               >
                 {paused ? <Play className="h-5 w-5" /> : <Pause className="h-5 w-5" />}
               </button>
@@ -417,12 +473,11 @@ export function WorkoutPlayer({
                 type="button"
                 onClick={skip}
                 aria-label={isRest ? "Skip rest" : "Finish this step"}
-                className={cn(
-                  "flex h-[3.125rem] min-w-0 items-center justify-center gap-2 rounded-full px-4 text-sm font-bold text-primary-foreground shadow-[0_12px_36px_-14px_color-mix(in_oklab,var(--primary)_42%,transparent)] transition-[transform,filter] hover:brightness-[1.06] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background max-sm:gap-1 max-sm:px-3 max-sm:text-[0.7rem] max-sm:uppercase max-sm:tracking-[0.08em]",
-                  isRest
-                    ? "bg-metric-spo2 shadow-[0_12px_36px_-14px_color-mix(in_oklab,var(--chart-2)_42%,transparent)] hover:brightness-[1.04]"
-                    : "bg-primary",
-                )}
+                className="flex h-[3.125rem] min-w-0 items-center justify-center gap-2 rounded-xl px-4 text-sm font-black uppercase tracking-[0.08em] transition-[transform,filter] hover:brightness-[1.06] active:scale-[0.98] max-sm:gap-1 max-sm:px-3 max-sm:text-[0.7rem]"
+                style={{
+                  backgroundColor: isRest ? "#5ac8fa" : WORKOUTS.accent,
+                  color: WORKOUTS.white,
+                }}
               >
                 {isRest ? <SkipForward className="h-5 w-5 shrink-0" /> : <ArrowRight className="h-5 w-5 shrink-0" />}
                 <span className="truncate leading-tight max-sm:leading-tight">
@@ -436,7 +491,12 @@ export function WorkoutPlayer({
                   setPhase("done")
                 }}
                 aria-label="End workout"
-                className="flex h-12 w-full items-center justify-center rounded-full border border-border bg-card text-foreground transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="flex h-12 w-full items-center justify-center rounded-xl transition-transform active:scale-95"
+                style={{
+                  border: `1px solid ${WORKOUTS.cardBorder}`,
+                  backgroundColor: WORKOUTS.card,
+                  color: WORKOUTS.white,
+                }}
               >
                 <Check className="h-5 w-5" />
               </button>

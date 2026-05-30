@@ -7,6 +7,8 @@ import { LoginScreen } from "@/components/login-screen"
 import { BottomNav, type TabId } from "@/components/bottom-nav"
 import { Dashboard } from "@/components/dashboard"
 import { BrandedTabLoad } from "@/components/app-tab-skeleton"
+import { FittrackBrandLockup } from "@/components/brand/fittrack-brand-lockup"
+import { LaunchHydrateScreen } from "@/components/brand/launch-hydrate-screen"
 import { AppHydrateScreen } from "@/components/animated/AppHydrateScreen"
 
 const RunTracker = dynamic(() => import("@/components/run-tracker").then((m) => m.RunTracker), {
@@ -374,41 +376,33 @@ export default function Page() {
 
   return (
     <div
-      className={`relative min-h-screen transition-opacity duration-300 ${
+      className={`relative min-h-screen bg-background transition-opacity duration-300 ${
         transitioning ? "opacity-0" : "opacity-100"
       }`}
-      style={{ backgroundColor: "#0d0d0d" }}
     >
       <AmbientBackdrop />
-      {/* Hide global header on Run tab — RunScreen owns its own dark chrome */}
-      {activeTab !== "run" && (
-        <AppHeader
-          guest={guestSession}
-          streakChip={
-            headerStreak > 0 ? (
-              <span
-                className="shrink-0 rounded-md px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.1em] text-white"
-                style={{ backgroundColor: "#f97316" }}
-              >
-                {headerStreak}D Streak
-              </span>
-            ) : null
-          }
-        />
-      )}
+      <AppHeader
+        guest={guestSession}
+        streakChip={
+          headerStreak > 0 ? (
+            <span className="shrink-0 rounded-sm border border-border bg-transparent px-2.5 py-1 text-typo-micro font-bold uppercase tracking-[0.18em] text-foreground tabular-nums">
+              <span className="text-primary">{headerStreak}d</span> streak
+            </span>
+          ) : null
+        }
+      />
 
-      {/* Insecure context banner */}
+      {/* Insecure context banner (HTTP / LAN) */}
       {appState === "app" && insecureContext && !insecureBannerDismissed && (
-        <div className="sticky top-[57px] z-10 flex items-start gap-3 px-4 py-2 text-amber-200/90"
-          style={{ backgroundColor: "rgba(245,158,11,0.12)", borderBottom: "1px solid rgba(245,158,11,0.25)" }}>
-          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
+        <div className="sticky top-[57px] z-10 flex items-start gap-3 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-amber-200">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-500" />
           <p className="text-xs flex-1">
-            Use <strong>localhost</strong> or <strong>HTTPS</strong> for camera and GPS.
+            Use <strong>localhost</strong> or <strong>HTTPS</strong> for camera and GPS (<code className="text-typo-eyebrow bg-amber-500/20 px-1 rounded">npm run dev:https</code> for LAN).
           </p>
           <button
             type="button"
             onClick={dismissInsecureBanner}
-            className="shrink-0 p-1 rounded opacity-70 hover:opacity-100"
+            className="shrink-0 p-1 rounded hover:bg-amber-500/20"
             aria-label="Dismiss"
           >
             <X className="h-4 w-4" />
@@ -443,9 +437,7 @@ export default function Page() {
                 }}
               />
             )}
-            {activeTab === "run" && (
-              <RunTracker guest={guestSession} streakDays={headerStreak} />
-            )}
+            {activeTab === "run" && <RunTracker />}
             {activeTab === "exercises" && (
               <ExerciseLibrary
                 onOpenAICoach={handleOpenAICoachFromExercises}

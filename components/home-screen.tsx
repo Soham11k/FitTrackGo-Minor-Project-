@@ -21,71 +21,12 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { EASE, staggerDelaySec } from "@/lib/motion"
 import type { TodayPrompt } from "@/lib/today-prompt"
+import { CHROME } from "@/lib/app-chrome"
+import { CreamCard } from "@/components/chrome/CreamCard"
+import { SectionEyebrow } from "@/components/chrome/SectionEyebrow"
 import { cn } from "@/lib/utils"
 
-/** Pixel palette from reference mockups — orange on black + cream cards. */
-export const HOME = {
-  black: "#0d0d0d",
-  orange: "#f97316",
-  cream: "#f3f2ec",
-  card: "#ffffff",
-  cardBorder: "#ebe8e0",
-  muted: "#a3a3a3",
-  text: "#111111",
-  teal: "#0d9488",
-  green: "#22c55e",
-  focusBg: "#161616",
-  hrPink: "#e11d48",
-} as const
-
-function HomeEcgIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden>
-      <path
-        d="M2 16 L8 16 L11 8 L16 24 L20 12 L24 16 L30 16"
-        stroke={HOME.orange}
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-function SectionEyebrow({ children }: { children: React.ReactNode }) {
-  return (
-    <p
-      className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.28em]"
-      style={{ color: HOME.muted }}
-    >
-      {children}
-    </p>
-  )
-}
-
-function WhiteCard({
-  children,
-  className,
-  delay = 0,
-}: {
-  children: React.ReactNode
-  className?: string
-  delay?: number
-}) {
-  const reduce = useReducedMotion() ?? false
-  return (
-    <motion.div
-      className={cn("rounded-[1.35rem] border p-4 shadow-[0_8px_30px_-12px_rgba(0,0,0,0.12)]", className)}
-      style={{ backgroundColor: HOME.card, borderColor: HOME.cardBorder }}
-      initial={reduce ? false : { opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45, ease: EASE.out, delay }}
-    >
-      {children}
-    </motion.div>
-  )
-}
-
+/** Home cockpit — uses shared CHROME tokens + chrome primitives. */
 function AnimatedProgressBar({
   pct,
   color,
@@ -129,9 +70,9 @@ function ActivityTile({
   delay: number
 }) {
   return (
-    <WhiteCard delay={delay} className="flex min-h-[7.5rem] flex-col justify-between pb-3">
+    <CreamCard delay={delay} className="flex min-h-[7.5rem] flex-col justify-between pb-3">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: HOME.muted }}>
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: CHROME.muted }}>
           {label}
         </p>
         <span
@@ -142,27 +83,27 @@ function ActivityTile({
         </span>
       </div>
       <div>
-        <p className="text-[1.65rem] font-bold tabular-nums leading-none" style={{ color: HOME.text }}>
+        <p className="text-[1.65rem] font-bold tabular-nums leading-none" style={{ color: CHROME.text }}>
           {value}
           {unit ? (
-            <span className="ml-1 text-sm font-semibold" style={{ color: HOME.muted }}>
+            <span className="ml-1 text-sm font-semibold" style={{ color: CHROME.muted }}>
               {unit}
             </span>
           ) : null}
         </p>
-        <AnimatedProgressBar pct={progress} color={HOME.orange} delay={delay} />
-        <p className="mt-1.5 text-[10px] font-medium" style={{ color: HOME.muted }}>
+        <AnimatedProgressBar pct={progress} color={CHROME.orange} delay={delay} />
+        <p className="mt-1.5 text-[10px] font-medium" style={{ color: CHROME.muted }}>
           {goalLabel}
         </p>
       </div>
-    </WhiteCard>
+    </CreamCard>
   )
 }
 
 const HR_ZONES = [
   { label: "Z1 Rest", color: "#64748b" },
   { label: "Z2 Fat", color: "#0d9488" },
-  { label: "Z3 Cardio", color: HOME.orange },
+  { label: "Z3 Cardio", color: CHROME.orange },
   { label: "Z4 Hard", color: "#ef4444" },
   { label: "Z5 Max", color: "#a855f7" },
 ] as const
@@ -288,7 +229,7 @@ export function HomeScreen(props: HomeScreenProps) {
   const nameLine = displayName === "there" ? "let's move." : `${displayName.charAt(0).toUpperCase()}${displayName.slice(1).toLowerCase()}.`
 
   return (
-    <div className="relative -mx-4 -mt-4 pb-28" style={{ backgroundColor: HOME.cream }}>
+    <div className="relative -mx-4 -mt-4 pb-28" style={{ backgroundColor: CHROME.cream }}>
       {loadError ? (
         <div className="px-4 pt-3">
           <Alert variant="destructive" role="alert" className="border-destructive/40">
@@ -305,26 +246,12 @@ export function HomeScreen(props: HomeScreenProps) {
       ) : null}
 
       {/* ── Dark header (screenshot 1) ── */}
-      <header className="px-5 pb-5 pt-[max(0.75rem,env(safe-area-inset-top))]" style={{ backgroundColor: HOME.black }}>
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-white">
-            <HomeEcgIcon />
-            FitTrack Go
-          </span>
-          <div className="flex items-center gap-2">
-            <motion.span
-              className="rounded-md px-2 py-0.5 text-[10px] font-bold tabular-nums"
-              style={{ backgroundColor: `${HOME.orange}22`, color: HOME.orange }}
-              animate={reduce ? undefined : { opacity: [0.65, 1, 0.65] }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
-            >
-              1D
-            </motion.span>
-            <span className="text-xs font-semibold tabular-nums text-white/80">{timeStr}</span>
-          </div>
+      <header className="px-5 pb-5 pt-3" style={{ backgroundColor: CHROME.black }}>
+        <div className="flex items-center justify-end">
+          <span className="text-xs font-semibold tabular-nums text-white/80">{timeStr}</span>
         </div>
 
-        <p className="mt-6 text-[10px] font-bold uppercase tracking-[0.24em] text-white/45">
+        <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.24em] text-white/45">
           {todayDateLine.toUpperCase()}
         </p>
         <motion.h1
@@ -334,7 +261,7 @@ export function HomeScreen(props: HomeScreenProps) {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: 0.08 }}
         >
           {greeting},{" "}
-          <span style={{ color: HOME.orange }}>{nameLine}</span>
+          <span style={{ color: CHROME.orange }}>{nameLine}</span>
         </motion.h1>
 
         {todayPrompt ? (
@@ -342,14 +269,14 @@ export function HomeScreen(props: HomeScreenProps) {
             type="button"
             onClick={onPromptClick}
             className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-white/[0.08] px-4 py-3.5 text-left"
-            style={{ backgroundColor: HOME.focusBg }}
+            style={{ backgroundColor: CHROME.focusBg }}
             initial={reduce ? false : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, delay: 0.16, ease: [0.22, 1, 0.36, 1] }}
             whileTap={{ scale: 0.99 }}
           >
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: HOME.orange }}>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: CHROME.orange }}>
                 Today&apos;s focus
               </p>
               <p className="mt-1 text-[15px] font-semibold text-white">{todayPrompt.title}</p>
@@ -357,12 +284,12 @@ export function HomeScreen(props: HomeScreenProps) {
             </div>
             <motion.span
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-2"
-              style={{ borderColor: HOME.orange, backgroundColor: `${HOME.orange}18` }}
+              style={{ borderColor: CHROME.orange, backgroundColor: `${CHROME.orange}18` }}
               animate={reduce ? undefined : { scale: [1, 1.06, 1] }}
               transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
               aria-hidden
             >
-              <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: HOME.orange }} />
+              <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: CHROME.orange }} />
             </motion.span>
           </motion.button>
         ) : null}
@@ -372,11 +299,11 @@ export function HomeScreen(props: HomeScreenProps) {
         {/* READINESS */}
         <section aria-label="Readiness">
           <SectionEyebrow>Readiness</SectionEyebrow>
-          <WhiteCard delay={0.04}>
+          <CreamCard delay={0.04}>
             <div className="flex items-start justify-end">
               <span
                 className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em]"
-                style={{ color: HOME.orange, backgroundColor: `${HOME.orange}18` }}
+                style={{ color: CHROME.orange, backgroundColor: `${CHROME.orange}18` }}
               >
                 {readinessBand}
               </span>
@@ -391,7 +318,7 @@ export function HomeScreen(props: HomeScreenProps) {
                 trackClassName="stroke-[#eceae4]"
                 progressClassName="stroke-[#f97316]"
               >
-                <span className="text-[2rem] font-bold tabular-nums leading-none" style={{ color: HOME.text }}>
+                <span className="text-[2rem] font-bold tabular-nums leading-none" style={{ color: CHROME.text }}>
                   <AnimatedCounter value={readinessScore} />
                 </span>
               </RingGauge>
@@ -399,12 +326,12 @@ export function HomeScreen(props: HomeScreenProps) {
                 {readinessHint}
               </p>
             </div>
-            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-bold tabular-nums" style={{ color: HOME.text }}>
+            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-bold tabular-nums" style={{ color: CHROME.text }}>
               <span>HRV {hrvLabel}</span>
               <span>RHR {rhrLabel}</span>
               <span>Sleep {sleepLabel}</span>
             </div>
-          </WhiteCard>
+          </CreamCard>
         </section>
 
         {/* ACTIVITY · TODAY — 2×2 grid exactly like screenshot */}
@@ -417,7 +344,7 @@ export function HomeScreen(props: HomeScreenProps) {
               unit="kcal"
               goalLabel={`Goal ${dailyCalorieGoal}`}
               icon={Flame}
-              iconBg={HOME.orange}
+              iconBg={CHROME.orange}
               progress={(moveRingCalories / dailyCalorieGoal) * 100}
               delay={0.08}
             />
@@ -456,27 +383,30 @@ export function HomeScreen(props: HomeScreenProps) {
         {/* THIS WEEK — weekly activity card (screenshot 1 + 2) */}
         <section aria-label="This week">
           <SectionEyebrow>This Week</SectionEyebrow>
-          <WhiteCard delay={0.16}>
+          <CreamCard delay={0.16}>
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5">
-                <BarChart3 className="h-3.5 w-3.5" style={{ color: HOME.teal }} aria-hidden />
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: HOME.teal }}>
+                <BarChart3 className="h-3.5 w-3.5" style={{ color: CHROME.teal }} aria-hidden />
+                <span className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: CHROME.teal }}>
                   Weekly activity
                 </span>
               </div>
               {weekCompare !== 0 ? (
                 <motion.span
                   className="rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums"
-                  style={{ color: HOME.green, backgroundColor: `${HOME.green}18` }}
+                  style={{
+                    color: weekCompare > 0 ? CHROME.gpsGreen : CHROME.muted,
+                    backgroundColor: weekCompare > 0 ? `${CHROME.gpsGreen}18` : `${CHROME.muted}18`,
+                  }}
                   initial={reduce ? false : { scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ delay: 0.35, type: "spring", stiffness: 320, damping: 22 }}
                 >
-                  +{Math.abs(weekCompare)}%
+                  {weekCompare > 0 ? "+" : ""}{weekCompare}%
                 </motion.span>
               ) : null}
             </div>
-            <p className="mt-3 text-[1.35rem] font-bold leading-tight" style={{ color: HOME.text }}>
+            <p className="mt-3 text-[1.35rem] font-bold leading-tight" style={{ color: CHROME.text }}>
               <AnimatedCounter value={thisWeekTotal} />{" "}
               <span className="text-base font-semibold">sessions this week</span>
             </p>
@@ -490,7 +420,7 @@ export function HomeScreen(props: HomeScreenProps) {
                       <motion.div
                         className="w-full rounded-t-md"
                         style={{
-                          backgroundColor: w.count > 0 ? HOME.orange : isToday ? HOME.black : "#d4d4d4",
+                          backgroundColor: w.count > 0 ? CHROME.orange : isToday ? CHROME.black : "#d4d4d4",
                           minHeight: w.count > 0 ? 8 : 6,
                         }}
                         initial={reduce ? false : { height: 0 }}
@@ -502,19 +432,19 @@ export function HomeScreen(props: HomeScreenProps) {
                         }}
                       />
                     </div>
-                    <span className="text-[9px] font-bold uppercase" style={{ color: HOME.muted }}>
+                    <span className="text-[9px] font-bold uppercase" style={{ color: CHROME.muted }}>
                       {w.day.charAt(0)}
                     </span>
                   </div>
                 )
               })}
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-2 border-t pt-3" style={{ borderColor: HOME.cardBorder }}>
+            <div className="mt-4 grid grid-cols-3 gap-2 border-t pt-3" style={{ borderColor: CHROME.cardBorder }}>
               <div className="text-center">
-                <p className="text-lg font-bold tabular-nums" style={{ color: HOME.text }}>
+                <p className="text-lg font-bold tabular-nums" style={{ color: CHROME.text }}>
                   {bestCoachScore > 0 ? bestCoachScore : "—"}
                 </p>
-                <p className="text-[10px] font-medium" style={{ color: HOME.muted }}>
+                <p className="text-[10px] font-medium" style={{ color: CHROME.muted }}>
                   Form %
                 </p>
               </div>
@@ -522,46 +452,47 @@ export function HomeScreen(props: HomeScreenProps) {
                 <p className="text-lg font-bold tabular-nums" style={{ color: "#a855f7" }}>
                   {streak}
                 </p>
-                <p className="text-[10px] font-medium" style={{ color: HOME.muted }}>
+                <p className="text-[10px] font-medium" style={{ color: CHROME.muted }}>
                   Streak days
                 </p>
               </div>
               <div className="text-center">
-                <p className="text-lg font-bold tabular-nums" style={{ color: HOME.text }}>
+                <p className="text-lg font-bold tabular-nums" style={{ color: CHROME.text }}>
                   {avgPace ?? "—"}
                 </p>
-                <p className="text-[10px] font-medium" style={{ color: HOME.muted }}>
+                <p className="text-[10px] font-medium" style={{ color: CHROME.muted }}>
                   Avg pace
                 </p>
               </div>
             </div>
-          </WhiteCard>
+          </CreamCard>
         </section>
 
         {/* VITALS — heart rate (screenshot 2) */}
         <section aria-label="Vitals">
           <SectionEyebrow>Vitals</SectionEyebrow>
-          <WhiteCard delay={0.2}>
+          <CreamCard delay={0.2}>
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5">
-                <Heart className="h-3.5 w-3.5" style={{ color: HOME.hrPink }} aria-hidden />
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: HOME.hrPink }}>
+                <Heart className="h-3.5 w-3.5" style={{ color: CHROME.hrRed }} aria-hidden />
+                <span className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: CHROME.hrRed }}>
                   Heart rate
                 </span>
               </div>
               <span
                 className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                style={{ color: HOME.orange, backgroundColor: `${HOME.orange}15` }}
+                style={{ color: CHROME.orange, backgroundColor: `${CHROME.orange}15` }}
               >
                 {heartBpm != null ? "Live" : "No live data"}
               </span>
             </div>
-            <p className="mt-3 text-[1.65rem] font-bold tabular-nums leading-none" style={{ color: HOME.text }}>
+            <p className="mt-3 text-[1.65rem] font-bold tabular-nums leading-none" style={{ color: CHROME.text }}>
               {heartBpm ?? restingHr ?? "—"}{" "}
-              <span className="text-sm font-semibold" style={{ color: HOME.muted }}>
+              <span className="text-sm font-semibold" style={{ color: CHROME.muted }}>
                 bpm resting
               </span>
             </p>
+            {(heartBpm != null || restingHr != null) ? (
             <div className="mt-4 flex gap-1">
               {HR_ZONES.map((z, i) => (
                 <motion.div
@@ -576,39 +507,44 @@ export function HomeScreen(props: HomeScreenProps) {
                 </motion.div>
               ))}
             </div>
-            <p className="mt-3 text-[11px]" style={{ color: HOME.muted }}>
+            ) : (
+              <p className="mt-4 text-[11px]" style={{ color: CHROME.muted }}>
+                Connect a wearable in Profile to see heart-rate zones.
+              </p>
+            )}
+            <p className="mt-3 text-[11px]" style={{ color: CHROME.muted }}>
               Pair Bluetooth HR or sync Fitbit to see live zones
             </p>
             <button
               type="button"
               onClick={() => onNavigate("profile")}
               className="mt-2 text-[11px] font-semibold underline-offset-2 hover:underline"
-              style={{ color: HOME.orange }}
+              style={{ color: CHROME.orange }}
             >
               Open Profile → Sync
             </button>
-          </WhiteCard>
+          </CreamCard>
         </section>
 
         {/* SLEEP (screenshot 2 + 3) */}
-        <WhiteCard delay={0.24}>
+        <CreamCard delay={0.24}>
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
-              <Moon className="h-3.5 w-3.5" style={{ color: HOME.teal }} aria-hidden />
-              <span className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: HOME.teal }}>
+              <Moon className="h-3.5 w-3.5" style={{ color: CHROME.teal }} aria-hidden />
+              <span className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: CHROME.teal }}>
                 Last night&apos;s sleep
               </span>
             </div>
             <span
               className="rounded-full px-2 py-0.5 text-[10px] font-bold"
-              style={{ color: HOME.green, backgroundColor: `${HOME.green}18` }}
+              style={{ color: CHROME.gpsGreen, backgroundColor: `${CHROME.gpsGreen}18` }}
             >
               {sleepGood ? "Good" : "Fair"}
             </span>
           </div>
-          <p className="mt-3 text-[1.35rem] font-bold leading-tight" style={{ color: HOME.text }}>
+          <p className="mt-3 text-[1.35rem] font-bold leading-tight" style={{ color: CHROME.text }}>
             {formatSleep(sleepMin)}{" "}
-            <span className="text-sm font-semibold" style={{ color: HOME.muted }}>
+            <span className="text-sm font-semibold" style={{ color: CHROME.muted }}>
               of {Math.round(sleepGoalMin / 60)}h goal
             </span>
           </p>
@@ -626,52 +562,52 @@ export function HomeScreen(props: HomeScreenProps) {
           </div>
           <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1">
             {sleepStages.map((s) => (
-              <span key={s.key} className="flex items-center gap-1 text-[10px] font-medium" style={{ color: HOME.muted }}>
+              <span key={s.key} className="flex items-center gap-1 text-[10px] font-medium" style={{ color: CHROME.muted }}>
                 <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: s.color }} aria-hidden />
                 {s.label} {formatStageMin(s.minutes)}
               </span>
             ))}
           </div>
-        </WhiteCard>
+        </CreamCard>
 
         {/* 4-WEEK TREND (screenshot 3) */}
         {fourWeekTrend.length >= 2 ? (
           <section aria-label="Four week trend">
             <SectionEyebrow>4-Week Trend</SectionEyebrow>
-            <WhiteCard delay={0.28}>
+            <CreamCard delay={0.28}>
               <div className="mb-2 flex items-center gap-1.5">
-                <TrendingUp className="h-3.5 w-3.5" style={{ color: HOME.orange }} aria-hidden />
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: HOME.orange }}>
+                <TrendingUp className="h-3.5 w-3.5" style={{ color: CHROME.orange }} aria-hidden />
+                <span className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: CHROME.orange }}>
                   Sessions trend
                 </span>
               </div>
               <MetricTrendMini
                 className="mb-2 h-24 w-full"
                 points={fourWeekTrend.map((w) => ({ v: w.count }))}
-                stroke={HOME.orange}
-                stopColor={HOME.orange}
+                stroke={CHROME.orange}
+                stopColor={CHROME.orange}
                 isAnimationActive={chartEnterAnim}
               />
               <div className="flex justify-between gap-2 px-1">
                 {fourWeekTrend.map((w) => (
                   <div key={w.label} className="flex flex-1 flex-col items-center gap-0.5">
-                    <span className="text-[9px] font-bold uppercase" style={{ color: HOME.muted }}>
+                    <span className="text-[9px] font-bold uppercase" style={{ color: CHROME.muted }}>
                       {w.label}
                     </span>
-                    <span className="text-sm font-bold tabular-nums" style={{ color: HOME.text }}>
+                    <span className="text-sm font-bold tabular-nums" style={{ color: CHROME.text }}>
                       {w.count}
                     </span>
                   </div>
                 ))}
               </div>
-            </WhiteCard>
+            </CreamCard>
           </section>
         ) : null}
 
         {/* PERSONAL BESTS (screenshot 3) */}
         <section aria-label="Personal bests">
           <SectionEyebrow>Personal Bests</SectionEyebrow>
-          <WhiteCard delay={0.32} className="pb-3">
+          <CreamCard delay={0.32} className="pb-3">
             <div className="grid grid-cols-2 gap-2">
               {[
                 {
@@ -698,21 +634,21 @@ export function HomeScreen(props: HomeScreenProps) {
                 <motion.div
                   key={item.label}
                   className="rounded-xl border px-3 py-3 text-center"
-                  style={{ borderColor: HOME.cardBorder, backgroundColor: "#fafaf8" }}
+                  style={{ borderColor: CHROME.cardBorder, backgroundColor: "#fafaf8" }}
                   initial={reduce ? false : { opacity: 0, scale: 0.96 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.34 + i * 0.05 }}
                 >
-                  <p className="text-xl font-bold tabular-nums" style={{ color: HOME.text }}>
+                  <p className="text-xl font-bold tabular-nums" style={{ color: CHROME.text }}>
                     {item.value}
                     {item.unit ? (
-                      <span className="text-xs font-semibold" style={{ color: HOME.muted }}>
+                      <span className="text-xs font-semibold" style={{ color: CHROME.muted }}>
                         {" "}
                         {item.unit}
                       </span>
                     ) : null}
                   </p>
-                  <p className="mt-1 text-[10px] font-medium" style={{ color: HOME.muted }}>
+                  <p className="mt-1 text-[10px] font-medium" style={{ color: CHROME.muted }}>
                     {item.label}
                   </p>
                 </motion.div>
@@ -724,7 +660,7 @@ export function HomeScreen(props: HomeScreenProps) {
                   <span
                     key={g}
                     className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold"
-                    style={{ color: HOME.orange, backgroundColor: `${HOME.orange}14`, border: `1px solid ${HOME.orange}33` }}
+                    style={{ color: CHROME.orange, backgroundColor: `${CHROME.orange}14`, border: `1px solid ${CHROME.orange}33` }}
                   >
                     <Target className="h-3 w-3" aria-hidden />
                     Goal: {g}
@@ -732,7 +668,7 @@ export function HomeScreen(props: HomeScreenProps) {
                 ))}
               </div>
             ) : null}
-          </WhiteCard>
+          </CreamCard>
         </section>
       </div>
     </div>

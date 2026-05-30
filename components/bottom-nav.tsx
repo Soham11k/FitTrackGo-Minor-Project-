@@ -6,6 +6,7 @@ import { Home, MapPin, Dumbbell, ScanLine, Trophy, User } from "lucide-react"
 import { useLocale } from "@/components/locale-provider"
 import { pulse } from "@/lib/haptics"
 import { CHROME } from "@/lib/app-chrome"
+import { WORKOUTS } from "@/lib/workouts-theme"
 
 /**
  * Premium orange-on-black nav bar.
@@ -66,7 +67,9 @@ export function BottomNav({
         <div className="pointer-events-none absolute inset-x-1 top-0 h-0.5 overflow-hidden">
           <motion.div
             className="h-full w-1/6 rounded-b-full"
-            style={{ backgroundColor: CHROME.orange }}
+            style={{
+              backgroundColor: activeTab === "exercises" ? WORKOUTS.accent : CHROME.orange,
+            }}
             animate={{ x: `${activeIndex * 100}%` }}
             transition={
               prefersReducedMotion
@@ -80,7 +83,9 @@ export function BottomNav({
         <div className="pointer-events-none absolute inset-x-1 top-0 h-0.5 overflow-hidden opacity-60">
           <motion.div
             className="h-full w-1/6 blur-[3px]"
-            style={{ backgroundColor: CHROME.orange }}
+            style={{
+              backgroundColor: activeTab === "exercises" ? WORKOUTS.accent : CHROME.orange,
+            }}
             animate={{ x: `${activeIndex * 100}%` }}
             transition={
               prefersReducedMotion
@@ -93,6 +98,7 @@ export function BottomNav({
         {navItems.map((item) => {
           const isActive = activeTab === item.id
           const label = t(item.labelKey)
+          const accent = item.id === "exercises" ? WORKOUTS.accent : CHROME.orange
 
           return (
             <button
@@ -124,13 +130,13 @@ export function BottomNav({
               >
                 <item.icon
                   className="h-5 w-5 transition-colors duration-150"
-                  style={{ color: isActive ? CHROME.orange : CHROME.muted }}
+                  style={{ color: isActive ? accent : CHROME.muted }}
                   strokeWidth={isActive ? 2.4 : 1.8}
                 />
               </motion.span>
               <span
                 className="max-w-[4.5rem] truncate text-[9px] font-bold uppercase tracking-[0.18em] leading-none transition-colors duration-150"
-                style={{ color: isActive ? CHROME.orange : CHROME.muted }}
+                style={{ color: isActive ? accent : CHROME.muted }}
               >
                 {!compactInactiveLabels || isActive ? label : ""}
               </span>

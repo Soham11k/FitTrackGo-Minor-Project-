@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { ChevronRight, Star, Clock, Flame, Dumbbell, Heart, Zap, Target } from "lucide-react"
+import { Star, Clock, Flame } from "lucide-react"
 // ExerciseIllustration used in TrainScreen directly
-import { getFavorites, toggleFavorite, getWorkouts, formatErr } from "@/lib/store-supabase"
+import { getFavorites, toggleFavorite, getWorkouts, formatErr, getStreak } from "@/lib/store-supabase"
 import { pulse } from "@/lib/haptics"
 import { getExercises, type ExerciseItem } from "@/lib/data"
 import { getSpecIdForStep } from "@/lib/exercise-ai-map"
@@ -17,6 +17,13 @@ import { toast } from "sonner"
 import type { TabId } from "@/components/bottom-nav"
 import { TrainScreen } from "@/components/train-screen"
 import type { TrainCategory, TrainDuration, TrainSort } from "@/components/train-screen"
+import {
+  WORKOUTS,
+  WorkoutsDetailTopBar,
+  WorkoutsDifficultyBadge,
+  WorkoutsMetricGrid,
+  WorkoutsWithAIBadge,
+} from "@/components/workouts/workouts-ui"
 
 type Category = TrainCategory
 type DurationFilter = TrainDuration
@@ -25,35 +32,6 @@ type SortBy = TrainSort
 // categories array moved to TrainScreen
 
 const exercises: ExerciseItem[] = getExercises()
-
-function DifficultyBadge({ level }: { level: string }) {
-  const colors: Record<string, string> = {
-    Beginner: "bg-chart-2/15 text-chart-2",
-    Intermediate: "bg-chart-4/15 text-chart-4",
-    Advanced: "bg-destructive/15 text-destructive",
-  }
-  return (
-    <span className={`rounded-full px-2 py-0.5 text-typo-eyebrow font-semibold ${colors[level] || "bg-secondary text-muted-foreground"}`}>
-      {level}
-    </span>
-  )
-}
-
-const categoryMetricTint: Record<Category, string> = {
-  all:      "from-primary/55 via-metric-run/30 to-metric-run/10",
-  strength: "from-metric-move/65 to-metric-move/25",
-  cardio:   "from-metric-run/65 to-metric-run/25",
-  yoga:     "from-metric-coach/60 to-metric-coach/20",
-  hiit:     "from-metric-hr/60 to-metric-hr/20",
-}
-
-const categoryIcons: Record<Category, typeof Dumbbell> = {
-  all: Dumbbell,
-  strength: Dumbbell,
-  cardio: Flame,
-  yoga: Heart,
-  hiit: Zap,
-}
 
 // categoryToIllustration moved to TrainScreen
 
@@ -80,6 +58,7 @@ export function ExerciseLibrary({
       typeof window !== "undefined" ? readWorkoutSessionSnapshot() : null,
   )
   const [preferResumeForExerciseId, setPreferResumeForExerciseId] = useState<number | null>(null)
+  const [streakDays, setStreakDays] = useState(0)
 
   const dismissPausedBanner = () => {
     clearWorkoutSessionSnapshot()
@@ -98,9 +77,10 @@ export function ExerciseLibrary({
   const loadFavoritesAndWorkouts = async () => {
     setLoadError(null)
     try {
-      const [favs, workouts] = await Promise.all([getFavorites(), getWorkouts()])
+      const [favs, workouts, streak] = await Promise.all([getFavorites(), getWorkouts(), getStreak()])
       setFavorites(favs)
       setCompletedTitles(new Set(workouts.map((w) => w.title)))
+      setStreakDays(streak)
     } catch (error) {
       const msg = formatErr(error)
       setLoadError(msg)
@@ -187,6 +167,7 @@ export function ExerciseLibrary({
       sortBy={sortBy}
       showFilters={showFilters}
       pausedWorkoutTitle={pausedWorkoutSnapshot?.exercise?.title ?? null}
+      streakDays={streakDays}
       onSelectExercise={setSelectedExercise}
       onToggleFavorite={handleToggleFavorite}
       onSetCategory={setActiveCategory}
@@ -246,6 +227,13 @@ function ExerciseDetail({
     return null
   }, [exerciseSteps])
 
+  const firstCoachStepIndex = useMemo(() => {
+    for (let i = 0; i < exerciseSteps.length; i++) {
+      if (getSpecIdForStep(exerciseSteps[i].name)) return i
+    }
+    return 1
+  }, [exerciseSteps])
+
   useEffect(() => {
     if (!preferResumePlayback) return
     const s = readWorkoutSessionSnapshot()
@@ -278,94 +266,104 @@ function ExerciseDetail({
   }
 
   return (
-    <div className="flex flex-col pb-28">
-      <div className="relative h-64 overflow-hidden">
-        <div className={`h-full w-full bg-gradient-to-br flex items-center justify-center ${categoryMetricTint[exercise.category]}`}>
-          {(() => { const Icon = categoryIcons[exercise.category]; return <Icon className="h-20 w-20 text-white/75" /> })()}
+    <div className="flex min-h-dvh flex-col pb-28" style={{ backgroundColor: WORKOUTS.bg }}>
+      <WorkoutsDetailTopBar onBack={onBack} favorite={isFavorite} onToggleFavorite={onToggleFavorite} />
+
+      <div className="px-5 pt-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <WorkoutsDifficultyBadge level={exercise.difficulty} />
+          {lastDone && (
+            <span
+              className="rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.06em]"
+              style={{ color: WORKOUTS.white, backgroundColor: WORKOUTS.iconWell }}
+            >
+              Done before
+            </span>
+          )}
         </div>
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
-        <button onClick={onBack} className="absolute top-4 left-4 flex h-10 w-10 items-center justify-center rounded-full bg-background/80 backdrop-blur-sm text-foreground" aria-label="Back">
-          <ChevronRight className="h-5 w-5 rotate-180" />
-        </button>
-        <button onClick={onToggleFavorite} className="absolute top-4 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-background/80 backdrop-blur-sm">
-          <Star className={`h-5 w-5 ${isFavorite ? "fill-chart-4 text-chart-4" : "text-muted-foreground"}`} />
-        </button>
-        <div className="absolute bottom-0 left-0 right-0 p-5">
-          <div className="flex items-center gap-2">
-            <DifficultyBadge level={exercise.difficulty} />
-            {lastDone && <span className="rounded-full px-2 py-0.5 text-typo-eyebrow font-semibold bg-primary/15 text-primary">Done before</span>}
-          </div>
-          <h1 className="mt-2 text-2xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>{exercise.title}</h1>
-          <div className="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1"><Clock className="h-4 w-4" /> {exercise.duration}</span>
-            <span className="flex items-center gap-1"><Flame className="h-4 w-4" /> {exercise.calories} cal</span>
-            <span className="flex items-center gap-1"><Star className="h-4 w-4 text-chart-4" fill="currentColor" /> {exercise.rating}</span>
-          </div>
-        </div>
-      </div>
-      <div className="grid grid-cols-3 gap-3 px-4 pt-5">
-        <div className="rounded-xl bg-card p-3 border border-border text-center">
-          <span className="text-lg font-bold text-foreground">{exercise.exercises}</span>
-          <p className="text-typo-eyebrow text-muted-foreground uppercase">Exercises</p>
-        </div>
-        <div className="rounded-xl bg-card p-3 border border-border text-center">
-          <span className="text-lg font-bold text-foreground">{exercise.duration}</span>
-          <p className="text-typo-eyebrow text-muted-foreground uppercase">Duration</p>
-        </div>
-        <div className="rounded-xl bg-card p-3 border border-border text-center">
-          <span className="text-lg font-bold text-foreground">{exercise.calories}</span>
-          <p className="text-typo-eyebrow text-muted-foreground uppercase">Calories</p>
+        <h1
+          className="mt-4 text-[1.75rem] font-black uppercase leading-tight tracking-tight"
+          style={{ fontFamily: "var(--font-display), var(--font-heading), sans-serif", color: WORKOUTS.white }}
+        >
+          {exercise.title}
+        </h1>
+        <div className="mt-3 flex flex-wrap items-center gap-4 text-sm font-semibold" style={{ color: WORKOUTS.muted }}>
+          <span className="flex items-center gap-1.5">
+            <Clock className="h-4 w-4" /> {exercise.duration}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Flame className="h-4 w-4" /> {exercise.calories} cal
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Star className="h-4 w-4" style={{ color: WORKOUTS.accent }} fill={WORKOUTS.accent} /> {exercise.rating}
+          </span>
         </div>
       </div>
+
+      <WorkoutsMetricGrid
+        exercises={exercise.exercises}
+        duration={String(exercise.durationMin)}
+        calories={exercise.calories}
+      />
+
       <div className="px-4 pt-5">
-        <ExerciseBodyPreview exerciseId={firstCoachId} />
+        <ExerciseBodyPreview exerciseId={firstCoachId} theme="workouts" />
       </div>
-      <div className="px-4 pt-5">
-        <h2 className="text-sm font-semibold text-foreground mb-3">Workout Plan</h2>
-        <div className="flex flex-col gap-2">
+
+      <div className="px-4 pt-6">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: WORKOUTS.muted }}>
+            Workout plan
+          </p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: WORKOUTS.muted }}>
+            {exerciseSteps.length} steps
+          </p>
+        </div>
+        <div className="flex flex-col">
           {exerciseSteps.map((step, i) => {
             const coachId = getSpecIdForStep(step.name)
+            const activeStep = i === firstCoachStepIndex
             return (
-            <div key={`${i}-${step.name}`} className="flex items-center gap-3 rounded-xl bg-card p-3 border border-border">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-xs font-bold text-muted-foreground">{i + 1}</div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground">{step.name}</p>
-                <p className="text-xs text-muted-foreground">{step.reps}</p>
+              <div
+                key={`${i}-${step.name}`}
+                className="flex items-center gap-4 border-b py-4 last:border-b-0"
+                style={{ borderColor: WORKOUTS.cardBorder }}
+              >
+                <span
+                  className="w-8 shrink-0 text-2xl font-black tabular-nums leading-none"
+                  style={{ color: activeStep ? WORKOUTS.accent : WORKOUTS.muted }}
+                >
+                  {i + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[15px] font-bold leading-tight" style={{ color: WORKOUTS.white }}>
+                    {step.name}
+                  </p>
+                  <p className="mt-0.5 text-xs" style={{ color: WORKOUTS.muted }}>{step.reps}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {coachId ? (
+                    <WorkoutsWithAIBadge active={activeStep} />
+                  ) : (
+                    <span className="text-xs font-semibold tabular-nums" style={{ color: WORKOUTS.muted }}>
+                      {step.duration}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {coachId && onOpenAICoach && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenAICoach({ exerciseId: coachId })}
-                    className="rounded-lg border border-metric-coach/30 bg-metric-coach/10 px-2.5 py-1 text-typo-eyebrow font-bold uppercase tracking-wide text-metric-coach hover:bg-metric-coach/20"
-                  >
-                    Practice with AI
-                  </button>
-                )}
-                <span className="text-xs text-muted-foreground tabular-nums">{step.duration}</span>
-              </div>
-            </div>
             )
           })}
         </div>
       </div>
-      <div className="px-4 pt-5 flex flex-col gap-3">
-        {onOpenAICoach && (
-          <button
-            type="button"
-            onClick={() => onOpenAICoach(firstCoachId ? { exerciseId: firstCoachId } : undefined)}
-            className="w-full rounded-xl border border-metric-coach/35 bg-metric-coach/10 py-3.5 text-center font-semibold text-metric-coach text-base transition-all hover:bg-metric-coach/15 active:scale-[0.98] flex items-center justify-center gap-2"
-          >
-            <Target className="h-4 w-4 shrink-0" />
-            Open AI Coach
-          </button>
-        )}
+
+      <div className="px-4 pt-6">
         <button
           type="button"
           onClick={handleStartWorkout}
-          className="w-full rounded-xl bg-primary py-4 text-center font-semibold text-primary-foreground text-base transition-all hover:bg-primary/90 active:scale-[0.98]"
+          className="w-full rounded-2xl py-4 text-center text-sm font-black uppercase tracking-[0.1em] transition-opacity hover:opacity-90 active:scale-[0.98]"
+          style={{ backgroundColor: WORKOUTS.accent, color: WORKOUTS.white }}
         >
-          Start Workout
+          Start workout
         </button>
       </div>
     </div>
