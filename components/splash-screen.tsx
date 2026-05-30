@@ -60,7 +60,7 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
         animate={{ opacity: 1 }}
         transition={{ duration: 1.2 }}
         style={{
-          background: "radial-gradient(ellipse 60% 50% at 50% 50%, oklch(0.72 0.22 130 / 0.15) 0%, transparent 70%)"
+          background: "radial-gradient(ellipse 60% 50% at 50% 50%, rgba(249,115,22,0.12) 0%, transparent 70%)"
         }}
       />
 
@@ -93,12 +93,12 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
               viewBox="0 0 240 100"
               fill="none"
               aria-hidden
-              className="drop-shadow-[0_0_20px_oklch(0.72_0.22_130/0.6)]"
+              className="drop-shadow-[0_0_20px_oklch(#f97316/0.6)]"
             >
               {/* Background dim track */}
               <path
                 d="M0,50 L52,50 L70,12 L92,88 L110,50 L132,22 L150,50 L240,50"
-                stroke="oklch(0.72 0.22 130 / 0.15)"
+                stroke="rgba(249,115,22,0.12)"
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -107,7 +107,7 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
               {/* Animated drawing path */}
               <motion.path
                 d="M0,50 L52,50 L70,12 L92,88 L110,50 L132,22 L150,50 L240,50"
-                stroke="oklch(0.72 0.22 130)"
+                stroke="#f97316"
                 strokeWidth="3.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -121,7 +121,7 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
               {!reduce && (
                 <motion.circle
                   cx="150" cy="50" r="5"
-                  fill="oklch(0.72 0.22 130)"
+                  fill="#f97316"
                   animate={{
                     cx: [0, 52, 70, 92, 110, 132, 150, 240],
                     cy: [50, 50, 12, 88, 50, 22, 50, 50],
@@ -144,7 +144,7 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
                 transition={{ duration: 0.5, ease: [...EASE.cinematic] }}
               >
                 <p className="text-3xl font-black tracking-[-0.05em] text-white">
-                  FITTRACK <span className="text-[oklch(0.72_0.22_130)]">GO</span>
+                  FITTRACK <span className="text-[#f97316]">GO</span>
                 </p>
                 <p className="text-xs font-medium tracking-[0.22em] uppercase text-white/40">
                   {siteConfig.tagline}
@@ -174,7 +174,7 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
             {STEPS.map((_, i) => (
               <motion.span
                 key={i}
-                className="h-1 rounded-full bg-primary"
+                className="h-1 rounded-full" style={{ backgroundColor: "#f97316" }}
                 initial={false}
                 animate={{ width: i <= step ? 28 : 8, opacity: i <= step ? 1 : 0.25 }}
                 transition={{ duration: 0.35, ease: [...EASE.cinematic] }}

@@ -1,19 +1,43 @@
 "use client"
 
 import { cn } from "@/lib/utils"
+import { CHROME } from "@/lib/app-chrome"
 
 export function ScreenTitle({
   title,
   subtitle,
   eyebrow,
   className,
+  variant = "default",
 }: {
   title: string
   subtitle?: string
-  /** Optional date/context line above the title */
   eyebrow?: string
   className?: string
+  /** default = theme tokens; chrome = orange eyebrow on dark bg */
+  variant?: "default" | "chrome"
 }) {
+  if (variant === "chrome") {
+    return (
+      <header className={cn("space-y-1", className)}>
+        {eyebrow && (
+          <p className="text-[10px] font-bold uppercase tracking-[0.28em]" style={{ color: CHROME.orange }}>
+            {eyebrow}
+          </p>
+        )}
+        <h1
+          className="text-4xl font-black uppercase leading-none text-white"
+          style={{ fontFamily: "var(--font-display), var(--font-heading)" }}
+        >
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="text-xs" style={{ color: CHROME.muted }}>{subtitle}</p>
+        )}
+      </header>
+    )
+  }
+
   return (
     <header className={cn("space-y-1", className)}>
       {eyebrow ? (

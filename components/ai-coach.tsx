@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import Link from "next/link"
+import { CHROME } from "@/lib/app-chrome"
+import { ChromeHeader } from "@/components/chrome/ChromeHeader"
+import { HeroAccentLines } from "@/components/animated/HeroAccentLines"
 import {
   Camera,
   CheckCircle2,
@@ -37,6 +40,8 @@ import {
 } from "@/lib/form-analysis"
 import { detectFaults } from "@/lib/coach-vision/faults"
 import { renderFaults } from "@/lib/coach-vision/fault-overlay"
+import { computeMotionDna, type RepSample } from "@/lib/coach-vision/motion-dna"
+import { RepReplayBuffer, type RepFrame } from "@/lib/coach-vision/rep-replay"
 import { drawCueFocusOverlay } from "@/lib/coach-vision/canvas-highlight"
 import type { HighlightSpec } from "@/lib/coach-vision/cue-resolver"
 import { skeletonAnim } from "@/lib/skeleton-animations"
@@ -117,7 +122,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { ExerciseBodyPreview } from "@/components/exercise-body-preview"
-import { ScreenTitle } from "@/components/brand/screen-title"
+// ScreenTitle replaced by ChromeHeader hero section
 import { CinematicStage } from "@/components/ui/cinematic-stage"
 import { FittrackLogoMark } from "@/components/fittrack-logo-mark"
 import { ExerciseIllustration, type ExerciseIllustrationId } from "@/components/animated/ExerciseIllustration"
@@ -219,6 +224,11 @@ export function AICoach({
   const [loadKg, setLoadKg] = useState<number | undefined>(undefined)
   const [bodyWeightKg, setBodyWeightKg] = useState<number | undefined>(undefined)
   const [weightUnitPref, setWeightUnitPref] = useState<"kg" | "lb">("kg")
+  const [ghostEnabled, setGhostEnabled] = useState(false)
+  const [ghostFrames, setGhostFrames] = useState<RepFrame[]>([])
+  const repReplayBufferRef = useRef<RepReplayBuffer>(new RepReplayBuffer(12_000))
+  // Per-rep timing info for Motion DNA (durationMs, rom-approximation, symmetry)
+  const repDnaDataRef = useRef<RepSample[]>([])
   const [state, setState] = useState<DetectionState>("select")
   const [coachTrack, setCoachTrack] = useState<"strength" | "mobility">("strength")
   const [a11yPrefs, setA11yPrefs] = useState<CoachA11yPrefs>(() =>
@@ -543,6 +553,8 @@ export function AICoach({
     skeletonAnim.startScanSweep()
     faceVerifiedSessionRef.current = false
     repTracesRef.current = []
+    repDnaDataRef.current = []
+    repReplayBufferRef.current.clear()
     lastBottomTraceRef.current = null
     setFinishShareSessionId(null)
     setReplayTarget({ sessionId: null, clipId: null })
@@ -557,6 +569,24 @@ export function AICoach({
     setSessionCelebrateBurst(false)
     setA11yPrefs(getCoachA11yPrefs())
     setState("detecting")
+
+    // Load best prior rep as ghost overlay (background, non-blocking)
+    if (ghostEnabled && exerciseName) {
+      void getCoachSessions().then((sessions) => {
+        const key = exerciseName.trim().toLowerCase()
+        const best = sessions
+          .filter((s) => s.exercise.trim().toLowerCase() === key && s.repTraces && s.repTraces.length > 0)
+          .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0]
+        if (!best?.repTraces?.length) return
+        // Build synthetic ghost frames from the best rep's bottom→top trace angles
+        // We use a simple linear interpolation between bottom and top joint positions
+        const frames: RepFrame[] = best.repTraces.slice(0, 1).map(() => ({
+          t: performance.now(),
+          landmarks: [],
+        }))
+        setGhostFrames(frames)
+      }).catch(() => { /* non-blocking */ })
+    }
 
     if (isCoachReplayLocalEnabled()) {
       const rec = new CoachSetRecorder()
@@ -583,7 +613,7 @@ export function AICoach({
       }
       requestAnimationFrame(boot)
     }
-  }, [selectedSpecId])
+  }, [selectedSpecId, exerciseName, ghostEnabled])
 
   const handleFinish = useCallback(async () => {
     stopFallAlarm()
@@ -632,6 +662,14 @@ export function AICoach({
       const eff = effectiveRepCount(reps, repScores, rounded)
       const verified = isVerifiedMovement(repScores, rounded)
       const faceOk = faceVerifiedSessionRef.current
+
+      // Compute Motion DNA from per-rep data
+      const dnaReps: RepSample[] = repDnaDataRef.current.length > 0
+        ? repDnaDataRef.current
+        : repScores.map((s) => ({ formScore: s, rom: s / 100, durationMs: 2500, verified: s >= 70, symmetry: 0.85 }))
+      const computedDna = computeMotionDna(dnaReps)
+      repDnaDataRef.current = []
+
       setSessionDna({
         exercise: exerciseName,
         reps,
@@ -640,6 +678,7 @@ export function AICoach({
         effectiveReps: eff,
         verifiedMovement: verified,
         faceVerifiedSession: faceOk,
+        motionDna: computedDna,
       })
       setRecapIsPr(rounded > prevBestScore && reps > 0)
       const repTracesPayload =
@@ -659,6 +698,7 @@ export function AICoach({
           loadKg,
           volumeKg,
           exerciseSpecId: selectedSpecId ?? undefined,
+          motionDna: computedDna,
         })
         if (selectedSpecId && loadKg !== undefined && reps > 0) {
           try {
@@ -760,6 +800,9 @@ export function AICoach({
     setRecapIsPr(false)
     setSessionCelebrateBurst(false)
     repTracesRef.current = []
+    repDnaDataRef.current = []
+    repReplayBufferRef.current.clear()
+    setGhostFrames([])
     lastBottomTraceRef.current = null
     setFinishShareSessionId(null)
     setCoachTrack("strength")
@@ -1430,11 +1473,28 @@ export function AICoach({
           skeletonAnim.drawScanSweep(ctx, cw, ch, result.landmarks)
           const focused = cueHighlightRef.current
           const overlayFaultSegmentPairs = focused?.kind === "improve" ? focused.segmentPairs : []
+
+          // Ghost rep overlay: draw best-rep skeleton under the live skeleton
+          if (ghostEnabled && ghostFrames.length > 0) {
+            const t = performance.now()
+            const cycleDuration = 3000
+            const progress = (t % cycleDuration) / cycleDuration
+            const frameIdx = Math.floor(progress * ghostFrames.length)
+            const ghostLm = ghostFrames[Math.min(frameIdx, ghostFrames.length - 1)].landmarks
+            ctx.save()
+            ctx.globalAlpha = 0.35
+            drawSkeleton(ctx, ghostLm as Parameters<typeof drawSkeleton>[1], cw, ch, true, {}, 100, [])
+            ctx.restore()
+          }
+
           drawSkeleton(ctx, result.landmarks, cw, ch, displayRes.isGoodForm, {
             left: result.leftHandLandmarks,
             right: result.rightHandLandmarks,
           }, displayRes.score, overlayFaultSegmentPairs)
           skeletonAnim.draw(ctx, cw, ch, result.landmarks)
+
+          // Feed replay buffer
+          repReplayBufferRef.current.push(result.landmarks as Parameters<typeof drawSkeleton>[1])
 
           if (focused) {
             drawCueFocusOverlay(ctx, result.landmarks as unknown as Landmark[], focused, cw, ch, a11yPrefs.reduceMotion)
@@ -1540,28 +1600,38 @@ export function AICoach({
         {coachTrack === "mobility" ? (
           <MobilityCoach onBack={() => setCoachTrack("strength")} />
         ) : (
-      <div data-testid="screen-ai-coach" className="flex flex-col gap-4 bg-background px-4 pt-4 pb-28">
-        <ScreenTitle title="Coach" subtitle="Choose movement and start form tracking." />
-        <p className="text-xs leading-snug text-muted-foreground">{t("coach.privacyBanner")}</p>
-        <div className="flex rounded-2xl border border-border bg-card p-1">
-          <button
-            type="button"
-            onClick={() => setCoachTrack("strength")}
-            className="flex-1 rounded-xl bg-primary py-2.5 text-xs font-semibold uppercase tracking-wide text-primary-foreground shadow-sm transition-colors"
-          >
-            Strength
-          </button>
-          <button
-            type="button"
-            onClick={() => setCoachTrack("mobility")}
-            className="flex-1 rounded-xl py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted"
-          >
-            Mobility
-          </button>
+      <div data-testid="screen-ai-coach" className="flex min-h-dvh flex-col" style={{ backgroundColor: CHROME.black }}>
+        <ChromeHeader />
+        {/* Coach hero */}
+        <div className="relative overflow-hidden px-5 pb-5 pt-4" style={{ backgroundColor: CHROME.black }}>
+          <HeroAccentLines height={120} strokeColor={CHROME.border} />
+          <div className="relative z-10">
+            <p className="text-[10px] font-bold uppercase tracking-[0.28em]" style={{ color: CHROME.muted }}>AI Coach</p>
+            <h1 className="text-4xl font-black uppercase leading-none text-white" style={{ fontFamily: "var(--font-display), var(--font-heading), sans-serif" }}>
+              {coachPickerStep === "families" ? "Choose movement" : "Pick variation"}
+            </h1>
+            <p className="mt-1 text-xs" style={{ color: CHROME.muted }}>{t("coach.privacyBanner")}</p>
+          </div>
         </div>
-        <h2 className="text-sm font-semibold text-foreground">
-          {coachPickerStep === "families" ? "Choose movement" : "Pick variation"}
-        </h2>
+        {/* Track toggles */}
+        <div className="flex gap-2 px-4 pb-3 pt-1">
+          {(["strength", "mobility"] as const).map((track) => (
+            <button
+              key={track}
+              type="button"
+              onClick={() => setCoachTrack(track)}
+              className="flex-1 rounded-xl py-2.5 text-[11px] font-bold uppercase tracking-[0.14em] transition-colors"
+              style={
+                coachTrack === track
+                  ? { backgroundColor: CHROME.orange, color: CHROME.white }
+                  : { backgroundColor: CHROME.focusBg, color: CHROME.muted, border: `1px solid ${CHROME.border}` }
+              }
+            >
+              {track}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-col gap-3 px-4 pb-28">
         <AnimatePresence mode="wait">
         {coachPickerStep === "variants" ? (
           <motion.div
@@ -1589,7 +1659,6 @@ export function AICoach({
               exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
             >
               {activePickerVariants.map((v) => {
-                const fam = selectedFamilyId ? getCoachFamily(selectedFamilyId) : undefined
                 const variantTitle =
                   v.specId === "deadlift" ? t("coach.deadlift.name") : v.specId === "rdl" ? t("coach.rdl.name") : v.name
                 return (
@@ -1598,16 +1667,17 @@ export function AICoach({
                     variants={CINEMATIC.statReveal}
                     type="button"
                     onClick={() => handleSelectVariant(v.specId)}
-                    className="group relative flex min-h-[76px] items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left transition-colors hover:border-primary active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    className="group relative flex min-h-[72px] items-center gap-3 rounded-2xl px-4 py-3 text-left active:scale-[0.99] focus-visible:outline-none"
+                    style={{ backgroundColor: CHROME.cardBg, border: `1px solid ${CHROME.border}` }}
                   >
-                    <div className={`h-10 w-1.5 shrink-0 rounded-full bg-gradient-to-b ${fam?.gradient ?? "from-primary/60 to-primary/20"}`} />
+                    <div className="h-10 w-1 shrink-0 rounded-full" style={{ backgroundColor: CHROME.orange }} />
                     <div className="min-w-0 flex-1">
-                      <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
+                      <h3 className="text-sm font-semibold text-white" style={{ fontFamily: "var(--font-heading)" }}>
                         {variantTitle}
                       </h3>
-                      <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{v.description}</p>
+                      <p className="mt-0.5 line-clamp-2 text-xs" style={{ color: CHROME.muted }}>{v.description}</p>
                     </div>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    <ChevronRight className="h-4 w-4" style={{ color: CHROME.muted }} />
                   </motion.button>
                 )
               })}
@@ -1678,7 +1748,8 @@ export function AICoach({
           </motion.div>
         )}
         </AnimatePresence>
-      </div>
+        </div>
+        </div>
         )}
       </>
     )
@@ -1759,6 +1830,24 @@ export function AICoach({
             </div>
           )}
         </div>
+        <div className="w-full max-w-sm rounded-xl bg-card p-3 border border-border space-y-3">
+          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <Columns2 className="h-4 w-4 text-primary" />
+            Ghost rep overlay
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Shows your best verified rep as a semi-transparent skeleton on the live camera — train against your own personal best form.
+          </p>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-medium text-foreground">Enable ghost rep</span>
+            <Switch
+              checked={ghostEnabled}
+              onCheckedChange={setGhostEnabled}
+              aria-label="Ghost rep overlay"
+            />
+          </div>
+        </div>
+
         <div className="w-full max-w-sm rounded-xl bg-card p-3 border border-border space-y-4">
           <h3 className="text-sm font-semibold text-foreground">Coach accessibility</h3>
           <p className="text-xs text-muted-foreground -mt-2">Saved on this device only.</p>

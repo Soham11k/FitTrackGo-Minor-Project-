@@ -14,4 +14,11 @@ export interface Duel {
   /** Set for Supabase duels — used to show the correct score action per participant. */
   challengerUserId?: string
   opponentUserId?: string | null
+  /** Arena trust tier flags — populated from coach session verification. */
+  challengerVerified?: boolean
+  opponentVerified?: boolean
+  challengerFaceVerified?: boolean
+  opponentFaceVerified?: boolean
+  challengerSessionId?: string | null
+  opponentSessionId?: string | null
 }

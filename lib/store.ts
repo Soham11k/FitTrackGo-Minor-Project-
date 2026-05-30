@@ -1,4 +1,5 @@
 import type { RepTracePair } from "./rep-trace"
+import type { MotionDna } from "./coach-vision/motion-dna"
 
 const KEY = "fittrackgo_data"
 
@@ -58,6 +59,8 @@ export interface CoachRecord {
   volumeKg?: number
   /** FormSpec id (built-in or custom_*) for replay and analysis */
   exerciseSpecId?: string
+  /** 6-axis biomechanical fingerprint computed on session finish */
+  motionDna?: MotionDna
 }
 
 export interface AppData {

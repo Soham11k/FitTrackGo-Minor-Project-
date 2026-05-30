@@ -33,10 +33,15 @@ export function RunMap({ path, center, runState, className = "" }: RunMapProps) 
       const map = L.map(containerRef.current, {
         zoomControl: false,
       })
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19,
-      }).addTo(map)
+      // Dark tile layer so the map matches the black immersive HUD.
+      L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        {
+          attribution:
+            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+          maxZoom: 19,
+        },
+      ).addTo(map)
       map.setView(mapCenter, 15)
       mapRef.current = map
 
@@ -52,7 +57,7 @@ export function RunMap({ path, center, runState, className = "" }: RunMapProps) 
         polylineRef.current.setLatLngs(latlngs)
       } else {
         const polyline = L.polyline(latlngs, {
-          color: "hsl(142, 71%, 45%)",
+          color: "#f97316",
           weight: 5,
           opacity: 0.9,
           lineJoin: "round",

@@ -20,6 +20,7 @@ import {
 import { motion, useReducedMotion } from "framer-motion"
 import { getWorkouts, getRuns, getCoachSessions } from "@/lib/store-supabase"
 import { DURATION, EASE, staggerDelaySec } from "@/lib/motion"
+import { CHROME } from "@/lib/app-chrome"
 import { getAuthErrorMessage } from "@/lib/supabase/config"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { downloadBlob, runToGpx } from "@/lib/export"
@@ -61,12 +62,14 @@ type HistoryItem = {
   workout?: WorkoutRecord
 }
 
-/** Per-type visual identity for history rows. */
-const TYPE_STYLE = {
-  workout: { tint: "text-metric-move", bg: "bg-metric-move/15" },
-  run: { tint: "text-metric-run", bg: "bg-metric-run/15" },
-  coach: { tint: "text-metric-coach", bg: "bg-metric-coach/15" },
-} as const
+/** Per-type accent bars for dark history rows. */
+const TYPE_ACCENT: Record<string, string> = {
+  workout: CHROME.orange,
+  run:     CHROME.hrRed,
+  coach:   CHROME.teal,
+}
+
+// TYPE_STYLE replaced by TYPE_ACCENT with direct colors
 
 function formatDuration(totalSeconds: number): string {
   const s = Math.max(0, Math.floor(totalSeconds))
@@ -202,16 +205,21 @@ export function WorkoutHistory({
   }, [load])
 
   return (
-    <div className="flex flex-col pb-28">
-      <div className="sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-background/80 backdrop-blur-xl px-4 py-3">
+    <div className="flex flex-col pb-28" style={{ backgroundColor: CHROME.cream }}>
+      {/* Dark sticky header */}
+      <div
+        className="sticky top-0 z-20 flex items-center gap-2 px-4 py-3 backdrop-blur-xl"
+        style={{ backgroundColor: "rgba(13,13,13,0.95)", borderBottom: `1px solid ${CHROME.border}` }}
+      >
         <button
           onClick={onBack}
-          className="flex h-9 w-9 items-center justify-center rounded-lg bg-card border border-border text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="flex h-9 w-9 items-center justify-center rounded-xl"
+          style={{ backgroundColor: CHROME.cardBg, border: `1px solid ${CHROME.border}` }}
           aria-label="Back to dashboard"
         >
-          <ChevronLeft className="h-5 w-5" />
+          <ChevronLeft className="h-5 w-5 text-white" />
         </button>
-        <h1 className="text-base font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
+        <h1 className="text-sm font-bold uppercase tracking-[0.18em] text-white" style={{ fontFamily: "var(--font-heading)" }}>
           Activity History
         </h1>
       </div>
@@ -279,34 +287,39 @@ export function WorkoutHistory({
           />
         ) : (
           items.map((item, i) => {
-            const style = TYPE_STYLE[item.type]
+            const typeAccent = TYPE_ACCENT[item.type] ?? CHROME.orange
             const innerContent = (
               <>
-                <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${style.bg}`}>
-                  <item.icon className={`h-5 w-5 ${style.tint}`} aria-hidden="true" />
+                {/* Type accent bar */}
+                <div className="h-10 w-1 shrink-0 rounded-full" style={{ backgroundColor: typeAccent }} />
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                  style={{ backgroundColor: `${typeAccent}20` }}
+                >
+                  <item.icon className="h-5 w-5" style={{ color: typeAccent }} aria-hidden="true" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="truncate text-sm font-semibold text-foreground">{item.title}</p>
-                  <p className="mt-0.5 text-typo-caption text-muted-foreground truncate">{item.detail}</p>
+                  <p className="truncate text-sm font-semibold text-white">{item.title}</p>
+                  <p className="mt-0.5 text-[11px]" style={{ color: CHROME.muted }}>{item.detail}</p>
                 </div>
                 <div className="shrink-0 text-right">
                   <p
-                    className={`text-2xl font-bold tabular-nums leading-none ${style.tint}`}
-                    style={{ fontFamily: "var(--font-heading)" }}
+                    className="text-2xl font-bold tabular-nums leading-none"
+                    style={{ color: typeAccent, fontFamily: "var(--font-heading)" }}
                   >
                     {item.primary}
                   </p>
-                  <p className="mt-1 text-typo-micro font-bold uppercase tracking-[0.15em] text-muted-foreground">
+                  <p className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.15em]" style={{ color: CHROME.muted }}>
                     {item.primaryLabel}
                   </p>
-                  <p className="mt-0.5 text-typo-eyebrow font-medium text-muted-foreground/80 whitespace-nowrap">
+                  <p className="mt-0.5 text-[10px]" style={{ color: `${CHROME.muted}80` }}>
                     {formatDistanceToNow(new Date(item.time), { addSuffix: true })}
                   </p>
                 </div>
               </>
             )
             const baseRowClasses =
-              "motion-card flex w-full items-center gap-3 rounded-lg bg-background p-4 border border-border"
+              "flex w-full items-center gap-3 rounded-2xl p-3.5 text-left active:scale-[0.99] focus-visible:outline-none"
             const motionProps = {
               initial: reduceMotion ? false : ({ opacity: 0, y: 8 } as const),
               animate: { opacity: 1, y: 0 },
@@ -324,7 +337,7 @@ export function WorkoutHistory({
                   type="button"
                   onClick={() => setDetailActivity({ kind: "workout", workout: w })}
                   aria-label={`View workout ${w.title}`}
-                  className={`${baseRowClasses} text-left motion-card-interactive transition-transform hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-metric-move`}
+                  className={baseRowClasses} style={{ backgroundColor: "#ffffff", border: "1px solid #ebe8e0" }}
                   {...motionProps}
                 >
                   {innerContent}

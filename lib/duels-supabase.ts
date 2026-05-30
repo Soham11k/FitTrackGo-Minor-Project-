@@ -15,7 +15,7 @@ function randomDuelCode(): string {
   return s
 }
 
-function rowToDuel(row: FormDuelRow): Duel {
+function rowToDuel(row: FormDuelRow & Record<string, unknown>): Duel {
   return {
     id: row.id,
     code: row.code,
@@ -28,6 +28,12 @@ function rowToDuel(row: FormDuelRow): Duel {
     settled: row.settled,
     challengerUserId: row.challenger_user_id,
     opponentUserId: row.opponent_user_id,
+    challengerVerified: Boolean(row["challenger_verified"]),
+    opponentVerified: Boolean(row["opponent_verified"]),
+    challengerFaceVerified: Boolean(row["challenger_face_verified"]),
+    opponentFaceVerified: Boolean(row["opponent_face_verified"]),
+    challengerSessionId: (row["challenger_session_id"] as string | null) ?? null,
+    opponentSessionId: (row["opponent_session_id"] as string | null) ?? null,
   }
 }
 
@@ -114,7 +120,8 @@ export async function listFormDuelsRemote(): Promise<Duel[]> {
 
 export async function submitFormDuelScoreRemote(
   duelId: string,
-  compositeScore: number
+  compositeScore: number,
+  sessionId?: string | null,
 ): Promise<Duel> {
   if (!isSupabaseConfigured()) throw new Error("supabase_not_configured")
   const supabase = createClient()
@@ -125,6 +132,7 @@ export async function submitFormDuelScoreRemote(
   const { data, error } = await supabase.rpc("submit_form_duel_score", {
     p_duel_id: duelId,
     p_composite_score: compositeScore,
+    p_session_id: sessionId ?? null,
   })
   if (error) {
     const m = (error.message ?? "").toLowerCase()

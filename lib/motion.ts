@@ -141,3 +141,36 @@ export const CHART = {
   /** After this, parent sets `isAnimationActive` false on charts. */
   enterSettleMs: 900,
 } as const
+
+/**
+ * CHROME-specific motion presets for the orange/black design system.
+ * All respect prefers-reduced-motion when consumed with `useReducedMotion`.
+ */
+export const CHROME_MOTION = {
+  /** Card fade+slide up on mount — use as `initial`/`animate` directly */
+  cardEnter: {
+    initial: { opacity: 0, y: 14 },
+    animate: { opacity: 1, y: 0 },
+    transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] as const },
+  },
+  /** Hero tab headline */
+  tabHero: {
+    hidden: { opacity: 0, y: 18 },
+    show: {
+      opacity: 1,
+      y: 0,
+      transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] as const },
+    },
+  } satisfies Variants,
+  /** SVG path draw-in for hero accent lines */
+  heroDraw: {
+    hidden: { pathLength: 0, opacity: 0.3 },
+    show: {
+      pathLength: 1,
+      opacity: 1,
+      transition: { duration: 1.4, ease: [0.22, 1, 0.36, 1] as const },
+    },
+  } satisfies Variants,
+  /** Shimmer: apply to backgroundPosition via `animate` on a styled div */
+  shimmerTransition: { duration: 2.2, repeat: Infinity, ease: "linear" as const, repeatDelay: 0.8 },
+} as const

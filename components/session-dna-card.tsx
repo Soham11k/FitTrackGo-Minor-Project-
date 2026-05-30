@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { RingGauge } from "@/components/ring-gauge"
 import { cn } from "@/lib/utils"
 import { composeCoachShareFile } from "@/lib/share-card"
+import type { MotionDna } from "@/lib/coach-vision/motion-dna"
 
 export interface SessionDnaProps {
   exercise: string
@@ -14,9 +15,60 @@ export interface SessionDnaProps {
   effectiveReps: number
   verifiedMovement: boolean
   faceVerifiedSession: boolean
+  /** 6-axis Motion DNA fingerprint computed on session finish */
+  motionDna?: MotionDna
   /** Larger ring on coach recap hero */
   ringSize?: number
   className?: string
+}
+
+const DNA_AXES = ["Stability", "Range", "Tempo", "Symmetry", "Depth", "Consistency"] as const
+
+function MotionDnaRadar({ dna, size = 96 }: { dna: MotionDna; size?: number }) {
+  const half = size / 2
+  const step = (Math.PI * 2) / 6
+  const gridR = [0.25, 0.5, 0.75, 1]
+
+  const toXY = (v: number, i: number): [number, number] => {
+    const theta = -Math.PI / 2 + i * step
+    return [half + Math.cos(theta) * v * (half - 6), half + Math.sin(theta) * v * (half - 6)]
+  }
+
+  const axes = [dna.stability, dna.range, dna.tempo, dna.symmetry, dna.depth, dna.consistency]
+  const pts = axes.map((v, i) => toXY(v, i))
+  const polyPath = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`).join(" ") + " Z"
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-label="Motion DNA radar">
+        {/* Grid rings */}
+        {gridR.map((r) => {
+          const gridPts = Array.from({ length: 6 }, (_, i) => toXY(r, i))
+          const gridPath = gridPts.map(([x, y], i) => `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`).join(" ") + " Z"
+          return <path key={r} d={gridPath} fill="none" stroke="currentColor" strokeOpacity={0.1} strokeWidth={0.5} />
+        })}
+        {/* Axis spokes */}
+        {Array.from({ length: 6 }, (_, i) => {
+          const [x, y] = toXY(1, i)
+          return <line key={i} x1={half} y1={half} x2={x.toFixed(1)} y2={y.toFixed(1)} stroke="currentColor" strokeOpacity={0.12} strokeWidth={0.5} />
+        })}
+        {/* Data polygon */}
+        <path d={polyPath} fill="oklch(var(--primary) / 0.18)" stroke="oklch(var(--primary))" strokeWidth={1.5} strokeLinejoin="round" />
+        {/* Data dots */}
+        {pts.map(([x, y], i) => (
+          <circle key={i} cx={x.toFixed(1)} cy={y.toFixed(1)} r={2} fill="oklch(var(--primary))" />
+        ))}
+      </svg>
+      <div className="grid grid-cols-3 gap-x-3 gap-y-0.5 w-full text-center">
+        {DNA_AXES.map((label, i) => (
+          <div key={label} className="flex flex-col items-center">
+            <span className="text-[10px] font-bold tabular-nums text-primary">{Math.round(axes[i] * 100)}</span>
+            <span className="text-[8px] uppercase tracking-[0.1em] text-muted-foreground leading-none">{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export function SessionDnaCard({
@@ -29,6 +81,7 @@ export function SessionDnaCard({
   effectiveReps,
   verifiedMovement,
   faceVerifiedSession,
+  motionDna,
 }: SessionDnaProps) {
   const avgRep = repScores.length
     ? Math.round(repScores.reduce((a, b) => a + b, 0) / repScores.length)
@@ -196,6 +249,15 @@ export function SessionDnaCard({
               />
             )
           })}
+        </div>
+      )}
+
+      {motionDna && (
+        <div className="pt-3 border-t border-border space-y-1">
+          <p className="text-typo-eyebrow font-bold uppercase tracking-[0.15em] text-muted-foreground">
+            Movement DNA
+          </p>
+          <MotionDnaRadar dna={motionDna} size={120} />
         </div>
       )}
     </div>

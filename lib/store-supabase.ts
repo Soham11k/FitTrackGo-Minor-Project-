@@ -582,6 +582,7 @@ export async function commitCoachInsert(r: Omit<CoachRecord, 'id' | 'completedAt
   if (r.loadKg !== undefined) row.load_kg = r.loadKg
   if (r.volumeKg !== undefined) row.volume_kg = r.volumeKg
   if (r.exerciseSpecId) row.exercise_spec_id = r.exerciseSpecId
+  if (r.motionDna) row.motion_dna = r.motionDna
 
   const insert = (p: Record<string, unknown>) =>
     getSupabase().from('coach_sessions').insert(p).select('id').maybeSingle()
@@ -624,6 +625,7 @@ export async function commitCoachInsert(r: Omit<CoachRecord, 'id' | 'completedAt
       delete minimal.effective_reps
       delete minimal.verified_movement
       delete minimal.face_verified_session
+      delete minimal.motion_dna
       payload = minimal
       continue
     }
@@ -680,6 +682,7 @@ export async function getCoachSessions(): Promise<CoachRecord[]> {
     load_kg?: number | null
     volume_kg?: number | null
     exercise_spec_id?: string | null
+    motion_dna?: unknown
   }>).map((c) => {
     const traces = parseRepTracesJson(c.rep_traces)
     return {
@@ -697,6 +700,7 @@ export async function getCoachSessions(): Promise<CoachRecord[]> {
       loadKg: c.load_kg ?? undefined,
       volumeKg: c.volume_kg ?? undefined,
       exerciseSpecId: c.exercise_spec_id ?? undefined,
+      motionDna: c.motion_dna != null && typeof c.motion_dna === 'object' ? c.motion_dna as import('@/lib/coach-vision/motion-dna').MotionDna : undefined,
     }
   })
 }

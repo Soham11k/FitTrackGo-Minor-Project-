@@ -5,6 +5,9 @@ import Image from "next/image"
 import type { AuthChangeEvent } from "@supabase/supabase-js"
 import { toast } from "sonner"
 import { Trophy, Shield, Swords, Globe, Info, Flame, Dumbbell, Plus, LogIn } from "lucide-react"
+import { CHROME } from "@/lib/app-chrome"
+import { ChromeHeader } from "@/components/chrome/ChromeHeader"
+import { HeroAccentLines } from "@/components/animated/HeroAccentLines"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Label } from "@/components/ui/label"
 import { getCoachSessions, getProfile } from "@/lib/store-supabase"
@@ -32,7 +35,7 @@ import { Badge } from "@/components/ui/badge"
 import { coachSessionForDuelExercise } from "@/lib/arena-coach-match"
 import { consumeArenaDuelExerciseLabel } from "@/lib/arena-duel-intent"
 import { listArenaDuelMovementOptions } from "@/lib/coach-exercise-catalog"
-import { ScreenTitle } from "@/components/brand/screen-title"
+// ScreenTitle replaced by chrome hero section
 import { MetricPanel, MetricRow } from "@/components/brand/metric-panel"
 import { AnimatedCounter } from "@/components/animated/AnimatedCounter"
 import { ParticleBurst } from "@/components/animated/ParticleBurst"
@@ -325,15 +328,18 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
     const sc = duelCompositeScore(s.reps, s.repScores, s.score)
     try {
       if (useCloudDuels) {
-        await submitFormDuelScoreRemote(d.id, sc)
+        await submitFormDuelScoreRemote(d.id, sc, s.id ?? null)
         setDuels(await listFormDuelsRemote())
       } else {
         submitDuelScore(d.id, role, sc)
         setDuels(listDuels())
       }
-      toast.success(
-        s.verifiedMovement ? "Score logged · verified-movement tier from Coach." : "Score logged."
-      )
+      const tier = s.faceVerifiedSession
+        ? "Face-verified tier"
+        : s.verifiedMovement
+          ? "Verified-movement tier"
+          : ""
+      toast.success(tier ? `Score logged · ${tier}` : "Score logged.")
     } catch (e) {
       if (useCloudDuels && isArenaCloudBackendUnavailableError(e)) {
         setArenaCloudBlocked(true)
@@ -350,22 +356,53 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
   const compositeScore = totalEffective > 0 ? Math.round(totalEffective / Math.max(1, sessions.length)) : 0
 
   return (
-    <div className="mx-auto flex max-w-lg flex-col gap-5 bg-background px-4 pt-4 pb-28">
-      <section className="nrc-card overflow-hidden p-0">
-        <div className="border-b border-border bg-foreground px-4 py-4 text-background">
-          <p className="text-typo-eyebrow font-bold uppercase tracking-[0.28em] text-primary">Rank tension</p>
-          <p
-            className="mt-2 text-4xl font-bold tabular-nums leading-none"
-            style={{ fontFamily: "var(--font-display), var(--font-heading)" }}
+    <div className="flex min-h-dvh flex-col pb-28" style={{ backgroundColor: CHROME.black }}>
+      <ChromeHeader />
+
+      {/* Dark hero strip */}
+      <div className="relative overflow-hidden px-5 pb-6 pt-4" style={{ backgroundColor: CHROME.black }}>
+        <HeroAccentLines height={140} strokeColor={CHROME.border} />
+        <div className="relative z-10">
+          <div className="flex items-center gap-2">
+            <Trophy className="h-6 w-6" style={{ color: CHROME.orange }} />
+            <p className="text-[10px] font-bold uppercase tracking-[0.28em]" style={{ color: CHROME.muted }}>
+              Arena
+            </p>
+          </div>
+          <h1
+            className="mt-1 text-4xl font-black uppercase leading-none text-white"
+            style={{ fontFamily: "var(--font-display), var(--font-heading), sans-serif" }}
           >
-            <AnimatedCounter value={compositeScore} duration={1} className="text-background" />
-            <span className="ml-2 text-sm font-semibold text-background/60">avg composite</span>
-          </p>
-          <p className="mt-1 text-xs text-background/65">
-            <AnimatedCounter value={verifiedStreak} duration={0.8} className="text-background/65" />d verified streak · <AnimatedCounter value={sessions.length} duration={0.8} className="text-background/65" /> coach sessions logged
-          </p>
+            Form Duels
+          </h1>
+          {/* Hero stats */}
+          <div className="mt-4 flex items-end gap-6">
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-[0.24em]" style={{ color: CHROME.muted }}>Avg Composite</p>
+              <p className="text-3xl font-black tabular-nums text-white">
+                <AnimatedCounter value={compositeScore} duration={1} className="text-white" />
+                <span className="ml-1 text-sm font-semibold" style={{ color: CHROME.muted }}>pts</span>
+              </p>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-[0.24em]" style={{ color: CHROME.muted }}>Verified Streak</p>
+              <p className="text-3xl font-black tabular-nums" style={{ color: CHROME.orange }}>
+                <AnimatedCounter value={verifiedStreak} duration={0.8} className="" />
+                <span className="ml-1 text-sm font-semibold" style={{ color: CHROME.muted }}>d</span>
+              </p>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-[0.24em]" style={{ color: CHROME.muted }}>Sessions</p>
+              <p className="text-3xl font-black tabular-nums text-white">
+                <AnimatedCounter value={sessions.length} duration={0.8} className="" />
+              </p>
+            </div>
+          </div>
         </div>
-      </section>
+      </div>
+
+      <div className="flex flex-col gap-4 px-4 pt-4">
+      {/* Replaces the old nrc-card hero block — nothing left of old section */}
       {bestByExercise.length > 0 ? (
         <section aria-label="Challenge picks" className="-mx-4 px-4">
           <p className="mb-2 text-typo-eyebrow font-bold uppercase tracking-[0.28em] text-muted-foreground">Challenges</p>
@@ -377,18 +414,17 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
                   key={ex}
                   type="button"
                   onClick={scrollToDuels}
-                  className="neon-edge relative shrink-0 overflow-hidden rounded-2xl border border-border bg-card px-4 pb-3 pt-2 text-left transition-transform active:scale-[0.98]"
-                  style={{ minWidth: "9rem" }}
+                  className="relative shrink-0 overflow-hidden rounded-2xl px-4 pb-3 pt-2 text-left transition-transform active:scale-[0.98]"
+                  style={{ minWidth: "9rem", backgroundColor: CHROME.cardBg, border: `1px solid ${CHROME.border}` }}
                 >
-                  {/* Illustration in bg */}
-                  <div className="pointer-events-none absolute right-1 top-1 opacity-20">
+                  <div className="pointer-events-none absolute right-1 top-1 opacity-15">
                     <ExerciseIllustration id={illustId} size={52} animate={false} />
                   </div>
-                  <p className="text-typo-eyebrow font-bold uppercase tracking-[0.18em] text-muted-foreground">Duel</p>
-                  <p className="mt-1 max-w-[9rem] truncate text-sm font-bold text-foreground">{ex}</p>
-                  <p className="mt-1 text-lg font-bold tabular-nums text-primary" style={{ fontFamily: "var(--font-display), var(--font-heading)" }}>
-                    <AnimatedCounter value={composite} decimals={0} duration={1} className="text-primary" />
-                    <span className="ml-1 text-xs text-muted-foreground">pts</span>
+                  <p className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: CHROME.muted }}>Duel</p>
+                  <p className="mt-1 max-w-[9rem] truncate text-sm font-bold text-white">{ex}</p>
+                  <p className="mt-1 text-lg font-bold tabular-nums" style={{ fontFamily: "var(--font-display), var(--font-heading)", color: CHROME.orange }}>
+                    <AnimatedCounter value={composite} decimals={0} duration={1} className="" />
+                    <span className="ml-1 text-xs" style={{ color: CHROME.muted }}>pts</span>
                   </p>
                 </button>
               )
@@ -396,51 +432,33 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
           </div>
         </section>
       ) : null}
-      <ScreenTitle
-        title="Arena"
-        subtitle="Form duels with the same composite score you earn in Coach."
-      />
+      {/* Quick-action buttons */}
       <div className="grid grid-cols-3 gap-2">
-        <Button
-          type="button"
-          className="h-auto flex-col gap-1.5 rounded-xl py-3 text-xs font-semibold"
-          onClick={scrollToDuels}
-        >
-          <Plus className="h-4 w-4" aria-hidden />
-          New duel
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          className="h-auto flex-col gap-1.5 rounded-xl py-3 text-xs font-semibold"
-          onClick={focusJoinDuel}
-        >
-          <LogIn className="h-4 w-4" aria-hidden />
-          Join code
-        </Button>
-        {onNavigate ? (
-          <Button
+        {[
+          { icon: Plus, label: "New duel", onClick: scrollToDuels },
+          { icon: LogIn, label: "Join code", onClick: focusJoinDuel },
+          { icon: Dumbbell, label: "Coach", onClick: onNavigate ? () => onNavigate("ai-coach") : undefined },
+        ].map(({ icon: Icon, label, onClick }) => (
+          <button
+            key={label}
             type="button"
-            variant="outline"
-            className="h-auto flex-col gap-1.5 rounded-xl py-3 text-xs font-semibold"
-            onClick={() => onNavigate("ai-coach")}
+            onClick={onClick}
+            disabled={!onClick}
+            className="flex flex-col items-center gap-1.5 rounded-2xl py-3 text-[11px] font-bold uppercase tracking-[0.12em] disabled:opacity-40"
+            style={{ backgroundColor: CHROME.cardBg, border: `1px solid ${CHROME.border}`, color: CHROME.orange }}
           >
-            <Dumbbell className="h-4 w-4" aria-hidden />
-            Coach
-          </Button>
-        ) : (
-          <Button type="button" variant="outline" className="h-auto flex-col gap-1.5 rounded-xl py-3 text-xs font-semibold" disabled>
-            <Dumbbell className="h-4 w-4" aria-hidden />
-            Coach
-          </Button>
-        )}
+            <Icon className="h-4 w-4" />
+            {label}
+          </button>
+        ))}
       </div>
 
       <section
-        className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]"
+        className="rounded-2xl p-4"
+        style={{ backgroundColor: CHROME.cardBg, border: `1px solid ${CHROME.border}` }}
         aria-label="How form duels work"
       >
-        <p className="text-sm font-semibold text-foreground">How it works</p>
+        <p className="text-sm font-semibold text-white">How it works</p>
         <ol className="mt-3 grid gap-2 sm:grid-cols-3">
           {[
             { step: "1", title: "Create or join", body: "Pick an exercise and share a duel code with a friend." },
@@ -449,9 +467,11 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
           ].map((item) => (
             <li
               key={item.step}
-              className="rounded-xl border border-border/80 bg-muted/25 px-3 py-2.5"
+              className="rounded-xl px-3 py-2.5"
+              style={{ backgroundColor: CHROME.focusBg, border: `1px solid ${CHROME.border}` }}
             >
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-typo-eyebrow font-bold text-primary">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                style={{ backgroundColor: CHROME.orange }}>
                 {item.step}
               </span>
               <p className="mt-2 text-xs font-semibold text-foreground">{item.title}</p>
@@ -461,14 +481,15 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
         </ol>
       </section>
 
-      <section className="nrc-card p-4" aria-label="Your arena stats">
+      <section className="rounded-2xl p-4" style={{ backgroundColor: CHROME.cardBg, border: `1px solid ${CHROME.border}` }} aria-label="Your arena stats">
         <div className="mb-1 flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-foreground">Your arena stats</h2>
+          <h2 className="text-sm font-semibold text-white">Your arena stats</h2>
           <Sheet>
             <SheetTrigger asChild>
               <button
                 type="button"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors hover:text-foreground active:scale-95"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors active:scale-95"
+                style={{ backgroundColor: CHROME.focusBg, color: CHROME.muted }}
                 aria-label="About verified movement"
               >
                 <Info className="h-3.5 w-3.5" />
@@ -656,8 +677,21 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
                       </Badge>
                     ) : null}
                   </div>
-                  <div className="text-muted-foreground">
-                    {d.challengerName}: {d.challengerScore ?? "—"} vs {d.opponentName ?? "?"}: {d.opponentScore ?? "—"}
+                  <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 text-muted-foreground">
+                    <span>{d.challengerName}: {d.challengerScore ?? "—"}</span>
+                    {d.challengerFaceVerified && (
+                      <Badge variant="outline" className="border-metric-spo2/35 bg-metric-spo2/10 text-[9px] font-bold uppercase text-metric-spo2 px-1">Face</Badge>
+                    )}
+                    {!d.challengerFaceVerified && d.challengerVerified && (
+                      <Badge variant="outline" className="border-metric-move/35 bg-metric-move/10 text-[9px] font-bold uppercase text-metric-move px-1">Verified</Badge>
+                    )}
+                    <span>vs {d.opponentName ?? "?"}: {d.opponentScore ?? "—"}</span>
+                    {d.opponentFaceVerified && (
+                      <Badge variant="outline" className="border-metric-spo2/35 bg-metric-spo2/10 text-[9px] font-bold uppercase text-metric-spo2 px-1">Face</Badge>
+                    )}
+                    {!d.opponentFaceVerified && d.opponentVerified && (
+                      <Badge variant="outline" className="border-metric-move/35 bg-metric-move/10 text-[9px] font-bold uppercase text-metric-move px-1">Verified</Badge>
+                    )}
                   </div>
                   {showScoreActions && (
                     <div className="flex flex-col gap-1 pt-1">
@@ -775,12 +809,12 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
         )}
       </section>
 
-      <section className="rounded-2xl border border-border bg-card p-4 space-y-2">
-        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Info className="h-4 w-4" />
+      <section className="rounded-2xl p-4 space-y-2" style={{ backgroundColor: CHROME.cardBg, border: `1px solid ${CHROME.border}` }}>
+        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+          <Info className="h-4 w-4" style={{ color: CHROME.orange }} />
           Movement patterns
         </div>
-        <p className="text-typo-caption text-muted-foreground">
+        <p className="text-[11px] leading-relaxed" style={{ color: CHROME.muted }}>
           Educational summaries from rep scores — not a medical assessment. Ask a professional about pain or injury.
         </p>
         {movementInsights.length === 0 ? (
@@ -792,17 +826,18 @@ export function ArenaHub({ onNavigate }: { onNavigate?: (tab: TabId) => void }) 
                 key={i.id}
                 className={`text-xs rounded-lg px-3 py-2 ${
                   i.severity === "watch"
-                    ? "bg-amber-500/10 text-amber-900 dark:text-amber-50 border border-amber-500/25"
-                    : "bg-secondary/50 text-foreground"
+                    ? "border"
+                    : ""
                 }`}
               >
-                <strong className="block">{i.title}</strong>
-                {i.detail}
+                <strong className="block text-white">{i.title}</strong>
+                <span style={{ color: CHROME.muted }}>{i.detail}</span>
               </li>
             ))}
           </ul>
         )}
       </section>
+      </div>{/* end inner flex column */}
     </div>
   )
 }
