@@ -14,7 +14,6 @@ import {
   Zap,
   Target,
   Shield,
-  Info,
   UserCheck,
   Phone,
   Crosshair,
@@ -47,14 +46,12 @@ import { addCoachSession, formatErr, getCoachSessions, getTotalStats } from "@/l
 import { isNetworkError } from "@/lib/network-status"
 import { hasSpec as coachHasSpec, loadSpec as coachLoadSpecRaw } from "@/lib/form-engine/registry"
 import { effectiveRepCount, isVerifiedMovement } from "@/lib/competition"
-import { recordCoachSessionMemory, getCoachMemoryTip } from "@/lib/coach-memory"
-import { getCulturalTipExtras } from "@/lib/cultural-tips"
+import { recordCoachSessionMemory } from "@/lib/coach-memory"
 import { hapticRepPulse, getCoachA11yPrefs, setCoachA11yPrefs, type CoachA11yPrefs } from "@/lib/coach-a11y"
 import { SessionDnaCard, type SessionDnaProps } from "@/components/session-dna-card"
 import { RingGauge } from "@/components/ring-gauge"
 import { useLocale } from "@/components/locale-provider"
 import { createClient } from "@/lib/supabase/client"
-import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import { speakRepComplete, speakGoodForm, speakCoachMidsetTip } from "@/lib/speech"
 import {
@@ -96,7 +93,6 @@ import type { TabId } from "@/components/bottom-nav"
 import { StatDisplay } from "@/components/ui/stat-display"
 import { CelebrationBurst } from "@/components/ui/celebration-burst"
 import { MotionCelebrate } from "@/components/motion-celebrate"
-import { CINEMATIC } from "@/lib/motion"
 import { MobilityCoach } from "@/components/mobility-coach"
 import { agentDebugLog } from "@/lib/debug-agent-log"
 import {
@@ -177,7 +173,7 @@ export function AICoach({
   /** Guest funnel: saves Session DNA in the cloud once the user authenticates */
   onRequestSignIn?: () => void
 } = {}) {
-  const { locale, t } = useLocale()
+  const { t } = useLocale()
   const reduceMotion = useReducedMotion() ?? false
 
   const [coachPickerStep, setCoachPickerStep] = useState<"families" | "variants">("families")
@@ -224,7 +220,7 @@ export function AICoach({
   const [loadKg, setLoadKg] = useState<number | undefined>(undefined)
   const [bodyWeightKg, setBodyWeightKg] = useState<number | undefined>(undefined)
   const [weightUnitPref, setWeightUnitPref] = useState<"kg" | "lb">("kg")
-  const [ghostEnabled, setGhostEnabled] = useState(false)
+  const [ghostEnabled] = useState(false)
   const [ghostFrames, setGhostFrames] = useState<RepFrame[]>([])
   const repReplayBufferRef = useRef<RepReplayBuffer>(new RepReplayBuffer(12_000))
   // Per-rep timing info for Motion DNA (durationMs, rom-approximation, symmetry)

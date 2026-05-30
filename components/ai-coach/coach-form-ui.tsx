@@ -6,7 +6,6 @@ import {
   Flame,
   Lock,
   Minus,
-  Plus,
   Square,
 } from "lucide-react"
 import { CHROME } from "@/lib/app-chrome"

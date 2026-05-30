@@ -7,8 +7,6 @@ import { LoginScreen } from "@/components/login-screen"
 import { BottomNav, type TabId } from "@/components/bottom-nav"
 import { Dashboard } from "@/components/dashboard"
 import { BrandedTabLoad } from "@/components/app-tab-skeleton"
-import { FittrackBrandLockup } from "@/components/brand/fittrack-brand-lockup"
-import { LaunchHydrateScreen } from "@/components/brand/launch-hydrate-screen"
 import { AppHydrateScreen } from "@/components/animated/AppHydrateScreen"
 
 const RunTracker = dynamic(() => import("@/components/run-tracker").then((m) => m.RunTracker), {

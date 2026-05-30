@@ -17,8 +17,6 @@ import { SupabaseConnectivityBanner } from "@/components/supabase-connectivity-b
 import { cn } from "@/lib/utils"
 import { getBrowserAuthRedirectOrigin } from "@/lib/auth-redirect-origin"
 import { CHROME } from "@/lib/app-chrome"
-import { siteConfig } from "@/lib/data"
-import Link from "next/link"
 
 function GoogleGlyph({ className }: { className?: string }) {
   return (

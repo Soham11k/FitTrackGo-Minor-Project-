@@ -24,7 +24,6 @@ import type { TodayPrompt } from "@/lib/today-prompt"
 import { CHROME } from "@/lib/app-chrome"
 import { CreamCard } from "@/components/chrome/CreamCard"
 import { SectionEyebrow } from "@/components/chrome/SectionEyebrow"
-import { cn } from "@/lib/utils"
 
 /** Home cockpit — uses shared CHROME tokens + chrome primitives. */
 function AnimatedProgressBar({

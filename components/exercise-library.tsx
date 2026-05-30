@@ -148,7 +148,6 @@ export function ExerciseLibrary({
           }
         }}
         lastDone={completedTitles.has(selectedExercise.title)}
-        onOpenAICoach={onOpenAICoach}
         preferResumePlayback={preferResumeForExerciseId === selectedExercise.id}
         onPreferResumeConsumed={() => setPreferResumeForExerciseId(null)}
       />
@@ -191,7 +190,6 @@ function ExerciseDetail({
   isFavorite,
   onToggleFavorite,
   lastDone,
-  onOpenAICoach,
   preferResumePlayback = false,
   onPreferResumeConsumed,
 }: {
@@ -200,7 +198,6 @@ function ExerciseDetail({
   isFavorite: boolean
   onToggleFavorite: () => void
   lastDone: boolean
-  onOpenAICoach?: (opts?: { exerciseId?: string }) => void
   preferResumePlayback?: boolean
   onPreferResumeConsumed?: () => void
 }) {
