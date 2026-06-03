@@ -15,6 +15,18 @@ export const CHROME = {
   orangeDim:  "rgba(249,115,22,0.18)",
   orangeGlow: "rgba(249,115,22,0.35)",
 
+  /** Home dashboard accent (product mock). */
+  athleticRed:       "#FF4D30",
+  athleticRedDim:    "rgba(255,77,48,0.16)",
+  athleticRedBorder: "rgba(255,77,48,0.35)",
+  homeBlack:         "#000000",
+  homeCard:          "#121212",
+
+  /** Home dashboard typography (matches product mock). */
+  homeDisplayFont: "var(--font-display), var(--font-heading), ui-sans-serif, system-ui, sans-serif",
+  homeLabelFont:   "var(--font-heading), ui-sans-serif, system-ui, sans-serif",
+  homeBodyFont:    "var(--font-inter), ui-sans-serif, system-ui, sans-serif",
+
   // Data-card surfaces (cream)
   cream:      "#f3f2ec",
   card:       "#ffffff",

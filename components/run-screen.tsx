@@ -1,12 +1,19 @@
 "use client"
 
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
-import { Heart, Square } from "lucide-react"
+import {
+  ChevronDown,
+  Flame,
+  Heart,
+  Pause,
+  Play,
+  Square,
+} from "lucide-react"
 import { CHROME } from "@/lib/app-chrome"
+import { CHROME_ACCENT } from "@/lib/chrome-accent"
+import { EcgMark } from "@/components/chrome/EcgMark"
 import { AnimatedCounter } from "@/components/animated/AnimatedCounter"
 import type { RunState } from "@/components/run-tracker"
-
-// ── Types ──────────────────────────────────────────────────────────────────
 
 export type GpsStatus = "off" | "searching" | "good" | "simulated"
 
@@ -27,216 +34,339 @@ export interface RunScreenProps {
   calories: number
   heartBpm: number | null
   splits: RunSplit[]
-  /** Called by START RUN button when idle */
   onStart: () => void
-  /** Pause during active run */
   onPause: () => void
-  /** Resume from paused */
   onResume: () => void
-  /** Stop + save */
   onStop: () => void
   savingRun: boolean
   guest?: boolean
   streakDays?: number
   insecureGpsReminder?: boolean
-  /** Slot for the live RunMap component (only supplied when running/paused) */
   mapSlot?: React.ReactNode
   formatTime: (s: number) => string
 }
 
-// ── ECG icon (inline JSX, avoids dangerouslySetInnerHTML) ─────────────────
+const RUN = {
+  black: CHROME.homeBlack,
+  card: CHROME.homeCard,
+  accent: CHROME_ACCENT.accent,
+  accentDim: CHROME_ACCENT.accentDim,
+  muted: "rgba(255,255,255,0.45)",
+  border: CHROME.border,
+  divider: "#262628",
+  green: CHROME.gpsGreen,
+  displayFont: CHROME.homeDisplayFont,
+  labelFont: CHROME.homeLabelFont,
+  bodyFont: CHROME.homeBodyFont,
+} as const
 
-function EcgMark({ size = 14 }: { size?: number }) {
+function RunEyebrow({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden>
-      <path
-        d="M2 16 L8 16 L11 8 L16 24 L20 12 L24 16 L30 16"
-        stroke={CHROME.orange}
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <p
+      className={`text-[10px] font-bold uppercase tracking-[0.26em] ${className}`}
+      style={{ color: RUN.muted, fontFamily: RUN.labelFont }}
+    >
+      {children}
+    </p>
   )
 }
 
-// ── Stylised map hero (idle only) ──────────────────────────────────────────
+function HDivider() {
+  return <div className="h-px w-full" style={{ backgroundColor: RUN.divider }} />
+}
 
-/**
- * SVG-only map hero: a dark-grid background, three animated
- * grey contour paths, and a pulsing orange location dot — identical to the mock.
- */
-function RunMapHero({ reduce }: { reduce: boolean }) {
+function VDivider() {
+  return <div className="w-px self-stretch shrink-0" style={{ backgroundColor: RUN.divider }} />
+}
+
+function StatusDot({ color, pulse = false, reduce = false }: { color: string; pulse?: boolean; reduce?: boolean }) {
+  return (
+    <span className="relative flex h-2 w-2 shrink-0">
+      {pulse && !reduce ? (
+        <motion.span
+          className="absolute inline-flex h-full w-full rounded-full"
+          style={{ backgroundColor: color }}
+          animate={{ scale: [1, 1.75], opacity: [0.7, 0] }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: "easeOut" }}
+        />
+      ) : null}
+      <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+    </span>
+  )
+}
+
+function RunHeader({ guest, streakDays }: { guest?: boolean; streakDays: number }) {
+  return (
+    <header
+      className="flex items-center justify-between gap-3 px-4 py-3"
+      style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
+    >
+      <div className="flex min-w-0 items-center gap-1.5">
+        <EcgMark size={16} color={RUN.accent} animate />
+        <span
+          className="truncate text-[11px] font-bold uppercase tracking-[0.22em] text-white"
+          style={{ fontFamily: RUN.labelFont }}
+        >
+          FitTrack Go
+        </span>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {guest ? (
+          <span
+            className="text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: RUN.muted, fontFamily: RUN.labelFont }}
+          >
+            Guest
+          </span>
+        ) : null}
+        {streakDays > 0 ? (
+          <span className="inline-flex items-center gap-2">
+            <span className="h-4 w-px bg-white/15" aria-hidden />
+            <Flame className="h-3.5 w-3.5 shrink-0" style={{ color: RUN.accent }} aria-hidden />
+            <span
+              className="text-[10px] font-bold uppercase tracking-[0.1em] text-white"
+              style={{ fontFamily: RUN.labelFont }}
+            >
+              {streakDays}d streak
+            </span>
+          </span>
+        ) : null}
+      </div>
+    </header>
+  )
+}
+
+function RunMapHero({ reduce, isLive, distanceKm }: { reduce: boolean; isLive: boolean; distanceKm: number }) {
   const paths = [
     "M -20 80  C 60 50, 140 110, 220 70  S 360 40, 500 80",
     "M -20 120 C 60 90, 130 150, 240 110 S 380 75, 500 120",
-    "M -20 160 C 80 135, 150 185, 260 148 S 400 115, 500 155",
   ]
 
   return (
-    <div
-      className="relative w-full overflow-hidden"
-      style={{ height: 220, backgroundColor: "#111113" }}
-      aria-hidden
-    >
-      {/* Subtle grid */}
-      <svg
-        className="absolute inset-0 h-full w-full opacity-20"
-        xmlns="http://www.w3.org/2000/svg"
-      >
+    <div className="relative h-[200px] w-full overflow-hidden rounded-2xl" style={{ backgroundColor: RUN.card }}>
+      <svg className="absolute inset-0 h-full w-full opacity-15" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
-            <path d="M 28 0 L 0 0 0 28" fill="none" stroke="#444" strokeWidth="0.5" />
+          <pattern id="run-grid" width="28" height="28" patternUnits="userSpaceOnUse">
+            <path d="M 28 0 L 0 0 0 28" fill="none" stroke="#555" strokeWidth="0.5" />
           </pattern>
         </defs>
-        <rect width="100%" height="100%" fill="url(#grid)" />
+        <rect width="100%" height="100%" fill="url(#run-grid)" />
       </svg>
 
-      {/* Animated contour paths */}
-      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 480 220" preserveAspectRatio="xMidYMid slice">
+      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 480 200" preserveAspectRatio="xMidYMid slice">
         {paths.map((d, i) => (
           <motion.path
-            key={i}
+            key={d}
             d={d}
             fill="none"
-            stroke="#3a3a3e"
-            strokeWidth="2"
+            stroke={i === 0 && isLive ? RUN.accent : "#3a3a3e"}
+            strokeWidth={i === 0 && isLive ? 2.5 : 2}
             strokeLinecap="round"
             initial={reduce ? { pathLength: 1 } : { pathLength: 0, opacity: 0.4 }}
-            animate={{ pathLength: 1, opacity: [0.35, 0.6, 0.35] }}
+            animate={{ pathLength: 1, opacity: isLive ? 1 : [0.35, 0.55, 0.35] }}
             transition={
               reduce
                 ? {}
                 : {
-                    pathLength: { duration: 1.4, delay: i * 0.18, ease: [0.22, 1, 0.36, 1] },
-                    opacity: { duration: 3.5, repeat: Infinity, delay: i * 0.6, ease: "easeInOut" },
+                    pathLength: { duration: 1.2, delay: i * 0.15, ease: [0.22, 1, 0.36, 1] },
+                    opacity: { duration: 3, repeat: isLive ? 0 : Infinity, delay: i * 0.5, ease: "easeInOut" },
                   }
             }
           />
         ))}
       </svg>
 
-      {/* Orange GPS dot + glow ring */}
       <div className="absolute inset-0 flex items-center justify-center">
-        {!reduce && (
+        {!reduce && !isLive ? (
           <motion.span
             className="absolute rounded-full"
-            style={{ width: 36, height: 36, backgroundColor: `${CHROME.orange}25` }}
-            animate={{ scale: [1, 1.8, 1], opacity: [0.5, 0, 0.5] }}
+            style={{ width: 32, height: 32, backgroundColor: `${RUN.accent}22` }}
+            animate={{ scale: [1, 1.7, 1], opacity: [0.45, 0, 0.45] }}
             transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
           />
-        )}
+        ) : null}
         <span
-          className="relative h-4 w-4 rounded-full shadow-lg"
-          style={{
-            backgroundColor: CHROME.orange,
-            boxShadow: `0 0 12px 4px ${CHROME.orange}55`,
-          }}
+          className="relative h-3.5 w-3.5 rounded-full"
+          style={{ backgroundColor: RUN.accent, boxShadow: `0 0 10px 3px ${RUN.accent}55` }}
         />
       </div>
-    </div>
-  )
-}
 
-// ── GPS pill ───────────────────────────────────────────────────────────────
-
-function GpsPill({ status, label, reduce }: { status: GpsStatus; label: string; reduce: boolean }) {
-  const locked = status === "good"
-  const dotColor = locked ? CHROME.gpsGreen : "#facc15"
-
-  return (
-    <div className="flex justify-center">
-      <div
-        className="flex items-center gap-2 rounded-full px-3.5 py-1.5"
-        style={{ backgroundColor: "#1e1e20", border: `1px solid ${CHROME.border}` }}
-      >
-        <span className="relative flex h-2 w-2 shrink-0">
-          {!reduce && !locked && (
-            <motion.span
-              className="absolute inline-flex h-full w-full rounded-full"
-              style={{ backgroundColor: dotColor }}
-              animate={{ scale: [1, 1.8], opacity: [0.7, 0] }}
-              transition={{ duration: 1.2, repeat: Infinity, ease: "easeOut" }}
-            />
-          )}
-          <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: dotColor }} />
+      <div className="absolute left-3.5 top-3.5 flex items-center gap-2">
+        <StatusDot color={RUN.accent} pulse={isLive} reduce={reduce} />
+        <span
+          className="text-[10px] font-bold uppercase tracking-[0.14em] text-white"
+          style={{ fontFamily: RUN.labelFont }}
+        >
+          {isLive ? "Live" : "Ready"}
         </span>
-        <AnimatePresence mode="wait">
-          <motion.span
-            key={label}
-            className="text-[11px] font-semibold text-white/80"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
+      </div>
+
+      <div className="absolute right-3.5 top-3.5">
+        {isLive ? (
+          <span
+            className="text-[11px] font-normal uppercase tracking-[0.06em] tabular-nums text-white"
+            style={{ fontFamily: RUN.displayFont }}
           >
-            {label}
-          </motion.span>
-        </AnimatePresence>
+            {distanceKm.toFixed(2)} km
+          </span>
+        ) : (
+          <RunEyebrow>Outdoor run</RunEyebrow>
+        )}
       </div>
     </div>
   )
 }
 
-// ── Hairline divider ───────────────────────────────────────────────────────
+function RunHeroCard({
+  isIdle,
+  isLive,
+  distance,
+  reduce,
+  mapSlot,
+  insecureGpsReminder,
+}: {
+  isIdle: boolean
+  isLive: boolean
+  distance: number
+  reduce: boolean
+  mapSlot?: React.ReactNode
+  insecureGpsReminder?: boolean
+}) {
+  return (
+    <div className="relative px-4 pb-1">
+      {isIdle ? (
+        <RunMapHero reduce={reduce} isLive={false} distanceKm={distance} />
+      ) : (
+        <div className="relative h-[200px] w-full overflow-hidden rounded-2xl" style={{ backgroundColor: RUN.card }}>
+          <div className="absolute inset-0">{mapSlot}</div>
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.12) 0%, rgba(0,0,0,0.55) 100%)" }}
+          />
+          <div className="pointer-events-none absolute left-3.5 top-3.5 flex items-center gap-2">
+            <StatusDot color={RUN.accent} pulse reduce={reduce} />
+            <span
+              className="text-[10px] font-bold uppercase tracking-[0.14em] text-white"
+              style={{ fontFamily: RUN.labelFont }}
+            >
+              Live
+            </span>
+          </div>
+          <div className="pointer-events-none absolute right-3.5 top-3.5">
+            <span
+              className="text-[11px] font-normal uppercase tracking-[0.06em] tabular-nums text-white"
+              style={{ fontFamily: RUN.displayFont }}
+            >
+              {distance.toFixed(2)} km
+            </span>
+          </div>
+        </div>
+      )}
 
-function HDivider() {
-  return <div className="w-full" style={{ height: 1, backgroundColor: "#262628" }} />
+      {insecureGpsReminder ? (
+        <div className="absolute left-4 right-4 top-2 z-10 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-center text-[11px] text-yellow-200/90">
+          Live GPS needs <strong>localhost</strong> or <strong>HTTPS</strong>.
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
-function VDivider() {
-  return <div className="self-stretch" style={{ width: 1, backgroundColor: "#262628" }} />
+function PaceHero({ pace, reduce }: { pace: string; reduce: boolean }) {
+  return (
+    <div className="px-4 pt-4 pb-3">
+      <RunEyebrow>Pace</RunEyebrow>
+      <motion.div
+        className="mt-1 flex items-baseline gap-1"
+        initial={reduce ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <span
+          className="text-[4.25rem] font-normal uppercase leading-none tabular-nums text-white"
+          style={{ fontFamily: RUN.displayFont }}
+        >
+          {pace}
+        </span>
+        <span
+          className="text-xl font-normal uppercase tracking-[0.04em]"
+          style={{ color: RUN.muted, fontFamily: RUN.displayFont }}
+        >
+          /km
+        </span>
+      </motion.div>
+    </div>
+  )
 }
 
-// ── Stat cell ──────────────────────────────────────────────────────────────
+function GpsStatusLine({
+  gpsStatus,
+  gpsLabel,
+  isIdle,
+  reduce,
+}: {
+  gpsStatus: GpsStatus
+  gpsLabel: string
+  isIdle: boolean
+  reduce: boolean
+}) {
+  const locked = gpsStatus === "good"
+  const text =
+    isIdle && locked
+      ? "GPS locked · Waiting to start"
+      : gpsLabel
 
-function StatCell({
+  return (
+    <div className="flex items-center gap-2 px-4 pb-3">
+      <StatusDot color={locked ? RUN.accent : "#facc15"} pulse={!locked} reduce={reduce} />
+      <span className="text-[12px]" style={{ color: RUN.muted, fontFamily: RUN.bodyFont }}>
+        {text}
+      </span>
+    </div>
+  )
+}
+
+function MetricBlock({
   label,
   value,
-  unit,
-  delay,
-  reduce,
-  animate: shouldAnimate = false,
+  sub,
+  icon,
+  valueColor = RUN.accent,
+  animate,
   numericValue,
 }: {
   label: string
   value: string
-  unit?: string
-  delay?: number
-  reduce: boolean
+  sub?: string
+  icon?: React.ReactNode
+  valueColor?: string
   animate?: boolean
   numericValue?: number
 }) {
   return (
-    <motion.div
-      className="flex flex-1 flex-col items-start px-4 py-3"
-      initial={reduce ? false : { opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, delay: delay ?? 0, ease: [0.22, 1, 0.36, 1] }}
-    >
-      <span
-        className="text-[9px] font-bold uppercase tracking-[0.22em]"
-        style={{ color: CHROME.muted }}
+    <div className="flex flex-1 flex-col px-4 py-3.5">
+      <div className="flex items-center gap-1.5">
+        {icon}
+        <RunEyebrow className="!text-[9px] !tracking-[0.2em]">{label}</RunEyebrow>
+      </div>
+      <p
+        className="mt-1.5 text-[1.65rem] font-normal uppercase leading-none tabular-nums"
+        style={{ color: valueColor, fontFamily: RUN.displayFont }}
       >
-        {label}
-      </span>
-      <p className="mt-1 text-xl font-bold tabular-nums text-white">
-        {shouldAnimate && numericValue != null ? (
+        {animate && numericValue != null ? (
           <AnimatedCounter value={numericValue} decimals={value.includes(".") ? 2 : 0} />
         ) : (
           value
         )}
-        {unit ? (
-          <span className="ml-1 text-xs font-semibold" style={{ color: CHROME.muted }}>
-            {unit}
-          </span>
-        ) : null}
       </p>
-    </motion.div>
+      {sub ? (
+        <p className="mt-1 text-[11px]" style={{ color: RUN.muted, fontFamily: RUN.bodyFont }}>
+          {sub}
+        </p>
+      ) : null}
+    </div>
   )
 }
-
-// ── Main component ─────────────────────────────────────────────────────────
 
 export function RunScreen({
   runState,
@@ -263,207 +393,142 @@ export function RunScreen({
   const isIdle = runState === "idle"
   const isRunning = runState === "running"
   const isPaused = runState === "paused"
+  const isActive = isRunning || isPaused
 
   return (
     <div
-      className="flex min-h-[calc(100dvh-0px)] flex-col"
-      style={{ backgroundColor: CHROME.black }}
+      className="flex min-h-[calc(100dvh-0px)] flex-col pb-24"
+      style={{ backgroundColor: RUN.black, fontFamily: RUN.bodyFont }}
     >
-      {/* ── Chrome header ───────────────────────────────────────────── */}
-      <motion.header
-        className="flex items-center justify-between px-4 py-3"
-        style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
-        initial={reduce ? false : { opacity: 0, y: -6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <div className="flex items-center gap-1.5">
-          <EcgMark size={16} />
-          <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-white">
-            FitTrack Go
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {guest && (
-            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: CHROME.muted }}>
-              Guest
-            </span>
-          )}
-          {streakDays > 0 && (
-            <motion.span
-              className="rounded-md px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.1em] text-white"
-              style={{ backgroundColor: CHROME.orange }}
-              animate={reduce ? undefined : { opacity: [0.85, 1, 0.85] }}
-              transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-            >
-              {streakDays}D Streak
-            </motion.span>
-          )}
-        </div>
-      </motion.header>
+      <RunHeader guest={guest} streakDays={streakDays} />
 
-      {/* ── Map hero (idle: SVG; running/paused: real map slot) ─────── */}
-      <div className="relative flex-shrink-0 overflow-hidden" style={{ height: isIdle ? 220 : "42vh" }}>
+      <RunHeroCard
+        isIdle={isIdle}
+        isLive={isActive}
+        distance={distance}
+        reduce={reduce}
+        mapSlot={mapSlot}
+        insecureGpsReminder={insecureGpsReminder}
+      />
+
+      <div className="flex flex-1 flex-col" style={{ backgroundColor: RUN.black }}>
+        <PaceHero pace={pace} reduce={reduce} />
+
         {isIdle ? (
-          <RunMapHero reduce={reduce} />
-        ) : (
-          <div className="absolute inset-0">
-            {mapSlot}
-            {/* Dark overlay so HUD text stays legible */}
-            <div
-              className="absolute inset-0 pointer-events-none"
-              style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.55) 100%)" }}
-            />
-          </div>
-        )}
+          <GpsStatusLine gpsStatus={gpsStatus} gpsLabel={gpsLabel} isIdle reduce={reduce} />
+        ) : null}
 
-        {/* GPS pill — always visible, overlaid on hero */}
-        {(isIdle || isRunning || isPaused) && (
-          <div className="absolute bottom-3 left-0 right-0 z-10">
-            <GpsPill status={gpsStatus} label={gpsLabel} reduce={reduce} />
-          </div>
-        )}
-
-        {insecureGpsReminder && (
-          <div className="absolute top-2 left-4 right-4 z-10 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-center text-[11px] text-yellow-200/90">
-            Live GPS needs <strong>localhost</strong> or <strong>HTTPS</strong>.
-          </div>
-        )}
-      </div>
-
-      {/* ── Metrics panel ───────────────────────────────────────────── */}
-      <div className="flex flex-1 flex-col" style={{ backgroundColor: "#0f0f11" }}>
-        {/* OUTDOOR RUN eyebrow + PACE hero */}
-        <div className="px-4 pt-4 pb-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.28em]" style={{ color: CHROME.muted }}>
-            Outdoor run
-          </p>
-          <div className="mt-1 flex items-baseline gap-1">
-            <motion.p
-              className="text-[4.5rem] font-bold leading-none tabular-nums text-white"
-              initial={reduce ? false : { opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45, delay: 0.05, ease: [0.22, 1, 0.36, 1] }}
+        {isActive && distance > 0.05 ? (
+          <div className="px-4 pb-3">
+            <span
+              className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold"
+              style={{ backgroundColor: `${RUN.green}18`, color: RUN.green, fontFamily: RUN.labelFont }}
             >
-              {pace}
-            </motion.p>
-            <span className="text-2xl font-semibold" style={{ color: CHROME.muted }}>
-              /km
+              <StatusDot color={RUN.green} reduce={reduce} />
+              On pace
             </span>
-            {!isIdle && (
-              <span
-                className="ml-2 rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white"
-                style={{ backgroundColor: CHROME.orange }}
-              >
-                PACE
-              </span>
-            )}
           </div>
+        ) : null}
+
+        <HDivider />
+
+        <div className="flex">
+          <MetricBlock
+            label="Live HR"
+            value={heartBpm != null ? String(heartBpm) : "—"}
+            sub="bpm"
+            icon={<Heart className="h-3.5 w-3.5 fill-current" style={{ color: RUN.accent }} aria-hidden />}
+            valueColor={isActive && heartBpm != null ? RUN.accent : RUN.accent}
+            animate={isRunning && heartBpm != null}
+            numericValue={heartBpm ?? undefined}
+          />
+          <VDivider />
+          <MetricBlock
+            label="Calories"
+            value={String(Math.round(calories))}
+            sub="kcal"
+            icon={<Flame className="h-3.5 w-3.5" style={{ color: "#fbbf24" }} aria-hidden />}
+            valueColor="#ffffff"
+            animate={isRunning}
+            numericValue={Math.round(calories)}
+          />
         </div>
 
         <HDivider />
 
-        {/* LIVE HR + CALORIES */}
-        <motion.div
-          className="flex items-center justify-between px-4 py-2.5"
-          initial={reduce ? false : { opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.35, delay: 0.1 }}
-        >
-          <div className="flex items-center gap-2">
-            <motion.div
-              animate={reduce || !isRunning ? undefined : { scale: [1, 1.2, 1] }}
-              transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut" }}
-            >
-              <Heart className="h-4 w-4 fill-current" style={{ color: CHROME.hrRed }} aria-hidden />
-            </motion.div>
-            <div>
-              <p className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: CHROME.hrRed }}>
-                Live HR
-              </p>
-              <p className="text-sm font-bold text-white">
-                {heartBpm != null ? heartBpm : "—"}{" "}
-                <span className="text-xs font-semibold" style={{ color: CHROME.muted }}>
-                  bpm
-                </span>
-              </p>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: CHROME.muted }}>
-              Calories
-            </p>
-            <p className="text-sm font-bold tabular-nums text-white">
-              {isRunning ? (
-                <AnimatedCounter value={Math.round(calories)} />
-              ) : (
-                Math.round(calories)
-              )}{" "}
-              <span className="text-xs font-semibold" style={{ color: CHROME.muted }}>
-                kcal
-              </span>
-            </p>
-          </div>
-        </motion.div>
-
-        <HDivider />
-
-        {/* DISTANCE | TIME | CADENCE */}
         <div className="flex">
-          <StatCell
+          <MetricBlock
             label="Distance"
             value={distance.toFixed(2)}
-            unit="km"
-            delay={0.12}
-            reduce={reduce}
+            sub="km"
+            valueColor={isActive ? RUN.green : "#ffffff"}
             animate={isRunning}
             numericValue={distance}
           />
           <VDivider />
-          <StatCell
-            label="Time"
-            value={formatTime(seconds)}
-            delay={0.15}
-            reduce={reduce}
-          />
+          <MetricBlock label="Time" value={formatTime(seconds)} sub="min" valueColor="#ffffff" />
           <VDivider />
-          <StatCell
-            label="Cadence"
-            value="—"
-            unit="spm"
-            delay={0.18}
-            reduce={reduce}
-          />
+          <MetricBlock label="Cadence" value="—" sub="spm" valueColor="#ffffff" />
         </div>
 
         <HDivider />
 
-        {/* SPLITS */}
         <div className="flex-1 px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.26em]" style={{ color: CHROME.muted }}>
-            Splits
-          </p>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <RunEyebrow>Splits</RunEyebrow>
+            {splits.length > 0 ? (
+              <span
+                className="text-[10px] font-bold uppercase tracking-[0.12em]"
+                style={{ color: RUN.accent, fontFamily: RUN.labelFont }}
+              >
+                {splits.length} completed
+              </span>
+            ) : null}
+          </div>
+
+          <div
+            className="mb-2 grid grid-cols-3 gap-2 px-0.5"
+            style={{ color: RUN.muted, fontFamily: RUN.labelFont }}
+          >
+            {["Km", "Pace", "HR"].map((h) => (
+              <span key={h} className="text-[9px] font-bold uppercase tracking-[0.18em]">
+                {h}
+              </span>
+            ))}
+          </div>
+
           {splits.length === 0 ? (
-            <p className="mt-1.5 text-sm italic" style={{ color: "#555" }}>
+            <p className="py-6 text-center text-[13px]" style={{ color: RUN.muted }}>
               No splits yet — start your run
             </p>
           ) : (
-            <div className="mt-2 space-y-1.5">
+            <div className="space-y-2">
               <AnimatePresence initial={false}>
-                {splits.map((lap) => (
+                {splits.map((lap, i) => (
                   <motion.div
                     key={lap.lap}
-                    className="flex items-center justify-between"
-                    initial={reduce ? false : { opacity: 0, x: -12 }}
+                    className="grid grid-cols-3 gap-2 tabular-nums"
+                    initial={reduce ? false : { opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                   >
-                    <span className="text-[11px] font-semibold" style={{ color: CHROME.muted }}>
-                      Km {lap.lap}
+                    <span
+                      className="text-sm font-normal text-white"
+                      style={{ fontFamily: RUN.displayFont }}
+                    >
+                      {lap.lap}
                     </span>
-                    <span className="text-[11px] font-bold tabular-nums text-white">{lap.pace}/km</span>
-                    <span className="text-[11px] tabular-nums" style={{ color: CHROME.muted }}>
-                      {formatTime(lap.time)}
+                    <span
+                      className="text-sm font-normal"
+                      style={{
+                        color: i === splits.length - 1 ? RUN.green : "#ffffff",
+                        fontFamily: RUN.displayFont,
+                      }}
+                    >
+                      {lap.pace}
+                    </span>
+                    <span className="text-sm text-white/70" style={{ fontFamily: RUN.displayFont }}>
+                      —
                     </span>
                   </motion.div>
                 ))}
@@ -472,81 +537,71 @@ export function RunScreen({
           )}
         </div>
 
-        {/* ── Controls ──────────────────────────────────────────────── */}
         <div
-          className="px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2"
-          style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
+          className="px-4 pt-2"
+          style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
         >
-          {isIdle && (
-            <motion.button
-              layoutId="run-start-button"
-              type="button"
-              onClick={onStart}
-              className="relative flex w-full items-center justify-center overflow-hidden rounded-2xl py-5"
-              style={{
-                backgroundColor: "#1a1a1c",
-                border: `1.5px solid #333336`,
-              }}
-              whileTap={reduce ? undefined : { scale: 0.98 }}
-              transition={{ duration: 0.12 }}
-              aria-label="Start run"
-            >
-              {/* Shimmer sweep */}
-              {!reduce && (
-                <motion.span
-                  className="pointer-events-none absolute inset-0"
-                  style={{
-                    background:
-                      "linear-gradient(105deg, transparent 35%, rgba(255,255,255,0.06) 50%, transparent 65%)",
-                    backgroundSize: "200% 100%",
-                  }}
-                  animate={{ backgroundPosition: ["-100% 0", "200% 0"] }}
-                  transition={{ duration: 2.2, repeat: Infinity, ease: "linear", repeatDelay: 0.8 }}
-                />
-              )}
-              <span className="text-xl font-black uppercase tracking-[0.14em] text-white">
-                Start Run
-              </span>
-              <span
-                className="ml-4 flex h-8 w-8 items-center justify-center rounded-full"
-                style={{ backgroundColor: "#2a2a2e" }}
-                aria-hidden
+          {isIdle ? (
+            <>
+              <motion.button
+                type="button"
+                onClick={onStart}
+                className="flex w-full items-center justify-center gap-4 rounded-2xl border py-4"
+                style={{ borderColor: RUN.border, backgroundColor: RUN.card }}
+                whileTap={reduce ? undefined : { scale: 0.98 }}
+                aria-label="Start run"
               >
-                <Square className="h-3.5 w-3.5 fill-white text-white" />
-              </span>
-            </motion.button>
-          )}
-
-          {(isRunning || isPaused) && (
-            <div className="flex items-center gap-4">
-              {/* Stop */}
+                <span
+                  className="flex h-11 w-11 items-center justify-center rounded-full border"
+                  style={{ borderColor: "rgba(255,255,255,0.2)", backgroundColor: "rgba(255,255,255,0.06)" }}
+                >
+                  <Play className="ml-0.5 h-4 w-4 fill-white text-white" aria-hidden />
+                </span>
+                <span
+                  className="text-2xl font-normal uppercase tracking-[0.12em] text-white"
+                  style={{ fontFamily: RUN.displayFont }}
+                >
+                  Run
+                </span>
+                <ChevronDown className="h-4 w-4 text-white/50" aria-hidden />
+              </motion.button>
+              <p className="mt-3 text-center text-[11px]" style={{ color: RUN.muted }}>
+                Tap to begin · GPS auto-locks on first step
+              </p>
+            </>
+          ) : (
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={isRunning ? onPause : onResume}
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-4"
+                style={{ backgroundColor: RUN.card, border: `1px solid ${RUN.border}` }}
+                aria-label={isRunning ? "Pause run" : "Resume run"}
+              >
+                <Pause className="h-4 w-4 text-white" aria-hidden />
+                <span
+                  className="text-sm font-bold uppercase tracking-[0.14em] text-white"
+                  style={{ fontFamily: RUN.labelFont }}
+                >
+                  {isRunning ? "Pause" : "Resume"}
+                </span>
+              </button>
               <button
                 type="button"
                 onClick={onStop}
                 disabled={savingRun}
-                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 disabled:opacity-60"
-                style={{ borderColor: CHROME.hrRed, color: CHROME.hrRed }}
-                aria-label="Stop run"
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl border-2 py-4 disabled:opacity-60"
+                style={{ borderColor: RUN.accent, backgroundColor: RUN.accentDim }}
+                aria-label="Finish run"
               >
-                {savingRun ? (
-                  <span className="text-[9px] font-bold uppercase tracking-wide">Saving</span>
-                ) : (
-                  <Square className="h-5 w-5 fill-current" />
-                )}
+                <Square className="h-3.5 w-3.5 fill-current text-white" aria-hidden />
+                <span
+                  className="text-sm font-bold uppercase tracking-[0.14em] text-white"
+                  style={{ fontFamily: RUN.labelFont }}
+                >
+                  {savingRun ? "Saving…" : "Finish"}
+                </span>
               </button>
-
-              {/* Pause / Resume */}
-              <motion.button
-                layoutId="run-start-button"
-                type="button"
-                onClick={isRunning ? onPause : onResume}
-                className="flex flex-1 items-center justify-center rounded-2xl py-4 text-lg font-black uppercase tracking-[0.12em] text-white"
-                style={{ backgroundColor: CHROME.orange }}
-                whileTap={reduce ? undefined : { scale: 0.97 }}
-                aria-label={isRunning ? "Pause run" : "Resume run"}
-              >
-                {isRunning ? "Pause" : "Resume"}
-              </motion.button>
             </div>
           )}
         </div>

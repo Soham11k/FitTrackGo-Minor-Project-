@@ -23,6 +23,8 @@ import {
   WorkoutsDifficultyBadge,
   WorkoutsMetricGrid,
   WorkoutsWithAIBadge,
+  WorkoutsStartButton,
+  WorkoutsBodyCheckBanner,
 } from "@/components/workouts/workouts-ui"
 
 type Category = TrainCategory
@@ -59,6 +61,7 @@ export function ExerciseLibrary({
   )
   const [preferResumeForExerciseId, setPreferResumeForExerciseId] = useState<number | null>(null)
   const [streakDays, setStreakDays] = useState(0)
+  const [lastViewedExerciseId, setLastViewedExerciseId] = useState<number | null>(null)
 
   const dismissPausedBanner = () => {
     clearWorkoutSessionSnapshot()
@@ -166,8 +169,12 @@ export function ExerciseLibrary({
       sortBy={sortBy}
       showFilters={showFilters}
       pausedWorkoutTitle={pausedWorkoutSnapshot?.exercise?.title ?? null}
+      highlightedExerciseId={lastViewedExerciseId ?? filtered[0]?.id ?? null}
       streakDays={streakDays}
-      onSelectExercise={setSelectedExercise}
+      onSelectExercise={(ex) => {
+        setLastViewedExerciseId(ex.id)
+        setSelectedExercise(ex)
+      }}
       onToggleFavorite={handleToggleFavorite}
       onSetCategory={setActiveCategory}
       onSetDuration={setDurationFilter}
@@ -203,6 +210,7 @@ function ExerciseDetail({
 }) {
   const [playing, setPlaying] = useState(false)
   const [playbackResume, setPlaybackResume] = useState(false)
+  const [bodyCheckOpen, setBodyCheckOpen] = useState(false)
 
   const exerciseSteps = useMemo(
     () =>
@@ -230,6 +238,10 @@ function ExerciseDetail({
     }
     return 1
   }, [exerciseSteps])
+
+  useEffect(() => {
+    setBodyCheckOpen(false)
+  }, [exercise.id])
 
   useEffect(() => {
     if (!preferResumePlayback) return
@@ -299,13 +311,17 @@ function ExerciseDetail({
 
       <WorkoutsMetricGrid
         exercises={exercise.exercises}
-        duration={String(exercise.durationMin)}
+        durationMin={exercise.durationMin}
         calories={exercise.calories}
       />
 
-      <div className="px-4 pt-5">
-        <ExerciseBodyPreview exerciseId={firstCoachId} theme="workouts" />
-      </div>
+      {bodyCheckOpen ? (
+        <div className="pt-2">
+          <ExerciseBodyPreview exerciseId={firstCoachId} theme="workouts" autoEnable />
+        </div>
+      ) : (
+        <WorkoutsBodyCheckBanner onEnable={() => setBodyCheckOpen(true)} />
+      )}
 
       <div className="px-4 pt-6">
         <div className="mb-3 flex items-center justify-between">
@@ -323,22 +339,29 @@ function ExerciseDetail({
             return (
               <div
                 key={`${i}-${step.name}`}
-                className="flex items-center gap-4 border-b py-4 last:border-b-0"
+                className="relative flex items-stretch gap-0 border-b py-4 last:border-b-0"
                 style={{ borderColor: WORKOUTS.cardBorder }}
               >
+                {activeStep ? (
+                  <span
+                    className="absolute bottom-3 left-0 top-3 w-[3px] rounded-full"
+                    style={{ backgroundColor: WORKOUTS.accent }}
+                    aria-hidden
+                  />
+                ) : null}
                 <span
-                  className="w-8 shrink-0 text-2xl font-black tabular-nums leading-none"
+                  className="w-10 shrink-0 pl-3 text-2xl font-black tabular-nums leading-none"
                   style={{ color: activeStep ? WORKOUTS.accent : WORKOUTS.muted }}
                 >
                   {i + 1}
                 </span>
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 pr-2">
                   <p className="text-[15px] font-bold leading-tight" style={{ color: WORKOUTS.white }}>
                     {step.name}
                   </p>
                   <p className="mt-0.5 text-xs" style={{ color: WORKOUTS.muted }}>{step.reps}</p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2 pr-1">
                   {coachId ? (
                     <WorkoutsWithAIBadge active={activeStep} />
                   ) : (
@@ -353,15 +376,8 @@ function ExerciseDetail({
         </div>
       </div>
 
-      <div className="px-4 pt-6">
-        <button
-          type="button"
-          onClick={handleStartWorkout}
-          className="w-full rounded-2xl py-4 text-center text-sm font-black uppercase tracking-[0.1em] transition-opacity hover:opacity-90 active:scale-[0.98]"
-          style={{ backgroundColor: WORKOUTS.accent, color: WORKOUTS.white }}
-        >
-          Start workout
-        </button>
+      <div className="sticky bottom-0 px-4 pb-6 pt-4" style={{ backgroundColor: WORKOUTS.bg }}>
+        <WorkoutsStartButton onClick={handleStartWorkout} />
       </div>
     </div>
   )

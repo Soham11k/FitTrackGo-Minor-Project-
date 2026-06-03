@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { Sparkles, Loader2, Send } from "lucide-react"
+import { CHROME } from "@/lib/app-chrome"
+import { CHROME_ACCENT } from "@/lib/chrome-accent"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import type { FormBreakdown } from "@/lib/form-analysis"
@@ -29,10 +31,13 @@ type Props = {
   liveCue?: string | null
   /** live = mid-session; completed = post-session summary. */
   sessionPhase?: "live" | "completed"
+  /** Dark coach mock styling for complete / live screens. */
+  variant?: "default" | "coach-dark"
 }
 
 export function AICoachLlmPanel(props: Props) {
   const sessionPhase = props.sessionPhase ?? "completed"
+  const dark = props.variant === "coach-dark"
   const [q, setQ] = useState("")
   const [answer, setAnswer] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -105,12 +110,42 @@ export function AICoachLlmPanel(props: Props) {
   }
 
   return (
-    <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <Sparkles className="h-4 w-4 text-primary" />
-        <span className="text-sm font-semibold text-foreground">Ask the coach (AI)</span>
+    <div
+      className={`w-full space-y-3 rounded-2xl border p-4 ${
+        dark ? "" : "max-w-sm border-border bg-card"
+      }`}
+      style={
+        dark
+          ? {
+              backgroundColor: CHROME.homeCard,
+              borderColor: CHROME.border,
+            }
+          : undefined
+      }
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4" style={{ color: dark ? CHROME_ACCENT.accent : undefined }} aria-hidden />
+          <span
+            className={`text-sm font-semibold ${dark ? "text-white" : "text-foreground"}`}
+            style={dark ? { fontFamily: CHROME.homeLabelFont } : undefined}
+          >
+            Ask the coach
+          </span>
+        </div>
+        {dark ? (
+          <span
+            className="rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-white"
+            style={{ backgroundColor: CHROME_ACCENT.accent, fontFamily: CHROME.homeLabelFont }}
+          >
+            AI
+          </span>
+        ) : null}
       </div>
-      <p className="text-typo-caption text-muted-foreground leading-snug">
+      <p
+        className={`text-typo-caption leading-snug ${dark ? "text-white/45" : "text-muted-foreground"}`}
+        style={dark ? { fontFamily: CHROME.homeBodyFont, fontSize: "12px" } : undefined}
+      >
         {aiEnabled === null && "Checking AI coach…"}
         {aiEnabled === true &&
           (sessionPhase === "live"
@@ -133,7 +168,7 @@ export function AICoachLlmPanel(props: Props) {
             ? "e.g. What should I fix right now? Any cue for my next rep?"
             : "e.g. Why was my score lower on later reps?"
         }
-        className="min-h-[72px] text-sm resize-none"
+        className={`min-h-[72px] resize-none text-sm ${dark ? "border-white/10 bg-black/30 text-white placeholder:text-white/30" : ""}`}
         maxLength={600}
         disabled={loading || aiEnabled === false}
         onKeyDown={(e) => {
@@ -145,16 +180,20 @@ export function AICoachLlmPanel(props: Props) {
       />
       <Button
         type="button"
-        className="w-full gap-2"
+        className={`w-full gap-2 ${dark ? "bg-white text-black hover:bg-white/90" : ""}`}
         onClick={() => void ask()}
         disabled={loading || aiEnabled === false || !q.trim() || aiEnabled === null}
       >
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         {loading ? "Thinking…" : "Ask"}
       </Button>
-      {err && <p className="text-xs text-destructive">{err}</p>}
+      {err && <p className={`text-xs ${dark ? "text-red-400" : "text-destructive"}`}>{err}</p>}
       {answer && (
-        <div className="rounded-lg bg-secondary/40 border border-border/60 p-3 text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+        <div
+          className={`whitespace-pre-wrap rounded-lg border p-3 text-sm leading-relaxed ${
+            dark ? "border-white/10 bg-black/25 text-white/90" : "border-border/60 bg-secondary/40 text-foreground"
+          }`}
+        >
           {answer}
         </div>
       )}

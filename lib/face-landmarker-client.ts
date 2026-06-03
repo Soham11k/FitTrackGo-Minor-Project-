@@ -14,48 +14,11 @@ import {
 import {
   withSuppressedMediapipeWasmWarn,
   ensureMediapipeWarnFilterInstalled,
-  isMediapipeBrowserFilterInstalled,
 } from "@/lib/mediapipe-console-noise"
 
 const WASM_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm"
 const FACE_MODEL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
-
-/** TFLite logs this INFO via console.error; Next.js dev overlay treats it as a fatal console error. */
-const TFLITE_XNNPACK_INFO = /INFO:\s*Created TensorFlow Lite XNNPACK|XNNPACK delegate/i
-
-function isTfLiteXnnpackInfoNoise(args: unknown[]): boolean {
-  const msg = args
-    .map((a) => (typeof a === "string" ? a : a instanceof Error ? a.message : ""))
-    .join(" ")
-  return TFLITE_XNNPACK_INFO.test(msg)
-}
-
-function withSuppressedTfLiteConsoleError<T>(fn: () => T): T {
-  const orig = console.error.bind(console)
-  console.error = (...args: unknown[]) => {
-    if (isTfLiteXnnpackInfoNoise(args)) return
-    orig(...args)
-  }
-  try {
-    return fn()
-  } finally {
-    if (!isMediapipeBrowserFilterInstalled()) console.error = orig
-  }
-}
-
-async function withSuppressedTfLiteConsoleErrorAsync<T>(fn: () => Promise<T>): Promise<T> {
-  const orig = console.error.bind(console)
-  console.error = (...args: unknown[]) => {
-    if (isTfLiteXnnpackInfoNoise(args)) return
-    orig(...args)
-  }
-  try {
-    return await fn()
-  } finally {
-    if (!isMediapipeBrowserFilterInstalled()) console.error = orig
-  }
-}
 
 let faceLandmarker: FaceLandmarker | null = null
 
@@ -89,14 +52,10 @@ export async function initFaceLandmarker(): Promise<boolean> {
 
       // CPU first: Face Landmarker + GPU delegate often crashes (WASM/TFLite) on some Mac/Chrome setups.
       try {
-        faceLandmarker = await withSuppressedTfLiteConsoleErrorAsync(() =>
-          FaceLandmarker.createFromOptions(vision, options("CPU")),
-        )
+        faceLandmarker = await FaceLandmarker.createFromOptions(vision, options("CPU"))
       } catch {
         console.warn("Face Landmarker CPU failed, trying GPU")
-        faceLandmarker = await withSuppressedTfLiteConsoleErrorAsync(() =>
-          FaceLandmarker.createFromOptions(vision, options("GPU")),
-        )
+        faceLandmarker = await FaceLandmarker.createFromOptions(vision, options("GPU"))
       }
       return true
     } catch (e) {
@@ -122,7 +81,7 @@ function runFaceDetect(video: HTMLVideoElement, _timestampMs: number) {
   const landmarker = faceLandmarker
   if (!landmarker || video.readyState < 2 || video.videoWidth === 0) return null
   try {
-    return withSuppressedTfLiteConsoleError(() => landmarker.detect(video))
+    return landmarker.detect(video)
   } catch (e) {
     console.warn("[FaceLandmarker] detect failed:", e)
     return null

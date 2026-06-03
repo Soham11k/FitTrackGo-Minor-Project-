@@ -3,13 +3,16 @@
 import { motion, useReducedMotion } from "framer-motion"
 import {
   ChevronLeft,
+  ChevronRight,
   Flame,
   Lock,
   Minus,
+  Plus,
   Square,
+  Sparkles,
 } from "lucide-react"
 import { CHROME } from "@/lib/app-chrome"
-import { ChromeHeader } from "@/components/chrome/ChromeHeader"
+import { CHROME_ACCENT } from "@/lib/chrome-accent"
 import { EcgMark } from "@/components/chrome/EcgMark"
 import type { CoachFamilyCategory } from "@/lib/coach-exercise-catalog"
 import { formatLoad, lbToKg, snapLoad } from "@/lib/weight/units"
@@ -17,13 +20,17 @@ import type { WeightUnit } from "@/lib/weight/units"
 
 /** Premium coach form screens — red accent on pure black (matches product mock). */
 export const COACH_FORM = {
-  accent: "#ff3b30",
-  accentDim: "rgba(255,59,48,0.14)",
-  accentBorder: "rgba(255,59,48,0.35)",
-  card: "#171717",
-  cardBorder: "rgba(255,255,255,0.08)",
-  muted: "#8e8e93",
-  green: "#34c759",
+  accent: CHROME_ACCENT.accent,
+  accentDim: CHROME_ACCENT.accentDim,
+  accentBorder: CHROME_ACCENT.accentBorder,
+  black: CHROME.homeBlack,
+  card: CHROME.homeCard,
+  cardBorder: CHROME.border,
+  muted: "rgba(255,255,255,0.45)",
+  green: CHROME.gpsGreen,
+  displayFont: CHROME.homeDisplayFont,
+  labelFont: CHROME.homeLabelFont,
+  bodyFont: CHROME.homeBodyFont,
 } as const
 
 function categoryTag(cat: CoachFamilyCategory): string {
@@ -35,6 +42,16 @@ function categoryTag(cat: CoachFamilyCategory): string {
     compound: "COMPOUND",
   }
   return map[cat]
+}
+
+function categoryTagStyle(cat: CoachFamilyCategory): { color: string; borderColor: string; backgroundColor: string } {
+  if (cat === "upper") {
+    return { color: COACH_FORM.accent, borderColor: COACH_FORM.accentBorder, backgroundColor: COACH_FORM.accentDim }
+  }
+  if (cat === "core") {
+    return { color: "#60a5fa", borderColor: "rgba(96,165,250,0.35)", backgroundColor: "rgba(96,165,250,0.12)" }
+  }
+  return { color: COACH_FORM.muted, borderColor: COACH_FORM.cardBorder, backgroundColor: "rgba(255,255,255,0.04)" }
 }
 
 function SquareMark({ color = COACH_FORM.accent }: { color?: string }) {
@@ -49,21 +66,44 @@ function SquareMark({ color = COACH_FORM.accent }: { color?: string }) {
   )
 }
 
-export function CoachFormHeader({ streakDays }: { streakDays: number }) {
+export function CoachFormHeader({ streakDays, guest }: { streakDays: number; guest?: boolean }) {
   return (
-    <ChromeHeader
-      right={
-        streakDays > 0 ? (
+    <header
+      className="flex items-center justify-between gap-3 px-4 py-3"
+      style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
+    >
+      <div className="flex min-w-0 items-center gap-1.5">
+        <EcgMark size={16} color={COACH_FORM.accent} animate />
+        <span
+          className="truncate text-[11px] font-bold uppercase tracking-[0.22em] text-white"
+          style={{ fontFamily: COACH_FORM.labelFont }}
+        >
+          FitTrack Go
+        </span>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {guest ? (
           <span
-            className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.06em] text-white"
-            style={{ backgroundColor: COACH_FORM.accent }}
+            className="text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: COACH_FORM.muted, fontFamily: COACH_FORM.labelFont }}
           >
-            <Flame className="h-3 w-3" aria-hidden />
-            {streakDays} day streak
+            Guest
           </span>
-        ) : null
-      }
-    />
+        ) : null}
+        {streakDays > 0 ? (
+          <span className="inline-flex items-center gap-2">
+            <span className="h-4 w-px bg-white/15" aria-hidden />
+            <Flame className="h-3.5 w-3.5 shrink-0" style={{ color: COACH_FORM.accent }} aria-hidden />
+            <span
+              className="text-[10px] font-bold uppercase tracking-[0.1em] text-white"
+              style={{ fontFamily: COACH_FORM.labelFont }}
+            >
+              {streakDays} day streak
+            </span>
+          </span>
+        ) : null}
+      </div>
+    </header>
   )
 }
 
@@ -146,6 +186,145 @@ export function CoachTrackTabs({
   )
 }
 
+export function CoachCustomExerciseBar({
+  moveCount,
+  onCustom,
+}: {
+  moveCount: number
+  onCustom: () => void
+}) {
+  return (
+    <div className="mx-4 mb-3 flex items-center justify-between gap-3">
+      <button
+        type="button"
+        onClick={onCustom}
+        className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em]"
+        style={{ color: COACH_FORM.accent, fontFamily: COACH_FORM.labelFont }}
+      >
+        <Plus className="h-3.5 w-3.5" aria-hidden />
+        Custom exercise
+      </button>
+      <span className="text-[11px] font-semibold" style={{ color: COACH_FORM.muted, fontFamily: COACH_FORM.bodyFont }}>
+        {moveCount} moves
+      </span>
+    </div>
+  )
+}
+
+export function CoachLiveStatsRow({
+  reps,
+  formScore,
+  userCentered,
+  faceVerified,
+  faceEnrolled,
+}: {
+  reps: number
+  formScore: number
+  userCentered: boolean
+  faceVerified: boolean
+  faceEnrolled: boolean
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-px px-4 pt-4" style={{ backgroundColor: COACH_FORM.cardBorder }}>
+      <div className="px-3 py-3" style={{ backgroundColor: COACH_FORM.black }}>
+        <p className="text-[10px] font-bold uppercase tracking-[0.22em]" style={{ color: COACH_FORM.muted, fontFamily: COACH_FORM.labelFont }}>
+          Reps
+        </p>
+        <p
+          className="mt-1 text-[2.5rem] font-normal uppercase leading-none tabular-nums text-white"
+          style={{ fontFamily: COACH_FORM.displayFont }}
+        >
+          {reps}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <span
+            className="rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]"
+            style={{
+              color: userCentered ? COACH_FORM.green : COACH_FORM.accent,
+              backgroundColor: userCentered ? `${COACH_FORM.green}18` : COACH_FORM.accentDim,
+              fontFamily: COACH_FORM.labelFont,
+            }}
+          >
+            {userCentered ? "Centred" : "Recenter"}
+          </span>
+          {faceEnrolled ? (
+            <span
+              className="rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]"
+              style={{
+                color: faceVerified ? COACH_FORM.green : COACH_FORM.accent,
+                backgroundColor: faceVerified ? `${COACH_FORM.green}18` : COACH_FORM.accentDim,
+                fontFamily: COACH_FORM.labelFont,
+              }}
+            >
+              {faceVerified ? "Verified" : "Face check"}
+            </span>
+          ) : null}
+        </div>
+      </div>
+      <div className="px-3 py-3" style={{ backgroundColor: COACH_FORM.black }}>
+        <p className="text-[10px] font-bold uppercase tracking-[0.22em]" style={{ color: COACH_FORM.muted, fontFamily: COACH_FORM.labelFont }}>
+          Form score
+        </p>
+        <p
+          className="mt-1 text-[2.5rem] font-normal uppercase leading-none tabular-nums text-white"
+          style={{ fontFamily: COACH_FORM.displayFont }}
+        >
+          {Math.round(formScore)}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+export function CoachLiveFeedbackCard({
+  primary,
+  secondary,
+  fps,
+  detectionLine,
+}: {
+  primary: string
+  secondary?: string | null
+  fps?: number
+  detectionLine?: string
+}) {
+  return (
+    <div
+      className="rounded-2xl border px-4 py-3.5"
+      style={{ backgroundColor: COACH_FORM.card, borderColor: COACH_FORM.cardBorder }}
+    >
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <Sparkles className="h-3.5 w-3.5" style={{ color: COACH_FORM.accent }} aria-hidden />
+          <span className="text-sm font-semibold text-white" style={{ fontFamily: COACH_FORM.labelFont }}>
+            Live feedback
+          </span>
+        </div>
+        {fps != null ? (
+          <span
+            className="rounded-md px-2 py-0.5 text-[10px] font-bold tabular-nums"
+            style={{ color: "#fbbf24", backgroundColor: "rgba(251,191,36,0.12)", fontFamily: COACH_FORM.labelFont }}
+          >
+            {fps} FPS
+          </span>
+        ) : null}
+      </div>
+      <p className="text-[15px] font-medium leading-snug text-white" style={{ fontFamily: COACH_FORM.bodyFont }}>
+        {primary}
+      </p>
+      {secondary ? (
+        <p className="mt-1.5 text-[13px] leading-snug" style={{ color: "#fbbf24", fontFamily: COACH_FORM.bodyFont }}>
+          {secondary}
+        </p>
+      ) : null}
+      {detectionLine ? (
+        <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: COACH_FORM.muted, fontFamily: COACH_FORM.labelFont }}>
+          {detectionLine}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 export function CoachSectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <p
@@ -201,12 +380,12 @@ export function CoachMovementRow({
         </p>
         <span
           className="mt-2 inline-block rounded-md border px-2 py-0.5 text-[9px] font-bold tracking-[0.12em]"
-          style={{ color: COACH_FORM.accent, borderColor: COACH_FORM.accentBorder, backgroundColor: COACH_FORM.accentDim }}
+          style={categoryTagStyle(category)}
         >
           {categoryTag(category)}
         </span>
       </div>
-      <SquareMark />
+      <ChevronRight className="h-4 w-4 shrink-0" style={{ color: COACH_FORM.muted }} aria-hidden />
     </motion.button>
   )
 }

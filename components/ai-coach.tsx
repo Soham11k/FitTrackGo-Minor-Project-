@@ -126,16 +126,19 @@ import {
   CoachFormCues,
   CoachFormHeader,
   CoachHeroTitle,
+  CoachCustomExerciseBar,
+  CoachLiveStatsRow,
+  CoachLiveFeedbackCard,
   CoachMovementRow,
   CoachOutlineCta,
   CoachPrivacyBanner,
   CoachRedToggle,
   CoachRepGoalInput,
-  CoachSectionLabel,
   CoachSetLoadRow,
   CoachTipBox,
   CoachTrackTabs,
 } from "@/components/ai-coach/coach-form-ui"
+import { CoachWorkoutComplete } from "@/components/ai-coach/coach-workout-complete"
 
 const POSTURE_PENALTY_THRESHOLD = 75
 const POSTURE_PENALTY_NO_ACCUM_THRESHOLD = 85
@@ -1618,12 +1621,12 @@ export function AICoach({
           <div
             data-testid="screen-ai-coach"
             className="flex min-h-dvh flex-col pb-28"
-            style={{ backgroundColor: CHROME.black }}
+            style={{ backgroundColor: CHROME.homeBlack }}
           >
-            <CoachFormHeader streakDays={streakDays} />
+            <CoachFormHeader streakDays={streakDays} guest={guestMode} />
             <CoachHeroTitle
               eyebrow="AI Coach"
-              title={coachPickerStep === "families" ? "Choose movement" : "Choose movement"}
+              title="Choose movement"
             />
             <CoachPrivacyBanner text={t("coach.privacyBanner")} />
             <CoachTrackTabs track={coachTrack} onTrack={setCoachTrack} />
@@ -1668,19 +1671,10 @@ export function AICoach({
                     animate={{ opacity: 1, y: 0 }}
                     exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
                   >
-                    <CoachSectionLabel>Custom exercise</CoachSectionLabel>
-                    <div className="px-4">
-                      <button
-                        type="button"
-                        onClick={() => setCustomBuilderOpen(true)}
-                        className="flex w-full items-center gap-3 rounded-2xl border px-3.5 py-3.5 text-left"
-                        style={{ backgroundColor: COACH_FORM.card, borderColor: COACH_FORM.cardBorder }}
-                      >
-                        <Sparkles className="h-4 w-4 shrink-0" style={{ color: COACH_FORM.accent }} />
-                        <span className="flex-1 text-sm font-bold text-white">Create custom exercise</span>
-                        <ChevronRight className="h-4 w-4" style={{ color: COACH_FORM.muted }} />
-                      </button>
-                    </div>
+                    <CoachCustomExerciseBar
+                      moveCount={pickerFamilies.length}
+                      onCustom={() => setCustomBuilderOpen(true)}
+                    />
 
                     {pickerFamilies.map((fam, i) => (
                       <div key={fam.id} className="px-4">
@@ -1720,8 +1714,8 @@ export function AICoach({
       return (
         <>
           {coachFocusBar}
-          <div className="flex min-h-dvh flex-col pb-32" style={{ backgroundColor: CHROME.black }}>
-            <CoachFormHeader streakDays={streakDays} />
+          <div className="flex min-h-dvh flex-col pb-32" style={{ backgroundColor: CHROME.homeBlack }}>
+            <CoachFormHeader streakDays={streakDays} guest={guestMode} />
             <CoachHeroTitle
               eyebrow="Coach"
               title="Accessibility"
@@ -1782,8 +1776,8 @@ export function AICoach({
     return (
       <>
         {coachFocusBar}
-        <div className="flex min-h-dvh flex-col pb-32" style={{ backgroundColor: CHROME.black }}>
-          <CoachFormHeader streakDays={streakDays} />
+        <div className="flex min-h-dvh flex-col pb-32" style={{ backgroundColor: CHROME.homeBlack }}>
+          <CoachFormHeader streakDays={streakDays} guest={guestMode} />
           <CoachBackButton onClick={handleSetupBack} />
           <div className="px-4">
             <CoachDarkPanel>
@@ -1860,8 +1854,12 @@ export function AICoach({
           breakdown={breakdown}
           onHighlightChange={setCueHighlight}
         >
-      <div className="flex min-h-[calc(100vh-80px)] flex-col pb-24 lg:flex-row lg:items-start lg:gap-4 lg:px-3 lg:pt-2">
-        <div className="surface-stage-gradient relative mx-2 mt-2 h-[78vh] min-h-[450px] max-h-[85vh] min-w-0 flex-1 overflow-hidden rounded-2xl border border-[color:var(--surface-stage-hairline)] bg-[color:var(--surface-stage)] lg:mx-0 lg:mt-0">
+      <div className="flex min-h-dvh flex-col pb-28" style={{ backgroundColor: CHROME.homeBlack }}>
+        <CoachFormHeader streakDays={streakDays} guest={guestMode} />
+        <div
+          className="relative mx-4 mt-1 h-[min(52vh,400px)] min-h-[320px] overflow-hidden rounded-2xl"
+          style={{ backgroundColor: COACH_FORM.card }}
+        >
           {useCamera && (
             <video
               ref={videoRef}
@@ -1875,8 +1873,8 @@ export function AICoach({
             />
           )}
           {!useCamera && (
-            <div className="absolute inset-0 z-0 flex items-center justify-center bg-gradient-to-br from-secondary to-background">
-              <Camera className="h-20 w-20 text-muted-foreground/40" />
+            <div className="absolute inset-0 z-0 flex items-center justify-center bg-black">
+              <Camera className="h-16 w-16 text-white/20" />
             </div>
           )}
           <canvas
@@ -1918,309 +1916,65 @@ export function AICoach({
               </div>
             </div>
           )}
-          <div
-            className={`absolute top-3 left-3 z-20 flex items-center gap-2 rounded-2xl border px-3 py-2 shadow-lg backdrop-blur-md transition-all duration-300 ${
-              isGoodForm
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-destructive bg-black/80 text-destructive"
-            }`}
-          >
-            {isGoodForm ? <CheckCircle2 className="h-4 w-4 shrink-0 text-primary-foreground" /> : <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />}
-            <span className="text-typo-eyebrow font-bold uppercase tracking-[0.2em]">{isGoodForm ? "Good form" : "Adjust form"}</span>
+          <div className="absolute left-3 top-3 z-20 flex items-center gap-2 rounded-full px-3 py-1" style={{ backgroundColor: COACH_FORM.accentDim, border: `1px solid ${COACH_FORM.accentBorder}` }}>
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: COACH_FORM.accent }} aria-hidden />
+            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-white" style={{ fontFamily: COACH_FORM.labelFont }}>
+              Live
+            </span>
           </div>
-          <div className="absolute top-3 right-3 z-20 w-[min(calc(100%-7rem),15.5rem)]">
+          {!isGoodForm ? (
             <div
-              className={`overflow-hidden rounded-2xl border border-white/25 bg-black/50 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-md ${
-                repBounce && !a11yPrefs.reduceMotion ? "motion-safe:animate-rep-bounce" : ""
-              }`}
+              className="absolute right-3 top-3 z-20 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em]"
+              style={{ backgroundColor: "rgba(251,191,36,0.15)", color: "#fbbf24", fontFamily: COACH_FORM.labelFont }}
             >
-              <div className="px-3 py-2.5 sm:px-3.5">
-                <p className="text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-white/50">
-                  {targetReps > 0 ? "Reps · goal" : "Reps"}
-                </p>
-                {targetReps > 0 ? (
-                  <div className="mt-1 flex items-center gap-3">
-                    <RingGauge
-                      value={reps}
-                      max={targetReps}
-                      size={76}
-                      thickness={6}
-                      spring
-                      progressClassName="stroke-white"
-                      trackClassName="stroke-white/15"
-                    >
-                      <span
-                        className="text-2xl font-bold tabular-nums leading-none text-white"
-                        style={{ fontFamily: "var(--font-heading)" }}
-                      >
-                        {reps}
-                      </span>
-                      <span className="text-typo-micro font-semibold uppercase tracking-wider text-white/45">/ {targetReps}</span>
-                    </RingGauge>
-                    {reps >= targetReps && (
-                      <span className="text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-primary">Goal reached</span>
-                    )}
-                  </div>
-                ) : (
-                  <p
-                    className="mt-0.5 text-4xl font-bold tabular-nums leading-none text-white"
-                    style={{ fontFamily: "var(--font-heading)" }}
-                  >
-                    {reps}
-                  </p>
-                )}
-              </div>
-              {useCamera && (
-                <div className="flex flex-wrap gap-1.5 border-t border-white/10 bg-black/25 px-2.5 py-2 sm:px-3">
-                  <span
-                    className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 text-typo-eyebrow font-bold uppercase tracking-[0.18em] ${
-                      userCentered ? "bg-primary/20 text-primary" : "bg-destructive/25 text-destructive"
-                    }`}
-                    title={userCentered ? "You're in the center zone" : "Move into the dashed box"}
-                  >
-                    <Crosshair className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
-                    {userCentered ? "Centered" : "Recenter"}
-                  </span>
-                  {faceEnrolled && (
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 text-typo-eyebrow font-bold uppercase tracking-[0.18em] motion-reduce:animate-none ${
-                        faceMatch ? "bg-primary/20 text-primary" : "bg-destructive/25 text-destructive motion-safe:animate-pulse"
-                      }`}
-                      title={faceMatch ? "Your face — reps count" : "Checking face — hold steady if this is you"}
-                    >
-                      <User className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
-                      {faceMatch ? "Verified" : "Face check"}
-                    </span>
-                  )}
-                  <span
-                    className="inline-flex items-center gap-1 rounded-lg bg-sky-500/20 px-2 py-1 text-typo-eyebrow font-semibold text-sky-100"
-                    title="Alarm and emergency call if a fall is detected"
-                  >
-                    <Shield className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
-                    Fall guard
-                  </span>
-                </div>
-              )}
+              Adjust form
             </div>
-          </div>
+          ) : null}
           {!useCamera && (
-            <div className="absolute bottom-4 left-4 right-4 z-[600] rounded-xl bg-chart-4/90 backdrop-blur-sm px-4 py-2.5 border border-chart-4/50">
-              <p className="text-xs font-medium text-foreground">
+            <div className="absolute bottom-4 left-4 right-4 z-[600] rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5">
+              <p className="text-xs font-medium text-amber-100/90">
                 Simulated mode — camera denied or unavailable. Rep counting and form feedback still work.
               </p>
             </div>
           )}
-          {!isGoodForm && coachLivePrimary ? (
-            <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-[25] rounded-2xl border border-primary/45 bg-black/80 px-4 py-3 shadow-[0_12px_40px_-16px_oklch(0_0_0/0.75)] backdrop-blur-md motion-safe:backdrop-blur-lg">
-              <p className="text-typo-eyebrow font-bold uppercase tracking-[0.22em] text-primary">Form cue</p>
-              <p className="mt-1 text-sm font-medium leading-snug text-[color:var(--surface-stage-fg)] motion-safe:blur-[0.2px]">
-                {coachLivePrimary}
+          {coachLivePrimary ? (
+            <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-[25] rounded-xl border px-4 py-3" style={{ borderColor: COACH_FORM.cardBorder, backgroundColor: "rgba(0,0,0,0.72)" }}>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: COACH_FORM.accent, fontFamily: COACH_FORM.labelFont }}>
+                Form cue — {coachLivePrimary}
               </p>
             </div>
           ) : null}
         </div>
-        <div className="flex w-full flex-col space-y-4 px-4 pt-4 lg:max-h-[min(85vh,calc(100vh-7rem))] lg:w-[min(100%,340px)] lg:shrink-0 lg:overflow-y-auto lg:py-2 lg:pl-2 lg:pr-4 lg:pt-2">
-          {useCamera && (
-            <div className="rounded-2xl border border-amber-500/20 bg-card p-4 shadow-sm">
-              <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/15">
-                  <Camera className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  {envAssessment?.suggestion ? (
-                    <p className="text-sm font-medium text-foreground">{envAssessment.suggestion}</p>
-                  ) : (
-                    <p className="text-sm font-medium text-foreground">
-                      For best detection, keep <strong className="text-amber-600 dark:text-amber-400">3–4 feet</strong> between you and the camera.
-                    </p>
-                  )}
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    Stay in the <strong className="text-foreground">center</strong> (dashed box) for rep counting. Full body in frame = better detection.
-                  </p>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                    {useCamera && (
-                      <span
-                        className={`text-typo-caption font-semibold ${
-                          poseReady ? "text-emerald-600 dark:text-emerald-400/80" : "text-amber-600 dark:text-amber-400/80"
-                        }`}
-                      >
-                        Pose: {poseReady ? "tracking" : "searching"}
-                      </span>
-                    )}
-                    {bodyScanSummary && (
-                      <span className="text-typo-caption text-emerald-600 dark:text-emerald-400">
-                        Body: {bodyScanSummary}
-                      </span>
-                    )}
-                    {envAssessment && (
-                      <>
-                        <span className={`text-typo-caption ${envAssessment.fpsLow ? "text-destructive" : "text-emerald-600 dark:text-emerald-400/80"}`}>
-                          {envAssessment.fps} fps
-                        </span>
-                        <span
-                          className={`text-typo-caption ${
-                            envAssessment.quality > 0.6
-                              ? "text-emerald-600 dark:text-emerald-400/80"
-                              : envAssessment.quality > 0.3
-                                ? "text-amber-600 dark:text-amber-400/80"
-                                : "text-destructive/90"
-                          }`}
-                        >
-                          Quality: {Math.round(envAssessment.quality * 100)}%
-                        </span>
-                        {envAssessment.cameraAngle !== "unknown" && (
-                          <span
-                            className={`text-typo-caption ${
-                              envAssessment.angleRecommended ? "text-emerald-600 dark:text-emerald-400/80" : "text-amber-600 dark:text-amber-400/80"
-                            }`}
-                          >
-                            {envAssessment.cameraAngle} view{envAssessment.angleRecommended ? "" : " (try another angle)"}
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          <div className="flex items-stretch gap-4 rounded-2xl border border-border bg-gradient-to-br from-card to-card/80 p-4 shadow-sm">
-            <RingGauge
-              value={score}
-              max={100}
-              size={88}
-              thickness={7}
-              spring
-              progressClassName="stroke-metric-coach"
-              trackClassName="stroke-muted/40"
-            >
-              <span
-                className="text-[26px] font-bold tabular-nums leading-none text-foreground animate-score-roll"
-                style={{ fontFamily: "var(--font-heading)" }}
-              >
-                {score}
-              </span>
-              <span className="text-typo-micro font-bold uppercase tracking-[0.22em] text-metric-coach/90">
-                Form
-              </span>
-            </RingGauge>
-            <div className="min-w-0 flex-1 flex flex-col justify-center space-y-2.5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-muted-foreground">Live score</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">From your live form cues</p>
-                </div>
-                <span
-                  className={`shrink-0 rounded-full border px-2.5 py-1 text-typo-eyebrow font-bold tabular-nums ${
-                    isGoodForm
-                      ? "border-metric-move/30 bg-metric-move/10 text-metric-move"
-                      : "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-400"
-                  }`}
-                >
-                  {isGoodForm ? "On target" : "Adjust"}
-                </span>
-              </div>
-              <div className="h-2 rounded-full bg-secondary overflow-hidden ring-1 ring-border/60">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-metric-coach/90 to-metric-coach transition-[width] duration-500 ease-out"
-                  style={{ width: `${score}%` }}
-                />
-              </div>
-              {envAssessment && (
-                <div className="flex items-center gap-2 text-typo-eyebrow text-muted-foreground">
-                  <svg width="24" height="14" viewBox="0 0 24 14" className="shrink-0 opacity-80">
-                    <path
-                      d="M 2 12 A 10 10 0 0 1 22 12"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="text-secondary"
-                    />
-                    <path
-                      d="M 2 12 A 10 10 0 0 1 22 12"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeDasharray={`${Math.round(envAssessment.quality * 31.4)} 31.4`}
-                      className={envAssessment.quality > 0.6 ? "text-metric-move" : envAssessment.quality > 0.3 ? "text-metric-streak" : "text-destructive"}
-                      style={{ transition: "stroke-dasharray 0.5s ease-out" }}
-                    />
-                  </svg>
-                  Detection quality
-                </div>
-              )}
-            </div>
-          </div>
-          {breakdown.length > 0 && (
-            <div className="rounded-xl bg-card p-3 border border-border">
-              <div className="text-xs font-semibold text-foreground mb-2">Live form breakdown</div>
-              <div className="flex flex-wrap gap-2">
-                {breakdown.map((b, i) => (
-                  <span key={i} title={b.detail} className="inline-flex">
-                    <InteractiveCue
-                      text={`${b.label} ${b.value}`}
-                      kind={b.ok ? "good" : "improve"}
-                      className={`mx-0 rounded-lg px-2.5 py-1.5 text-typo-eyebrow font-medium transition-colors duration-300 ${
-                        b.ok ? "bg-primary/15 text-primary" : "bg-destructive/15 text-destructive"
-                      }`}
-                    />
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-          <div
-            className="rounded-xl border border-border bg-card p-4"
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-            aria-labelledby="coach-live-overlay-label"
-          >
-            <span id="coach-live-overlay-label" className="sr-only">
-              Live feedback
-            </span>
-            <div className="mb-2 flex items-center gap-2">
-              <Zap className="h-4 w-4 text-primary" aria-hidden />
-              <span className="text-sm font-semibold text-foreground">Live feedback</span>
-            </div>
-            <p key={coachLivePrimary} className="text-base font-medium leading-snug text-foreground min-h-[2.5rem]">
-              {coachLivePrimary}
-            </p>
-            {coachLiveBreakdownHints.length > 0 ? (
-              <ul className="mt-2 space-y-1 border-t border-border pt-2">
-                {coachLiveBreakdownHints.map((b, i) => (
-                  <InteractiveCue
-                    key={`${b.label}-${i}`}
-                    as="li"
-                    kind="improve"
-                    text={`${b.label}: ${b.value}${b.detail ? ` — ${b.detail}` : ""}`}
-                    className="text-sm text-destructive mx-0"
-                  />
-                ))}
-              </ul>
-            ) : null}
-            {envAssessment?.fpsLow ? (
-              <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">
-                Low frame rate — move closer, add light, or close other apps for clearer cues.
-              </p>
-            ) : null}
-            {bodyScanSummary && !/leg|ankle|knee|foot|arm/i.test(bodyScanSummary) ? (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Step back so your <strong className="text-foreground">full body</strong> (hips, knees, feet) is in frame — partial
-                body limits form scoring and rep counting.
-              </p>
-            ) : null}
-            {coachSetupTips.length > 0 ? (
-              <ul className="mt-2 space-y-1 border-t border-border/60 pt-2">
-                {coachSetupTips.map((tip) => (
-                  <li key={tip} className="text-xs text-muted-foreground leading-snug">
-                    • {tip}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-          {selectedSpecId && (
+
+        <CoachLiveStatsRow
+          reps={reps}
+          formScore={score}
+          userCentered={userCentered}
+          faceVerified={faceMatch}
+          faceEnrolled={!!faceEnrolled}
+        />
+
+        <div className="space-y-3 px-4 pt-3">
+          <CoachLiveFeedbackCard
+            primary={coachLivePrimary || "Get your full body in frame so the coach can see you."}
+            secondary={
+              envAssessment?.fpsLow
+                ? "Move closer or add light for clearer cues."
+                : envAssessment?.suggestion ?? null
+            }
+            fps={envAssessment?.fps}
+            detectionLine={[
+              "Detection",
+              `Pose: ${poseReady ? "tracking" : "searching"}`,
+              bodyScanSummary ? `Body: ${bodyScanSummary}` : null,
+              envAssessment
+                ? `Quality ${Math.round(envAssessment.quality * 100)}%${envAssessment.cameraAngle !== "unknown" ? ` · ${envAssessment.cameraAngle} view` : ""}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          />
+          {selectedSpecId ? (
             <AICoachLlmPanel
               exerciseId={selectedSpecId}
               exerciseName={exerciseName}
@@ -2242,11 +1996,14 @@ export function AICoach({
               }
               liveCue={coachLivePrimary}
               sessionPhase="live"
+              variant="coach-dark"
             />
-          )}
+          ) : null}
           <button
+            type="button"
             onClick={handleFinish}
-            className="w-full rounded-xl bg-primary py-4 text-center font-semibold text-primary-foreground text-base transition-all hover:bg-primary/90 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="w-full rounded-2xl border py-4 text-center text-sm font-bold uppercase tracking-[0.12em] text-white"
+            style={{ borderColor: COACH_FORM.accentBorder, backgroundColor: COACH_FORM.accentDim, fontFamily: COACH_FORM.labelFont }}
           >
             End session
           </button>
@@ -2268,375 +2025,115 @@ export function AICoach({
     : topCuesFromBreakdown(recapBreakdown.length ? recapBreakdown : breakdown, feedback, 4)
   const finalScore = sessionDna?.score ?? avgRepScore
 
+  const tryAgain = () => {
+    void clipRecorderRef.current?.stop?.().catch(() => {})
+    clipRecorderRef.current = null
+    activeClipIdRef.current = null
+    setReplayOpen(false)
+    setReplayTarget({ sessionId: null, clipId: null })
+    setCompareOpen(false)
+    setCompareBaseline(null)
+    setCompareCurrent(null)
+    setSessionDna(null)
+    setRecapIsPr(false)
+    setFinishShareSessionId(null)
+    repTracesRef.current = []
+    lastBottomTraceRef.current = null
+    setState("setup")
+    setReps(0)
+    setRepScores([])
+    setFeedback([])
+    setBreakdown([])
+    setRecapBreakdown([])
+    setSelectedRecapRep(null)
+    setScore(100)
+  }
+
   return (
     <>
       {coachFocusBar}
-    <div className="flex flex-col items-center gap-6 px-4 pt-8 pb-28">
-      {/* Animated success check mark */}
-      <motion.div
-        className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/15 shadow-[0_0_32px_oklch(0.72_0.22_130/0.3)]"
-        initial={reduceMotion ? false : { scale: 0, rotate: -30 }}
-        animate={{ scale: 1, rotate: 0 }}
-        transition={{ type: "spring", stiffness: 400, damping: 18 }}
-      >
-        <svg viewBox="0 0 48 48" width={44} height={44} fill="none" aria-hidden>
-          <motion.circle cx="24" cy="24" r="20" stroke="var(--primary)" strokeWidth="3"
-            initial={reduceMotion ? { pathLength: 1 } : { pathLength: 0 }}
-            animate={{ pathLength: 1 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-          />
-          <motion.path d="M14 24 L21 31 L34 17" stroke="var(--primary)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"
-            initial={reduceMotion ? { pathLength: 1 } : { pathLength: 0 }}
-            animate={{ pathLength: 1 }}
-            transition={{ duration: 0.5, ease: "easeOut", delay: 0.5 }}
-          />
-        </svg>
-      </motion.div>
-
-      {/* Cascading headline */}
-      <div className="text-center space-y-1">
-        <motion.h2
-          className="text-2xl font-black text-foreground"
-          style={{ fontFamily: "var(--font-heading)" }}
-          initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
-        >
-          Workout Complete 💪
-        </motion.h2>
-        <motion.p
-          className="text-sm text-muted-foreground"
-          initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        >
-          {reps} reps · {exerciseName}
-          {effLine ? ` · ${effLine}` : ""}
-        </motion.p>
-        <p className="mx-auto max-w-sm pt-1 text-[11px] leading-snug text-muted-foreground">
-          <strong className="font-semibold text-foreground/80">Replay set</strong> and the saved video only appear after you finish with{" "}
-          <strong className="font-semibold text-foreground/80">at least one rep</strong>, camera preview on, and{" "}
-          <strong className="font-semibold text-foreground/80">Record coach set clips</strong> enabled in Profile → Settings.
-        </p>
-      </div>
-
-      {recapIsPr ? (
-        <MotionCelebrate className="w-full max-w-sm">
-          <div className="rounded-2xl border border-primary/35 bg-primary/15 px-4 py-2.5 text-center text-sm font-bold uppercase tracking-[0.2em] text-primary">
-            Personal record
-          </div>
-        </MotionCelebrate>
-      ) : null}
-
-      {/* Counting form score ring */}
-      <motion.div
-        className="relative flex items-center justify-center"
-        initial={reduceMotion ? false : { opacity: 0, scale: 0.85 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5, delay: 0.6, type: "spring", stiffness: 300, damping: 20 }}
-      >
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <ParticleBurst trigger={sessionCelebrateBurst && finalScore >= 90} count={60} size={240} />
-        </div>
-        <svg width="160" height="160" viewBox="0 0 144 144" aria-hidden className="absolute inset-0">
-          <circle cx="72" cy="72" r="64" fill="none" stroke="var(--secondary)" strokeWidth="8" />
-          <motion.circle
-            cx="72" cy="72" r="64" fill="none"
-            stroke="var(--primary)" strokeWidth="8" strokeLinecap="round"
-            transform="rotate(-90 72 72)"
-            initial={{ strokeDasharray: "0 402" }}
-            animate={{ strokeDasharray: `${(finalScore / 100) * 402} 402` }}
-            transition={{ duration: 1.2, delay: 0.7, ease: "easeOut" }}
-          />
-        </svg>
-        <div className="relative flex h-40 w-40 flex-col items-center justify-center text-center">
-          <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-muted-foreground">FORM SCORE</p>
-          <p className="text-4xl font-black tabular-nums text-foreground" style={{ fontFamily: "var(--font-display)" }}>
-            <AnimatedCounter value={finalScore} duration={1.2} />
-            <span className="text-xl font-bold text-muted-foreground">%</span>
-          </p>
-        </div>
-      </motion.div>
-
-      <CueFocusProvider exerciseId={selectedSpecId ?? "unknown"} breakdown={recapBreakdown.length ? recapBreakdown : breakdown}>
-      <div className="relative w-full max-w-sm overflow-hidden rounded-[1.35rem] border border-[color:var(--surface-stage-hairline)] bg-[color:var(--surface-stage)] px-5 py-10 shadow-xl">
-        {sessionCelebrateBurst ? <CelebrationBurst className="-translate-y-4" /> : null}
-        <StatDisplay tone="stage" eyebrow="Form score" value={sessionDna?.score ?? avgRepScore} unit="%" size="lg" />
-        {recapCues.length > 0 ? (
-          <div className="mt-8 space-y-3 border-t border-white/10 pt-8">
-            <p className="text-typo-eyebrow font-bold uppercase tracking-[0.24em] text-white/50">Coach verdict</p>
-            <ul className="space-y-3">
-              {recapCues.slice(0, 3).map((cue, idx) => (
-                <li key={idx} className="flex gap-2 text-base font-medium leading-snug text-[color:var(--surface-stage-fg)]">
-                  <Target className="h-5 w-5 shrink-0 text-primary mt-0.5" aria-hidden />
-                  <InteractiveCue text={cue} kind="improve" className="mx-0 p-0 text-base font-medium leading-snug text-[color:var(--surface-stage-fg)]" />
-                </li>
-              ))}
-            </ul>
-            <p className="text-typo-caption text-white/45">
-              Open the assistant below—your session DNA and these cues ship as context.
-            </p>
-          </div>
-        ) : null}
-      </div>
-
-      {sessionDna != null ? (
-        <SessionDnaCard {...sessionDna} ringSize={120} className="w-full max-w-sm border-primary/25 shadow-lg" />
-      ) : (
-        <div className="relative flex h-36 w-36 items-center justify-center">
-          <svg className="absolute inset-0" viewBox="0 0 144 144" aria-hidden>
-            <circle cx="72" cy="72" r="64" fill="none" stroke="var(--secondary)" strokeWidth="8" />
-            <circle
-              cx="72"
-              cy="72"
-              r="64"
-              fill="none"
-              stroke="var(--primary)"
-              strokeWidth="8"
-              strokeLinecap="round"
-              strokeDasharray={`${(score / 100) * 402} 402`}
-              transform="rotate(-90 72 72)"
-            />
-          </svg>
-          <div className="text-center">
-            <span className="text-3xl font-bold text-foreground" style={{ fontFamily: "var(--font-heading)" }}>
-              {score}%
-            </span>
-            <span className="block text-xs text-muted-foreground">Form Score</span>
-          </div>
-        </div>
-      )}
-      {repScores.length > 0 && (
-        <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
-          <CoachRepTimeline
-            repScores={repScores}
-            selectedRep={selectedRecapRep}
-            onRepSelect={(i) => setSelectedRecapRep(i)}
-            label="Set recap · tap a rep"
-            repTraces={repTracesRef.current.length ? repTracesRef.current : undefined}
-          />
-        </div>
-      )}
-      {selectedSpecId ? (
-        <div className="w-full max-w-sm">
-          <ExerciseBodyPreview exerciseId={selectedSpecId} autoEnable />
-        </div>
-      ) : null}
-      </CueFocusProvider>
-      <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
-        <div className="rounded-xl border border-border bg-card p-3">
-          <StatDisplay size="md" eyebrow="Total reps" value={reps} />
-        </div>
-        <div className="rounded-xl border border-border bg-card p-3">
-          <StatDisplay size="md" eyebrow="Avg rep quality" value={`${avgRepScore}%`} />
-        </div>
-        {repScores.length > 0 && (
-          <>
-            <div className="rounded-xl border border-border bg-card p-3">
-              <StatDisplay size="md" eyebrow="Best rep" value={`${Math.max(...repScores)}%`} />
-            </div>
-            <div className="rounded-xl border border-border bg-card p-3">
-              <StatDisplay size="md" eyebrow="High-form reps" value={repScores.filter((s) => s >= 80).length} />
-            </div>
-          </>
-        )}
-      </div>
-      {sessionDna != null ? (
-        <CoachFinishShareBar
-          savedSessionId={finishShareSessionId}
-          pngPayload={{
-            exercise: sessionDna.exercise,
-            reps: sessionDna.reps,
-            score: sessionDna.score,
-            effectiveReps: sessionDna.effectiveReps,
-            repScores: sessionDna.repScores,
-            verifiedMovement: sessionDna.verifiedMovement,
-            faceVerifiedSession: sessionDna.faceVerifiedSession,
-            topFaults: aggregateTopFaults(repTracesRef.current, 3),
-          }}
-          onRequestAiReview={
-            replayTarget.sessionId || replayTarget.clipId ? () => setReplayOpen(true) : undefined
-          }
-        />
-      ) : null}
-      {guestMode && sessionDna != null && reps > 0 ? (
-        <Alert className="w-full max-w-sm border-primary/35 bg-primary/5">
-          <Shield className="h-4 w-4 text-primary" aria-hidden />
-          <AlertTitle>Save Session DNA</AlertTitle>
-          <AlertDescription className="grid gap-3">
-            <p className="text-sm leading-snug">
-              Sessions stay on-device as a guest — sign up to persist proof in the cloud, share Session DNA cards, and run cross-device
-              Arena duels.
-            </p>
-            {onRequestSignIn ? (
-              <Button type="button" className="w-full" size="sm" onClick={() => onRequestSignIn()}>
-                Create free account / Sign in
-              </Button>
-            ) : null}
-          </AlertDescription>
-        </Alert>
-      ) : null}
-      {sessionDna != null && onNavigate ? (
-        <div className="flex w-full max-w-sm flex-col gap-2">
-          <p className="text-center text-typo-eyebrow font-bold uppercase tracking-[0.2em] text-muted-foreground">
-            What&apos;s next
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              disabled={!(replayTarget.sessionId || replayTarget.clipId)}
-              onClick={() => setReplayOpen(true)}
-              title={
-                replayTarget.sessionId || replayTarget.clipId
-                  ? "Open clip & optional AI frame review"
-                  : "Replay needs a locally saved clip."
+      <CoachWorkoutComplete
+        streakDays={streakDays}
+        guest={guestMode}
+        exerciseName={exerciseName}
+        reps={reps}
+        formPct={finalScore}
+        qualityPct={avgRepScore}
+        formScore={finalScore}
+        encouragement={feedback[0] ?? "Great effort! Keep practising for even better form."}
+        zeroRepsWarning={
+          sessionDna == null && !(replayTarget.sessionId || replayTarget.clipId)
+            ? `${reps} reps recorded. Complete reps with camera on, then tap End session to save a replay.`
+            : null
+        }
+        askCoachSlot={
+          selectedSpecId ? (
+            <AICoachLlmPanel
+              exerciseId={selectedSpecId}
+              exerciseName={exerciseName}
+              reps={reps}
+              score={Math.round(score)}
+              repScores={repScores}
+              feedback={feedback}
+              breakdown={recapBreakdown.length ? recapBreakdown : breakdown}
+              exerciseTips={resolvedExerciseTips}
+              sessionDnaSummary={
+                sessionDna
+                  ? {
+                      effectiveReps: sessionDna.effectiveReps,
+                      verifiedMovement: sessionDna.verifiedMovement,
+                      faceVerifiedSession: sessionDna.faceVerifiedSession,
+                    }
+                  : null
               }
-              className={`flex min-h-[4.75rem] flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-center text-typo-eyebrow font-bold uppercase leading-tight tracking-tight transition-colors disabled:opacity-45 ${
-                replayTarget.sessionId || replayTarget.clipId
-                  ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
-                  : "border-border bg-secondary/35 text-muted-foreground"
-              }`}
-            >
-              <Play className="h-4 w-4 shrink-0" aria-hidden />
-              <span className="text-[0.62rem] sm:text-[0.65rem]">Replay</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleOpenCompareSheet()}
-              disabled={sessionDna == null}
-              className="flex min-h-[4.75rem] flex-col items-center justify-center gap-1 rounded-xl border border-border bg-secondary/55 px-2 py-2 text-center text-typo-eyebrow font-bold uppercase leading-tight tracking-tight transition-colors hover:bg-secondary/75 disabled:opacity-45 dark:border-white/10"
-              title="Same-movement deltas vs your last saved session"
-            >
-              <Columns2 className="h-4 w-4 shrink-0" aria-hidden />
-              <span className="text-[0.62rem] sm:text-[0.65rem]">Compare</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleOpenArenaFromRecap()}
-              title="Opens Arena prefilled with this lift"
-              className="flex min-h-[4.75rem] flex-col items-center justify-center gap-1 rounded-xl border border-metric-streak/45 bg-metric-streak/10 px-2 py-2 text-center text-typo-eyebrow font-bold uppercase leading-tight tracking-tight transition-colors hover:bg-metric-streak/15 dark:border-white/10"
-            >
-              <Swords className="h-4 w-4 shrink-0 text-metric-streak" aria-hidden />
-              <span className="text-[0.62rem] sm:text-[0.65rem] text-foreground">Duel</span>
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={() => onNavigate("home")}
-            className="text-xs font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
-          >
-            Home &amp; wearable vitals →
-          </button>
-          {replayTarget.sessionId || replayTarget.clipId ? (
-            <p className="px-1 text-center text-[11px] leading-snug text-muted-foreground">
-              Inside Replay ·{" "}
-              <strong className="font-semibold text-foreground/90">Get AI review</strong> pulls key poses (needs{" "}
-              <code className="rounded bg-muted px-1">OPENAI_API_KEY</code> server-side).
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      {sessionDna != null && !(replayTarget.sessionId || replayTarget.clipId) ? (
-        <p className="w-full max-w-sm text-center text-[11px] leading-snug text-muted-foreground px-2">
-          {isCoachReplayLocalEnabled() ? (
-            <>
-              {t("coach.noReplayClipBody")}{" "}
-              <Link
-                href="/privacy#coach-replay-and-ai"
-                className="font-semibold text-foreground/90 underline underline-offset-2 hover:text-foreground"
+              repScoreStats={
+                repScores.length
+                  ? {
+                      min: Math.min(...repScores),
+                      max: Math.max(...repScores),
+                      avg: Math.round(repScores.reduce((a, b) => a + b, 0) / repScores.length),
+                    }
+                  : null
+              }
+              sessionPhase="completed"
+              variant="coach-dark"
+            />
+          ) : null
+        }
+        extrasSlot={
+          <>
+            {recapIsPr ? (
+              <div
+                className="rounded-2xl border px-4 py-2.5 text-center text-sm font-bold uppercase tracking-[0.2em]"
+                style={{ borderColor: COACH_FORM.accentBorder, color: COACH_FORM.accent, backgroundColor: COACH_FORM.accentDim }}
               >
-                {t("coach.recapReplayPrivacyLink")}
-              </Link>
-              .
-            </>
-          ) : (
-            <>
-              Turn on <strong className="font-semibold">Record coach set clips</strong> under Profile → Settings to save your set video for replay and AI review.
-            </>
-          )}
-        </p>
-      ) : null}
-      {sessionDna == null && !(replayTarget.sessionId || replayTarget.clipId) ? (
-        <p className="w-full max-w-sm text-center text-[11px] leading-snug text-amber-700 dark:text-amber-300/90 px-2 rounded-lg border border-amber-500/25 bg-amber-500/10 py-2">
-          This recap has <strong className="font-semibold">0 reps</strong>, so nothing was saved and there is no replay clip. Start again, complete reps while the camera is on, then tap <strong className="font-semibold">End session</strong> —{" "}
-          <strong className="font-semibold">Replay set</strong> shows up when a clip was recorded.
-        </p>
-      ) : null}
-      <div className="w-full max-w-sm space-y-2">
-        <h3 className="text-sm font-semibold text-foreground">Coach feedback</h3>
-        {feedback.map((item, i) => (
-          <div key={i} className="flex items-start gap-3 rounded-xl bg-card p-3 border border-border">
-            <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-            <span className="text-sm text-foreground">{item}</span>
-          </div>
-        ))}
-      </div>
-      {selectedSpecId && (
-        <AICoachLlmPanel
-          exerciseId={selectedSpecId}
-          exerciseName={exerciseName}
-          reps={reps}
-          score={Math.round(score)}
-          repScores={repScores}
-          feedback={feedback}
-          breakdown={recapBreakdown.length ? recapBreakdown : breakdown}
-          exerciseTips={resolvedExerciseTips}
-          sessionDnaSummary={
-            sessionDna
-              ? {
+                Personal record
+              </div>
+            ) : null}
+            {sessionDna != null ? <SessionDnaCard {...sessionDna} ringSize={120} className="border-white/10" /> : null}
+            {sessionDna != null ? (
+              <CoachFinishShareBar
+                savedSessionId={finishShareSessionId}
+                pngPayload={{
+                  exercise: sessionDna.exercise,
+                  reps: sessionDna.reps,
+                  score: sessionDna.score,
                   effectiveReps: sessionDna.effectiveReps,
+                  repScores: sessionDna.repScores,
                   verifiedMovement: sessionDna.verifiedMovement,
                   faceVerifiedSession: sessionDna.faceVerifiedSession,
+                  topFaults: aggregateTopFaults(repTracesRef.current, 3),
+                }}
+                onRequestAiReview={
+                  replayTarget.sessionId || replayTarget.clipId ? () => setReplayOpen(true) : undefined
                 }
-              : null
-          }
-          repScoreStats={
-            repScores.length
-              ? {
-                  min: Math.min(...repScores),
-                  max: Math.max(...repScores),
-                  avg: Math.round(repScores.reduce((a, b) => a + b, 0) / repScores.length),
-                }
-              : null
-          }
-          sessionPhase="completed"
-        />
-      )}
-      <div className="flex gap-3 w-full max-w-sm">
-        <button
-          onClick={() => {
-            void clipRecorderRef.current?.stop?.().catch(() => {})
-            clipRecorderRef.current = null
-            activeClipIdRef.current = null
-            setReplayOpen(false)
-            setReplayTarget({ sessionId: null, clipId: null })
-            setCompareOpen(false)
-            setCompareBaseline(null)
-            setCompareCurrent(null)
-            setSessionDna(null)
-            setRecapIsPr(false)
-            setFinishShareSessionId(null)
-            repTracesRef.current = []
-            lastBottomTraceRef.current = null
-            setState("setup")
-            setReps(0)
-            setRepScores([])
-            setFeedback([])
-            setBreakdown([])
-            setRecapBreakdown([])
-            setSelectedRecapRep(null)
-            setScore(100)
-          }}
-          className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-secondary py-3 text-sm font-medium text-secondary-foreground transition-all hover:bg-secondary/80"
-        >
-          <RotateCcw className="h-4 w-4" />
-          Try Again
-        </button>
-        <button onClick={handleReset} className="flex-1 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary/90">
-          New Exercise
-        </button>
-      </div>
-    </div>
+              />
+            ) : null}
+          </>
+        }
+        onTryAgain={tryAgain}
+        onNewExercise={handleReset}
+      />
     <Sheet open={compareOpen} onOpenChange={setCompareOpen}>
       <SheetContent side="bottom" className="max-h-[min(88vh,720px)] overflow-y-auto rounded-t-3xl">
         <SheetHeader>

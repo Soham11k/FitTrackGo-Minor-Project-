@@ -1,54 +1,9 @@
 "use client"
 
-import { ChevronLeft, ChevronRight, Flame, Sparkles } from "lucide-react"
-import { EcgMark } from "@/components/chrome/EcgMark"
+import { ChevronLeft, Play, Plus } from "lucide-react"
 import { WORKOUTS, difficultyStyle } from "@/lib/workouts-theme"
 
 export { WORKOUTS }
-
-export function WorkoutsHeader({
-  guest,
-  streakDays = 0,
-}: {
-  guest?: boolean
-  streakDays?: number
-}) {
-  return (
-    <header
-      className="flex items-center justify-between px-5 py-3"
-      style={{
-        backgroundColor: WORKOUTS.black,
-        paddingTop: "max(0.75rem, env(safe-area-inset-top))",
-      }}
-    >
-      <div className="flex items-center gap-1.5">
-        <EcgMark size={14} animate color={WORKOUTS.accent} />
-        <span
-          className="text-[11px] font-black uppercase tracking-[0.28em]"
-          style={{ color: WORKOUTS.white }}
-        >
-          FitTrack
-        </span>
-      </div>
-      <div className="flex items-center gap-2">
-        {guest && (
-          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: WORKOUTS.muted }}>
-            Guest
-          </span>
-        )}
-        {streakDays > 0 && (
-          <span
-            className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.04em] text-white"
-            style={{ backgroundColor: WORKOUTS.accent }}
-          >
-            <Flame className="h-3 w-3" aria-hidden />
-            {streakDays}D Streak
-          </span>
-        )}
-      </div>
-    </header>
-  )
-}
 
 export function WorkoutsFilterChip({
   label,
@@ -83,7 +38,7 @@ export function WorkoutsDifficultyBadge({ level }: { level: string }) {
   const style = difficultyStyle(level)
   return (
     <span
-      className="shrink-0 rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.06em]"
+      className="inline-flex w-fit rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.06em]"
       style={{
         color: style.color,
         backgroundColor: style.backgroundColor,
@@ -95,48 +50,20 @@ export function WorkoutsDifficultyBadge({ level }: { level: string }) {
   )
 }
 
-export function WorkoutsSectionLabel({ count }: { count: number }) {
-  return (
-    <div className="flex items-center justify-between px-1 pb-2 pt-1">
-      <p className="text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: WORKOUTS.muted }}>
-        Workouts
-      </p>
-      <p className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: WORKOUTS.muted }}>
-        {count} total
-      </p>
-    </div>
-  )
-}
-
-export function WorkoutsAICard({ onClick }: { onClick: () => void }) {
+export function WorkoutsCustomExerciseCta({ onClick }: { onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="relative w-full overflow-hidden rounded-2xl px-4 py-4 text-left transition-opacity hover:opacity-95 active:scale-[0.99]"
+      className="flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-3.5 text-[11px] font-black uppercase tracking-[0.1em] transition-opacity hover:opacity-90 active:scale-[0.99]"
       style={{
-        backgroundColor: WORKOUTS.accentBanner,
-        border: `1px solid ${WORKOUTS.accentBorder}`,
+        borderColor: WORKOUTS.accent,
+        color: WORKOUTS.accent,
+        backgroundColor: "transparent",
       }}
     >
-      <div
-        className="pointer-events-none absolute inset-0 opacity-30"
-        style={{
-          backgroundImage:
-            "linear-gradient(135deg, rgba(255,59,48,0.25) 0%, transparent 45%), repeating-linear-gradient(45deg, rgba(255,59,48,0.06) 0 2px, transparent 2px 14px)",
-        }}
-        aria-hidden
-      />
-      <div className="relative flex items-center gap-3">
-        <Sparkles className="h-4 w-4 shrink-0" style={{ color: WORKOUTS.accent }} aria-hidden />
-        <span
-          className="min-w-0 flex-1 text-[11px] font-black uppercase leading-snug tracking-[0.1em]"
-          style={{ color: WORKOUTS.white }}
-        >
-          Create custom exercise for AI Coach
-        </span>
-        <ChevronRight className="h-4 w-4 shrink-0" style={{ color: WORKOUTS.muted }} aria-hidden />
-      </div>
+      <Plus className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
+      Custom exercise for AI Coach
     </button>
   )
 }
@@ -151,7 +78,10 @@ export function WorkoutsDetailTopBar({
   onToggleFavorite?: () => void
 }) {
   return (
-    <div className="flex items-center justify-between px-4 py-3">
+    <div
+      className="flex items-center justify-between px-4 py-3"
+      style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
+    >
       <button
         type="button"
         onClick={onBack}
@@ -208,16 +138,16 @@ export function WorkoutsWithAIBadge({ active = false }: { active?: boolean }) {
 
 export function WorkoutsMetricGrid({
   exercises,
-  duration,
+  durationMin,
   calories,
 }: {
   exercises: number | string
-  duration: string
+  durationMin: number | string
   calories: number | string
 }) {
   const stats = [
     { value: exercises, label: "Exercises" },
-    { value: duration, label: "Minutes" },
+    { value: `${durationMin} M`, label: "Duration" },
     { value: calories, label: "Calories" },
   ]
 
@@ -233,8 +163,8 @@ export function WorkoutsMetricGrid({
           style={i < stats.length - 1 ? { borderRight: `1px solid ${WORKOUTS.cardBorder}` } : undefined}
         >
           <span
-            className="block text-xl font-black tabular-nums leading-none"
-            style={{ color: WORKOUTS.white }}
+            className="block text-xl font-black tabular-nums leading-none uppercase"
+            style={{ color: WORKOUTS.white, fontFamily: "var(--font-display), var(--font-heading), sans-serif" }}
           >
             {stat.value}
           </span>
@@ -243,6 +173,60 @@ export function WorkoutsMetricGrid({
           </p>
         </div>
       ))}
+    </div>
+  )
+}
+
+export function WorkoutsStartButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-black uppercase tracking-[0.1em] transition-opacity hover:opacity-90 active:scale-[0.98]"
+      style={{ backgroundColor: WORKOUTS.accent, color: WORKOUTS.white }}
+    >
+      <Play className="h-4 w-4 shrink-0 fill-current" aria-hidden />
+      Start workout
+    </button>
+  )
+}
+
+export function WorkoutsBodyCheckBanner({
+  onEnable,
+  loading,
+}: {
+  onEnable: () => void
+  loading?: boolean
+}) {
+  return (
+    <div
+      className="mx-4 mt-5 flex items-center gap-3 rounded-2xl border px-4 py-3.5"
+      style={{ backgroundColor: WORKOUTS.card, borderColor: WORKOUTS.cardBorder }}
+    >
+      <div
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+        style={{ backgroundColor: WORKOUTS.accentDim, border: `1px solid ${WORKOUTS.accentBorder}` }}
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke={WORKOUTS.accent} strokeWidth={2} aria-hidden>
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+          <circle cx="12" cy="13" r="4" />
+        </svg>
+      </div>
+      <p className="min-w-0 flex-1 text-xs leading-snug" style={{ color: WORKOUTS.muted }}>
+        <span className="font-bold" style={{ color: WORKOUTS.white }}>
+          Body check:
+        </span>{" "}
+        Preview your position with live body tracking
+      </p>
+      <button
+        type="button"
+        onClick={onEnable}
+        disabled={loading}
+        className="shrink-0 rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.08em] disabled:opacity-50"
+        style={{ backgroundColor: WORKOUTS.white, color: "#111111" }}
+      >
+        {loading ? "…" : "Enable"}
+      </button>
     </div>
   )
 }

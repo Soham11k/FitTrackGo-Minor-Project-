@@ -1,7 +1,8 @@
 "use client"
 
 import { motion, useReducedMotion } from "framer-motion"
-import { CHROME, ECG_PATH } from "@/lib/app-chrome"
+import { ECG_PATH } from "@/lib/app-chrome"
+import { CHROME_ACCENT } from "@/lib/chrome-accent"
 
 interface EcgMarkProps {
   size?: number
@@ -14,7 +15,7 @@ interface EcgMarkProps {
  * Animated ECG / heartbeat SVG mark.
  * Static when prefers-reduced-motion is set.
  */
-export function EcgMark({ size = 20, color = CHROME.orange, animate = true }: EcgMarkProps) {
+export function EcgMark({ size = 20, color = CHROME_ACCENT.accent, animate = true }: EcgMarkProps) {
   const reduce = useReducedMotion() ?? false
 
   if (!animate || reduce) {

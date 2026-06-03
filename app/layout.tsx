@@ -110,6 +110,7 @@ export default async function RootLayout({
     <html
       lang={locale}
       dir={dir}
+      data-accent="athletic"
       className={`${inter.variable} ${spaceGrotesk.variable} ${bebasNeue.variable} min-h-dvh`}
       suppressHydrationWarning
     >
@@ -139,7 +140,7 @@ export default async function RootLayout({
           nonce={nonce}
           suppressHydrationWarning
           dangerouslySetInnerHTML={{
-            __html: `(function(){var k='fittrackgo_accent';var v=localStorage.getItem(k);var o=['volt','green','blue','purple','orange','rose'];var a=o.indexOf(v)!==-1?v:'volt';document.documentElement.setAttribute('data-accent',a);})();`,
+            __html: `(function(){var k='fittrackgo_accent';var v=localStorage.getItem(k);var o=['athletic','volt','green','blue','purple','orange','rose'];var a=o.indexOf(v)!==-1?v:'athletic';document.documentElement.setAttribute('data-accent',a);})();`,
           }}
         />
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>

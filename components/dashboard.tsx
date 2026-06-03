@@ -51,10 +51,12 @@ function formatSleepShort(min: number) {
 
 export function Dashboard({
   isActive = true,
+  guestMode = false,
   onNavigate,
   onMobilityCoachIntent,
 }: {
   isActive?: boolean
+  guestMode?: boolean
   onNavigate: (tab: TabId) => void
   onViewAll?: () => void
   onEnterCoachFocus?: () => void
@@ -335,7 +337,7 @@ export function Dashboard({
   }
 
   return (
-    <DataScreen className="gap-0 p-0 pt-0">
+    <DataScreen className="gap-0 bg-black p-0 pt-0">
       <PwaInstallPrompt />
       {/* Hidden — keeps readiness polling + callback alive */}
       <div className="sr-only" aria-hidden>
@@ -348,6 +350,7 @@ export function Dashboard({
       </div>
 
       <HomeScreen
+        guest={guestMode}
         loadError={loadError}
         onRetry={() => setRetryBump((n) => n + 1)}
         greeting={greeting}
@@ -384,8 +387,6 @@ export function Dashboard({
         bestCoachScore={bestCoachScore}
         streak={stats.streak}
         avgPace={personalBests.fastestPace}
-        heartBpm={heartBpm}
-        restingHr={restingHr}
         sleepTotalMin={effectiveSleepMin}
         sleepGoalMin={480}
         fourWeekTrend={fourWeekTrend}

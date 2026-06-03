@@ -24,6 +24,7 @@ import {
   Footprints,
   CalendarDays,
   AlertTriangle,
+  Palette,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import type { UserProfile, RunRecord, WorkoutRecord, CoachRecord } from "@/lib/store"
@@ -33,10 +34,11 @@ import { getSupabaseSqlEditorUrl } from "@/lib/supabase/config"
 import { getFaq, getAchievements, siteConfig, type AchievementDef } from "@/lib/data"
 import { ContactForm } from "@/components/contact-form"
 import { CHROME } from "@/lib/app-chrome"
-import { ChromeHeader } from "@/components/chrome/ChromeHeader"
-import { CreamCard } from "@/components/chrome/CreamCard"
+import { CHROME_ACCENT } from "@/lib/chrome-accent"
+import { CoachFormHeader } from "@/components/ai-coach/coach-form-ui"
 import { DarkCard } from "@/components/chrome/DarkCard"
 import { SectionEyebrow } from "@/components/chrome/SectionEyebrow"
+import { cn } from "@/lib/utils"
 import { formatLoad } from "@/lib/weight/units"
 import { LanguageSelector } from "@/components/language-selector"
 import { UnitSelector } from "@/components/unit-selector"
@@ -62,14 +64,51 @@ import { fetchUserClipKeyRow } from "@/lib/user-clip-keys-supabase"
 import { rollingLocalDayWindows } from "@/lib/wearables/local-day-windows"
 import { PassphraseSetupDialog } from "@/components/encryption/passphrase-setup"
 import { InlineScreenSkeleton } from "@/components/brand/inline-screen-skeleton"
+import { ThemeStudio } from "@/components/theme/theme-studio"
+
+const PROFILE = {
+  bg: CHROME.homeBlack,
+  card: CHROME.homeCard,
+  accent: CHROME_ACCENT.accent,
+  accentDim: CHROME_ACCENT.accentDim,
+  accentBorder: CHROME_ACCENT.accentBorder,
+  text: CHROME.white,
+  muted: "rgba(255,255,255,0.45)",
+  border: "rgba(255,255,255,0.08)",
+  displayFont: CHROME.homeDisplayFont,
+  labelFont: CHROME.homeLabelFont,
+} as const
+
+function ProfileCard({
+  children,
+  className,
+  delay = 0,
+  noAnimation = false,
+}: {
+  children: React.ReactNode
+  className?: string
+  delay?: number
+  noAnimation?: boolean
+}) {
+  return (
+    <DarkCard
+      delay={delay}
+      noAnimation={noAnimation}
+      className={cn("!rounded-[1.35rem] !border-0 !bg-[#121212] !p-4", className)}
+    >
+      {children}
+    </DarkCard>
+  )
+}
 
 const menuItems = [
-  { icon: Bell, label: "Notifications", action: "notifications" },
-  { icon: Moon, label: "Dark mode", action: "theme", toggle: true },
-  { icon: Shield, label: "Privacy", action: "privacy" },
-  { icon: FileText, label: "Terms of service", action: "terms" },
-  { icon: HelpCircle, label: "Help & support", action: "help" },
-  { icon: Settings, label: "App settings", action: "settings" },
+  { icon: Palette, label: "Appearance", action: "appearance", color: "#ec4899" },
+  { icon: Bell, label: "Notifications", action: "notifications", color: PROFILE.accent },
+  { icon: Moon, label: "Dark mode", action: "theme", toggle: true, color: PROFILE.accent },
+  { icon: Shield, label: "Privacy", action: "privacy", color: "#3b82f6" },
+  { icon: FileText, label: "Terms of service", action: "terms", color: "#eab308" },
+  { icon: HelpCircle, label: "Help & support", action: "help", color: "#a855f7" },
+  { icon: Settings, label: "App settings", action: "settings", color: PROFILE.muted },
 ]
 
 const LEVEL_LABELS: Record<UserProfile["level"], string> = {
@@ -136,8 +175,8 @@ function GoalBar({
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold" style={{ color: CHROME.text }}>{label}</p>
-        <p className="text-[10px] font-bold tabular-nums" style={{ color: CHROME.muted }}>{detail}</p>
+        <p className="text-xs font-semibold" style={{ color: PROFILE.text }}>{label}</p>
+        <p className="text-[10px] font-bold tabular-nums" style={{ color: PROFILE.muted }}>{detail}</p>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full" style={{ backgroundColor: `${color}18` }}>
         <motion.div
@@ -168,7 +207,7 @@ export function ProfileScreen({
 }) {
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState("")
-  const [panel, setPanel] = useState<"notifications" | "support" | "settings" | null>(null)
+  const [panel, setPanel] = useState<"appearance" | "notifications" | "support" | "settings" | null>(null)
   const { theme, setTheme } = useTheme()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [userEmail, setUserEmail] = useState<string>("")
@@ -606,6 +645,10 @@ export function ProfileScreen({
       toast.success(theme === "dark" ? "Switched to light mode" : "Switched to dark mode")
       return
     }
+    if (action === "appearance") {
+      setPanel("appearance")
+      return
+    }
     if (action === "notifications") {
       setPanel("notifications")
       return
@@ -630,7 +673,7 @@ export function ProfileScreen({
 
   if (loading) {
     return (
-      <div className="px-4 pt-4 pb-28">
+      <div className="min-h-dvh px-4 pt-4 pb-28" style={{ backgroundColor: PROFILE.bg }}>
         <InlineScreenSkeleton
           label="Loading profile…"
           hint="Preparing your metrics, privacy settings, and connected services."
@@ -754,28 +797,15 @@ export function ProfileScreen({
   }
 
   return (
-    <div className="flex min-h-dvh flex-col" style={{ backgroundColor: CHROME.cream }} data-testid="screen-profile">
-      <div style={{ backgroundColor: CHROME.black }}>
-        <ChromeHeader
-          right={
-            stats.streak > 0 ? (
-              <span
-                className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-bold capitalize text-white"
-                style={{ backgroundColor: CHROME.orange }}
-              >
-                <Flame className="h-3.5 w-3.5" aria-hidden />
-                {stats.streak} streak
-              </span>
-            ) : null
-          }
-        />
+    <div className="flex min-h-dvh flex-col" style={{ backgroundColor: PROFILE.bg }} data-testid="screen-profile">
+      <CoachFormHeader streakDays={stats.streak} />
 
         <div className="px-4 pb-5">
-          <DarkCard noAnimation className="!rounded-[1.35rem] !p-4">
+          <DarkCard noAnimation className="!rounded-[1.35rem] !border-0 !bg-[#121212] !p-4">
             <div className="flex items-start gap-3.5">
               <div
-                className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-2xl text-3xl font-black"
-                style={{ backgroundColor: CHROME.orange, color: CHROME.white }}
+                className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-2xl text-3xl font-black uppercase"
+                style={{ backgroundColor: PROFILE.accent, color: PROFILE.text, fontFamily: PROFILE.displayFont }}
               >
                 {profileInitial}
               </div>
@@ -789,7 +819,7 @@ export function ProfileScreen({
                       onChange={(e) => setNameInput(e.target.value)}
                       placeholder={displayName}
                       className="w-full rounded-xl border px-3 py-2 text-sm"
-                      style={{ backgroundColor: CHROME.focusBg, borderColor: CHROME.border, color: CHROME.white }}
+                      style={{ backgroundColor: CHROME.focusBg, borderColor: PROFILE.border, color: PROFILE.text }}
                       autoFocus
                       onKeyDown={(e) => {
                         if (e.key === "Enter") void handleSaveName()
@@ -804,7 +834,7 @@ export function ProfileScreen({
                         type="button"
                         onClick={() => void handleSaveName()}
                         className="rounded-xl px-3 py-1.5 text-xs font-bold text-white"
-                        style={{ backgroundColor: CHROME.orange }}
+                        style={{ backgroundColor: PROFILE.accent }}
                       >
                         Save
                       </button>
@@ -815,7 +845,7 @@ export function ProfileScreen({
                           setNameInput("")
                         }}
                         className="text-xs"
-                        style={{ color: CHROME.muted }}
+                        style={{ color: PROFILE.muted }}
                       >
                         Cancel
                       </button>
@@ -824,12 +854,12 @@ export function ProfileScreen({
                 ) : (
                   <>
                     <h2
-                      className="text-[1.35rem] font-black leading-tight text-white"
-                      style={{ fontFamily: "var(--font-display),var(--font-heading)" }}
+                      className="text-[1.35rem] font-black uppercase leading-tight text-white"
+                      style={{ fontFamily: PROFILE.displayFont }}
                     >
                       {displayName}
                     </h2>
-                    <p className="mt-0.5 text-[11px]" style={{ color: CHROME.muted }}>
+                    <p className="mt-0.5 text-[11px]" style={{ color: PROFILE.muted }}>
                       {userEmail || `Member since ${joinYear}`}
                     </p>
                   </>
@@ -839,11 +869,12 @@ export function ProfileScreen({
                   {profileTags.map((tag) => (
                     <span
                       key={tag}
-                      className="rounded-full px-2.5 py-1 text-[10px] font-bold capitalize"
+                      className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em]"
                       style={{
-                        color: CHROME.orange,
-                        backgroundColor: `${CHROME.orange}12`,
-                        border: `1px solid ${CHROME.orange}35`,
+                        color: tag === goalShortLabel(profile?.goals[0] ?? "") ? PROFILE.accent : PROFILE.text,
+                        backgroundColor: "rgba(255,255,255,0.06)",
+                        border: `1px solid ${PROFILE.border}`,
+                        fontFamily: PROFILE.labelFont,
                       }}
                     >
                       {tag}
@@ -860,18 +891,17 @@ export function ProfileScreen({
                   setNameInput(profile?.name || "")
                 }}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-                style={{ backgroundColor: CHROME.focusBg, border: `1px solid ${CHROME.border}` }}
+                style={{ backgroundColor: CHROME.focusBg, border: `1px solid ${PROFILE.border}` }}
               >
-                <Pencil className="h-4 w-4" style={{ color: CHROME.white }} />
+                <Pencil className="h-4 w-4" style={{ color: PROFILE.text }} />
               </button>
             </div>
           </DarkCard>
         </div>
-      </div>
 
-      <div className="flex flex-col gap-5 px-4 pt-4 pb-28">
+      <div className="flex flex-col gap-5 px-4 pt-1 pb-28">
         <section>
-          <SectionEyebrow>Fitness summary</SectionEyebrow>
+          <SectionEyebrow light>Fitness summary</SectionEyebrow>
           <div className="grid grid-cols-2 gap-2.5">
             {(
               [
@@ -880,7 +910,7 @@ export function ProfileScreen({
                   value: String(totalSessions),
                   sub: "",
                   icon: Activity,
-                  color: CHROME.orange,
+                  color: PROFILE.accent,
                   trend: sessionTrend.text,
                   trendTone: sessionTrend.tone,
                 },
@@ -898,7 +928,7 @@ export function ProfileScreen({
                   value: `${stats.streak}d`,
                   sub: "",
                   icon: Flame,
-                  color: CHROME.orange,
+                  color: PROFILE.accent,
                   trend: stats.streak > 1 ? "+1" : "—",
                   trendTone: stats.streak > 1 ? ("up" as const) : ("neutral" as const),
                 },
@@ -913,7 +943,7 @@ export function ProfileScreen({
                 },
               ] as const
             ).map((m, i) => (
-              <CreamCard key={m.label} delay={i * 0.05} className="!p-3.5">
+              <ProfileCard key={m.label} delay={i * 0.05} className="!p-3.5">
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <div
                     className="flex h-7 w-7 items-center justify-center rounded-lg"
@@ -929,7 +959,7 @@ export function ProfileScreen({
                           ? CHROME.gpsGreen
                           : m.trendTone === "down"
                             ? CHROME.hrRed
-                            : CHROME.muted,
+                            : PROFILE.muted,
                     }}
                   >
                     {m.trend}
@@ -937,30 +967,30 @@ export function ProfileScreen({
                 </div>
                 <p
                   className="text-[1.65rem] font-black leading-none tabular-nums"
-                  style={{ color: CHROME.text, fontFamily: "var(--font-display),var(--font-heading)" }}
+                  style={{ color: PROFILE.text, fontFamily: PROFILE.displayFont }}
                 >
                   {m.value}
                   {m.sub ? (
-                    <span className="ml-1 text-sm font-semibold" style={{ color: CHROME.muted }}>
+                    <span className="ml-1 text-sm font-semibold" style={{ color: PROFILE.muted }}>
                       {m.sub}
                     </span>
                   ) : null}
                 </p>
-                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: CHROME.muted }}>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: PROFILE.muted }}>
                   {m.label}
                 </p>
-              </CreamCard>
+              </ProfileCard>
             ))}
           </div>
 
-          <CreamCard delay={0.2} className="mt-2.5 !p-4">
+          <ProfileCard delay={0.2} className="mt-2.5 !p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="text-sm font-bold" style={{ color: CHROME.text }}>
+              <p className="text-sm font-bold" style={{ color: PROFILE.text }}>
                 This week
               </p>
               <span
                 className="rounded-full px-2.5 py-1 text-[10px] font-bold tabular-nums text-white"
-                style={{ backgroundColor: CHROME.orange }}
+                style={{ backgroundColor: PROFILE.accent }}
               >
                 {activeDays}/7 · {weekPct}%
               </span>
@@ -970,30 +1000,30 @@ export function ProfileScreen({
                 <div key={d.day} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
                   <motion.div
                     className="h-2.5 w-full rounded-full"
-                    style={{ backgroundColor: d.active ? CHROME.orange : `${CHROME.orange}22` }}
+                    style={{ backgroundColor: d.active ? PROFILE.accent : PROFILE.accentDim }}
                     initial={reduceProfileMotion ? false : { scaleX: 0 }}
                     animate={{ scaleX: 1 }}
                     transition={{ duration: 0.45, delay: i * 0.05, ease: [0.22, 1, 0.36, 1] }}
                   />
                   <p
                     className="text-[9px] font-bold uppercase"
-                    style={{ color: d.active ? CHROME.orange : CHROME.muted }}
+                    style={{ color: d.active ? PROFILE.accent : PROFILE.muted }}
                   >
                     {d.day.slice(0, 1)}
                   </p>
                 </div>
               ))}
             </div>
-          </CreamCard>
+          </ProfileCard>
         </section>
 
         <section>
-          <CreamCard delay={0.24}>
+          <ProfileCard delay={0.24}>
             <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="text-sm font-bold" style={{ color: CHROME.text }}>
+              <p className="text-sm font-bold" style={{ color: PROFILE.text }}>
                 Body goals
               </p>
-              <span className="text-sm font-black tabular-nums" style={{ color: CHROME.orange }}>
+              <span className="text-sm font-black tabular-nums" style={{ color: PROFILE.accent }}>
                 {bodyGoalsPct}%
               </span>
             </div>
@@ -1008,7 +1038,7 @@ export function ProfileScreen({
                       : "Add weight"
                 }
                 pct={weightGoalPct}
-                color={CHROME.orange}
+                color={PROFILE.accent}
                 reduceMotion={reduceProfileMotion}
               />
               <GoalBar
@@ -1028,20 +1058,20 @@ export function ProfileScreen({
                 reduceMotion={reduceProfileMotion}
               />
             </div>
-          </CreamCard>
+          </ProfileCard>
         </section>
 
         {achievements.length > 0 && (
           <section>
-            <SectionEyebrow>Achievements</SectionEyebrow>
+            <SectionEyebrow light>Achievements</SectionEyebrow>
             <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
               {achievements.map((ach, i) => (
                 <motion.div
                   key={ach.title}
                   className="flex w-[78px] shrink-0 flex-col items-center gap-1.5 rounded-2xl px-2 py-3"
                   style={{
-                    backgroundColor: ach.earned ? `${CHROME.orange}10` : CHROME.card,
-                    border: `1px solid ${ach.earned ? `${CHROME.orange}45` : CHROME.cardBorder}`,
+                    backgroundColor: ach.earned ? PROFILE.accentDim : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${ach.earned ? PROFILE.accentBorder : PROFILE.border}`,
                   }}
                   initial={reduceProfileMotion ? false : { opacity: 0, scale: 0.92 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -1055,13 +1085,13 @@ export function ProfileScreen({
         )}
 
         <section>
-          <SectionEyebrow>All-time stats</SectionEyebrow>
-          <CreamCard delay={0.28}>
+          <SectionEyebrow light>All-time stats</SectionEyebrow>
+          <ProfileCard delay={0.28}>
             <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="text-sm font-bold" style={{ color: CHROME.text }}>
+              <p className="text-sm font-bold" style={{ color: PROFILE.text }}>
                 Overview
               </p>
-              <span className="text-[10px] font-semibold" style={{ color: CHROME.muted }}>
+              <span className="text-[10px] font-semibold" style={{ color: PROFILE.muted }}>
                 {overviewMonth}
               </span>
             </div>
@@ -1092,17 +1122,17 @@ export function ProfileScreen({
               ).map((s, i) => (
                 <div key={s.label}>
                   <div className="mb-1 flex items-center justify-between gap-2">
-                    <p className="text-xs font-semibold" style={{ color: CHROME.text }}>
+                    <p className="text-xs font-semibold" style={{ color: PROFILE.text }}>
                       {s.label}
                     </p>
-                    <p className="text-xs font-bold tabular-nums" style={{ color: CHROME.orange }}>
+                    <p className="text-xs font-bold tabular-nums" style={{ color: PROFILE.accent }}>
                       {s.value}
                     </p>
                   </div>
-                  <div className="h-1 overflow-hidden rounded-full" style={{ backgroundColor: `${CHROME.orange}18` }}>
+                  <div className="h-1 overflow-hidden rounded-full" style={{ backgroundColor: PROFILE.accentDim }}>
                     <motion.div
                       className="h-full rounded-full"
-                      style={{ backgroundColor: CHROME.orange }}
+                      style={{ backgroundColor: PROFILE.accent }}
                       initial={{ width: reduceProfileMotion ? `${s.pct}%` : 0 }}
                       animate={{ width: `${s.pct}%` }}
                       transition={{ duration: 0.7, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] }}
@@ -1111,25 +1141,25 @@ export function ProfileScreen({
                 </div>
               ))}
             </div>
-          </CreamCard>
+          </ProfileCard>
         </section>
 
         <section>
-          <SectionEyebrow>Connected services</SectionEyebrow>
+          <SectionEyebrow light>Connected services</SectionEyebrow>
           <div className="space-y-2.5">
-            <CreamCard delay={0.32} className="!p-3.5">
+            <ProfileCard delay={0.32} className="!p-3.5">
               <div className="flex items-center gap-3">
                 <div
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-                  style={{ backgroundColor: `${CHROME.orange}15` }}
+                  style={{ backgroundColor: PROFILE.accentDim }}
                 >
-                  <Heart className="h-4 w-4" style={{ color: CHROME.orange }} aria-hidden />
+                  <Heart className="h-4 w-4" style={{ color: PROFILE.accent }} aria-hidden />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold" style={{ color: CHROME.text }}>
+                  <p className="text-sm font-bold" style={{ color: PROFILE.text }}>
                     Fitbit
                   </p>
-                  <p className="text-[10px]" style={{ color: CHROME.muted }}>
+                  <p className="text-[10px]" style={{ color: PROFILE.muted }}>
                     {wearableStatus?.connected
                       ? wearableStatus.lastSyncAt
                         ? `Last sync · ${new Date(wearableStatus.lastSyncAt).toLocaleDateString()}`
@@ -1150,12 +1180,12 @@ export function ProfileScreen({
                     type="button"
                     onClick={handleConnectFitbit}
                     className="shrink-0 rounded-xl px-3 py-1.5 text-[10px] font-bold text-white"
-                    style={{ backgroundColor: CHROME.orange }}
+                    style={{ backgroundColor: PROFILE.accent }}
                   >
                     Link
                   </button>
                 ) : (
-                  <span className="text-[10px]" style={{ color: CHROME.muted }}>
+                  <span className="text-[10px]" style={{ color: PROFILE.muted }}>
                     Not configured
                   </span>
                 )}
@@ -1166,15 +1196,15 @@ export function ProfileScreen({
                   onClick={() => void handleSyncFitbit()}
                   disabled={wearableSyncing}
                   className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-bold text-white disabled:opacity-50"
-                  style={{ backgroundColor: CHROME.orange }}
+                  style={{ backgroundColor: PROFILE.accent }}
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${wearableSyncing ? "animate-spin" : ""}`} />
                   Sync Fitbit
                 </button>
               ) : null}
-            </CreamCard>
+            </ProfileCard>
 
-            <CreamCard delay={0.36} className="!p-3.5">
+            <ProfileCard delay={0.36} className="!p-3.5">
               <div className="flex items-center gap-3">
                 <div
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
@@ -1183,17 +1213,17 @@ export function ProfileScreen({
                   <TrendingUp className="h-4 w-4" style={{ color: CHROME.gpsGreen }} aria-hidden />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold" style={{ color: CHROME.text }}>
+                  <p className="text-sm font-bold" style={{ color: PROFILE.text }}>
                     Google Fit
                   </p>
-                  <p className="text-[10px]" style={{ color: CHROME.muted }}>
+                  <p className="text-[10px]" style={{ color: PROFILE.muted }}>
                     Daily aggregates
                   </p>
                 </div>
                 {wearableSyncing ? (
                   <span
                     className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold"
-                    style={{ color: CHROME.orange, backgroundColor: `${CHROME.orange}12` }}
+                    style={{ color: PROFILE.accent, backgroundColor: PROFILE.accentDim }}
                   >
                     <RefreshCw className="h-3 w-3 animate-spin" />
                     Syncing
@@ -1217,18 +1247,18 @@ export function ProfileScreen({
                     Link
                   </button>
                 ) : (
-                  <span className="text-[10px]" style={{ color: CHROME.muted }}>
+                  <span className="text-[10px]" style={{ color: PROFILE.muted }}>
                     Not configured
                   </span>
                 )}
               </div>
-            </CreamCard>
+            </ProfileCard>
           </div>
         </section>
 
         <section>
-          <SectionEyebrow>Settings</SectionEyebrow>
-          <CreamCard noAnimation className="overflow-hidden !p-0">
+          <SectionEyebrow light>Settings</SectionEyebrow>
+          <ProfileCard noAnimation className="overflow-hidden !p-0">
           {menuItems.map((item, i) => (
             <motion.div
               key={item.label}
@@ -1238,13 +1268,13 @@ export function ProfileScreen({
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleMenuAction(item.action) } }}
               whileTap={reduceProfileMotion ? undefined : { scale: 0.99 }}
               className="flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 text-left transition-colors"
-              style={{ borderBottom: i < menuItems.length - 1 ? `1px solid ${CHROME.cardBorder}` : "none" }}
+              style={{ borderBottom: i < menuItems.length - 1 ? `1px solid ${PROFILE.border}` : "none" }}
             >
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
-                style={{ backgroundColor: `${CHROME.orange}12` }}>
-                <item.icon className="h-4 w-4" style={{ color: CHROME.orange }} />
+                style={{ backgroundColor: `${item.color}18` }}>
+                <item.icon className="h-4 w-4" style={{ color: item.color }} />
               </div>
-              <span className="flex-1 text-sm font-medium" style={{ color: CHROME.text }}>{item.label}</span>
+              <span className="flex-1 text-sm font-medium" style={{ color: PROFILE.text }}>{item.label}</span>
               {item.toggle ? (
                 <div
                   role="switch"
@@ -1253,34 +1283,41 @@ export function ProfileScreen({
                   onClick={(e) => { e.stopPropagation(); setTheme(theme === "dark" ? "light" : "dark"); toast.success(theme === "dark" ? "Light mode" : "Dark mode") }}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); setTheme(theme === "dark" ? "light" : "dark") } }}
                   className="relative h-6 w-11 cursor-pointer rounded-full transition-colors"
-                  style={{ backgroundColor: theme === "dark" ? CHROME.orange : `${CHROME.muted}50` }}
+                  style={{ backgroundColor: theme === "dark" ? PROFILE.accent : "rgba(255,255,255,0.15)" }}
                 >
                   <div className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
                     style={{ transform: theme === "dark" ? "translateX(20px)" : "translateX(2px)" }} />
                 </div>
               ) : (
-                <ChevronRight className="h-4 w-4" style={{ color: CHROME.muted }} />
+                <ChevronRight className="h-4 w-4" style={{ color: PROFILE.muted }} />
               )}
             </motion.div>
           ))}
-          </CreamCard>
+          </ProfileCard>
         </section>
 
         {/* Settings panel (notifications / support / settings) */}
         {panel && (
-          <CreamCard noAnimation className="overflow-hidden !p-0">
-            <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: `1px solid ${CHROME.cardBorder}` }}>
+          <ProfileCard noAnimation className="overflow-hidden !p-0">
+            <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: `1px solid ${PROFILE.border}` }}>
               <button type="button" onClick={() => setPanel(null)} className="-ml-1 rounded-lg p-1" aria-label="Back">
-                <ChevronLeft className="h-5 w-5" style={{ color: CHROME.text }} />
+                <ChevronLeft className="h-5 w-5" style={{ color: PROFILE.text }} />
               </button>
-              <h2 className="text-sm font-bold" style={{ color: CHROME.text }}>
-                {panel === "notifications" ? "Notifications" : panel === "support" ? "Help & support" : "App settings"}
+              <h2 className="text-sm font-bold" style={{ color: PROFILE.text }}>
+                {panel === "appearance"
+                  ? "Appearance"
+                  : panel === "notifications"
+                    ? "Notifications"
+                    : panel === "support"
+                      ? "Help & support"
+                      : "App settings"}
               </h2>
             </div>
-            <div className="space-y-3 p-4 text-sm" style={{ color: CHROME.text }}>
+            <div className="space-y-3 p-4 text-sm" style={{ color: PROFILE.text }}>
+              {panel === "appearance" && <ThemeStudio streakDays={stats.streak} />}
               {panel === "notifications" && (
                 <>
-                  <p style={{ color: CHROME.muted }}>Manage when you get reminders and activity alerts.</p>
+                  <p style={{ color: PROFILE.muted }}>Manage when you get reminders and activity alerts.</p>
                   <button
                     type="button"
                     onClick={() => {
@@ -1289,24 +1326,24 @@ export function ProfileScreen({
                       } else { toast.info("Check your device or browser settings.") }
                     }}
                     className="rounded-xl px-4 py-2 text-sm font-bold text-white"
-                    style={{ backgroundColor: CHROME.orange }}
+                    style={{ backgroundColor: PROFILE.accent }}
                   >Enable notifications</button>
-                  <p className="text-xs" style={{ color: CHROME.muted }}>In-app reminders and achievements may be added in a future update.</p>
+                  <p className="text-xs" style={{ color: PROFILE.muted }}>In-app reminders and achievements may be added in a future update.</p>
                 </>
               )}
               {panel === "support" && (
                 <>
-                  <p style={{ color: CHROME.muted }}>Frequently asked questions</p>
-                  <ul className="space-y-2" style={{ color: CHROME.muted }}>
+                  <p style={{ color: PROFILE.muted }}>Frequently asked questions</p>
+                  <ul className="space-y-2" style={{ color: PROFILE.muted }}>
                     {faqList.map((item) => (
-                      <li key={item.id} className="pb-2" style={{ borderBottom: `1px solid ${CHROME.cardBorder}` }}>
-                        <span className="font-semibold" style={{ color: CHROME.text }}>{item.question}</span>
+                      <li key={item.id} className="pb-2" style={{ borderBottom: `1px solid ${PROFILE.border}` }}>
+                        <span className="font-semibold" style={{ color: PROFILE.text }}>{item.question}</span>
                         <p className="text-xs mt-1">{item.answer}</p>
                       </li>
                     ))}
                   </ul>
-                  <p className="pt-3 font-bold" style={{ color: CHROME.text }}>Contact us</p>
-                  <a href={`mailto:${siteConfig.supportEmail}`} className="flex items-center gap-2 text-xs" style={{ color: CHROME.orange }}>
+                  <p className="pt-3 font-bold" style={{ color: PROFILE.text }}>Contact us</p>
+                  <a href={`mailto:${siteConfig.supportEmail}`} className="flex items-center gap-2 text-xs" style={{ color: PROFILE.accent }}>
                     <Mail className="h-3.5 w-3.5" />{siteConfig.supportEmail}
                   </a>
                   <div className="pt-2"><ContactForm /></div>
@@ -1314,12 +1351,12 @@ export function ProfileScreen({
               )}
               {panel === "settings" && (
                 <>
-                  <p style={{ color: CHROME.muted }}>App preferences</p>
+                  <p style={{ color: PROFILE.muted }}>App preferences</p>
                   <div className="space-y-2">
                     <BodyWeightRow profile={profile} onSaved={async () => { const u = await getProfile(); setProfile(u) }} />
                     <div
                       className="flex items-center justify-between gap-4 rounded-xl py-3"
-                      style={{ borderBottom: `1px solid ${CHROME.cardBorder}` }}
+                      style={{ borderBottom: `1px solid ${PROFILE.border}` }}
                     >
                       <div className="flex items-center gap-3">
                         <div
@@ -1329,10 +1366,10 @@ export function ProfileScreen({
                           <UserCheck className="h-4 w-4" style={{ color: CHROME.teal }} />
                         </div>
                         <div>
-                          <p className="text-sm font-medium" style={{ color: CHROME.text }}>
+                          <p className="text-sm font-medium" style={{ color: PROFILE.text }}>
                             Face recognition
                           </p>
-                          <p className="text-xs" style={{ color: CHROME.muted }}>
+                          <p className="text-xs" style={{ color: PROFILE.muted }}>
                             {faceEnrolledStatus === null
                               ? "Checking…"
                               : faceEnrolledStatus
@@ -1352,32 +1389,32 @@ export function ProfileScreen({
                     </div>
                     <LanguageSelector />
                     <UnitSelector />
-                    <div className="flex items-center justify-between gap-4 py-3" style={{ borderBottom: `1px solid ${CHROME.cardBorder}` }}>
+                    <div className="flex items-center justify-between gap-4 py-3" style={{ borderBottom: `1px solid ${PROFILE.border}` }}>
                       <div>
-                        <p className="text-sm font-medium" style={{ color: CHROME.text }}>Run voice cues</p>
-                        <p className="text-xs" style={{ color: CHROME.muted }}>Spoken kilometer splits while tracking a run</p>
+                        <p className="text-sm font-medium" style={{ color: PROFILE.text }}>Run voice cues</p>
+                        <p className="text-xs" style={{ color: PROFILE.muted }}>Spoken kilometer splits while tracking a run</p>
                       </div>
                       <Switch checked={runVoiceOn} onCheckedChange={(on) => { setRunVoiceEnabled(on); setRunVoiceOn(on); toast.success(on ? "Voice cues on" : "Voice cues off") }} />
                     </div>
-                    <div className="flex items-center justify-between gap-4 py-3" style={{ borderBottom: `1px solid ${CHROME.cardBorder}` }}>
+                    <div className="flex items-center justify-between gap-4 py-3" style={{ borderBottom: `1px solid ${PROFILE.border}` }}>
                       <div>
-                        <p className="text-sm font-medium" style={{ color: CHROME.text }}>Coach replay</p>
-                        <p className="text-xs" style={{ color: CHROME.muted }}>Save rep clips locally for review</p>
+                        <p className="text-sm font-medium" style={{ color: PROFILE.text }}>Coach replay</p>
+                        <p className="text-xs" style={{ color: PROFILE.muted }}>Save rep clips locally for review</p>
                       </div>
                       <Switch checked={coachReplayLocalOn} onCheckedChange={(on) => { setCoachReplayLocalEnabled(on); setCoachReplayLocalOn(on); toast.success(on ? "Replay on" : "Replay off") }} />
                     </div>
-                    <div className="flex items-center justify-between gap-4 py-3" style={{ borderBottom: `1px solid ${CHROME.cardBorder}` }}>
+                    <div className="flex items-center justify-between gap-4 py-3" style={{ borderBottom: `1px solid ${PROFILE.border}` }}>
                       <div>
-                        <p className="text-sm font-medium" style={{ color: CHROME.text }}>Midset tips</p>
-                        <p className="text-xs" style={{ color: CHROME.muted }}>Coaching tips mid-session</p>
+                        <p className="text-sm font-medium" style={{ color: PROFILE.text }}>Midset tips</p>
+                        <p className="text-xs" style={{ color: PROFILE.muted }}>Coaching tips mid-session</p>
                       </div>
                       <Switch checked={midsetTipsOn} onCheckedChange={(on) => { setCoachMidsetTipsEnabled(on); setMidsetTipsOn(on); toast.success(on ? "Tips on" : "Tips off") }} />
                     </div>
                     {coachClipsCloudFeatureFlag() && isSupabaseConfigured() && (
-                      <div className="flex items-center justify-between gap-4 py-3" style={{ borderBottom: `1px solid ${CHROME.cardBorder}` }}>
+                      <div className="flex items-center justify-between gap-4 py-3" style={{ borderBottom: `1px solid ${PROFILE.border}` }}>
                         <div>
-                          <p className="text-sm font-medium" style={{ color: CHROME.text }}>Cloud clip sync</p>
-                          <p className="text-xs" style={{ color: CHROME.muted }}>Back up rep clips to cloud</p>
+                          <p className="text-sm font-medium" style={{ color: PROFILE.text }}>Cloud clip sync</p>
+                          <p className="text-xs" style={{ color: PROFILE.muted }}>Back up rep clips to cloud</p>
                         </div>
                         <Switch checked={coachClipSyncOn} onCheckedChange={(on) => { setCoachClipCloudSyncEnabled(on); setCoachClipSyncOn(on); toast.success(on ? "Cloud sync on" : "Cloud sync off") }} />
                       </div>
@@ -1385,14 +1422,14 @@ export function ProfileScreen({
                     {showClipEncryptRow && (
                       <div className="flex items-center justify-between gap-4 py-3">
                         <div>
-                          <p className="text-sm font-medium" style={{ color: CHROME.text }}>Clip encryption</p>
-                          <p className="text-xs" style={{ color: CHROME.muted }}>
+                          <p className="text-sm font-medium" style={{ color: PROFILE.text }}>Clip encryption</p>
+                          <p className="text-xs" style={{ color: PROFILE.muted }}>
                             {clipBackupOnServer === null ? "Checking…" : clipBackupOnServer ? "Passphrase backed up" : "No passphrase set"}
                           </p>
                         </div>
                         <button type="button" onClick={() => setClipPassphraseOpen(true)}
                           className="rounded-xl px-3 py-1.5 text-xs font-bold text-white"
-                          style={{ backgroundColor: CHROME.orange }}>
+                          style={{ backgroundColor: PROFILE.accent }}>
                           {clipBackupOnServer ? "Change" : "Set up"}
                         </button>
                       </div>
@@ -1401,7 +1438,7 @@ export function ProfileScreen({
                 </>
               )}
             </div>
-          </CreamCard>
+          </ProfileCard>
         )}
 
         {showFaceEnrollModal && (
@@ -1452,10 +1489,10 @@ export function ProfileScreen({
             <Download className="h-4 w-4" style={{ color: CHROME.gpsGreen }} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold" style={{ color: CHROME.text }}>
+            <p className="text-sm font-bold" style={{ color: PROFILE.text }}>
               Export your data
             </p>
-            <p className="text-xs" style={{ color: CHROME.muted }}>
+            <p className="text-xs" style={{ color: PROFILE.muted }}>
               Download profile, workouts, runs and coach sessions
             </p>
           </div>
@@ -1477,7 +1514,7 @@ export function ProfileScreen({
               <p className="text-sm font-bold" style={{ color: CHROME.hrRed }}>
                 Danger zone
               </p>
-              <p className="mt-1 text-xs leading-relaxed" style={{ color: CHROME.muted }}>
+              <p className="mt-1 text-xs leading-relaxed" style={{ color: PROFILE.muted }}>
                 Permanently delete your account, all workouts, runs and coach data. This cannot be undone.
               </p>
               <button
@@ -1492,7 +1529,7 @@ export function ProfileScreen({
                 type="button"
                 onClick={onLogout}
                 className="mt-2 w-full rounded-xl py-2 text-xs font-semibold"
-                style={{ color: CHROME.muted }}
+                style={{ color: PROFILE.muted }}
               >
                 Sign out
               </button>

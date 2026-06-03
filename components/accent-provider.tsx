@@ -1,12 +1,21 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState } from "react"
-import { getStoredAccent, setStoredAccent, type AccentId } from "@/lib/accent"
+import {
+  DEFAULT_ACCENT,
+  getPresetById,
+  getStoredAccent,
+  setStoredAccent,
+  type AccentId,
+} from "@/lib/accent"
 
-const AccentContext = createContext<{ accent: AccentId; setAccent: (a: AccentId) => void } | null>(null)
+const AccentContext = createContext<{
+  accent: AccentId
+  setAccent: (a: AccentId) => void
+} | null>(null)
 
 export function AccentProvider({ children }: { children: React.ReactNode }) {
-  const [accent, setAccentState] = useState<AccentId>("volt")
+  const [accent, setAccentState] = useState<AccentId>(DEFAULT_ACCENT)
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -22,7 +31,7 @@ export function AccentProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AccentContext.Provider value={{ accent: mounted ? accent : "volt", setAccent }}>
+    <AccentContext.Provider value={{ accent: mounted ? accent : DEFAULT_ACCENT, setAccent }}>
       {children}
     </AccentContext.Provider>
   )
@@ -30,6 +39,13 @@ export function AccentProvider({ children }: { children: React.ReactNode }) {
 
 export function useAccent() {
   const ctx = useContext(AccentContext)
-  if (!ctx) return { accent: "volt" as AccentId, setAccent: () => {} }
+  if (!ctx) {
+    return { accent: DEFAULT_ACCENT as AccentId, setAccent: () => {} }
+  }
   return ctx
+}
+
+export function useActivePreset() {
+  const { accent } = useAccent()
+  return getPresetById(accent)
 }

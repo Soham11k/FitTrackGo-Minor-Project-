@@ -77,6 +77,10 @@
   --neon-orange: oklch(0.77 0.18 56);
   --neon-green: oklch(0.72 0.16 155);
   --neon-purple: oklch(0.75 0.20 290);
+  --chrome-accent: #FF4D30;
+  --chrome-accent-dim: rgba(255, 77, 48, 0.16);
+  --chrome-accent-border: rgba(255, 77, 48, 0.35);
+  --chrome-glow: rgba(255, 77, 48, 0.08);
 }
 
 /* Dark theme (when <html class="dark">)
@@ -140,11 +144,43 @@
   --surface-stage: oklch(0 0 0);
   --surface-stage-fg: oklch(1 0 0);
   --surface-stage-hairline: oklch(1 0 0 / 0.10);
+  /* Dark-shell accent bridge (Home / Run / Coach / Profile) — overridden per data-accent */
+  --chrome-accent: #FF4D30;
+  --chrome-accent-dim: rgba(255, 77, 48, 0.16);
+  --chrome-accent-border: rgba(255, 77, 48, 0.35);
+  --chrome-glow: rgba(255, 77, 48, 0.08);
+}
+
+html {
+  transition:
+    --chrome-accent 0.4s ease,
+    --chrome-accent-dim 0.4s ease,
+    --chrome-accent-border 0.4s ease,
+    --chrome-glow 0.4s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    transition: none;
+  }
 }
 
 /* Accent colors (light) – override primary/accent/ring/chart-1 when data-accent is set on html.
- * Volt is the new default; the others remain available as alternates. Foreground stays auto-balanced.
+ * Athletic Red is the product default; others remain available as alternates.
  */
+[data-accent="athletic"] {
+  --primary: oklch(0.68 0.22 28);
+  --primary-foreground: oklch(1 0 0);
+  --accent: oklch(0.68 0.22 28);
+  --ring: oklch(0.68 0.22 28);
+  --chart-1: oklch(0.68 0.22 28);
+  --sidebar-primary: oklch(0.68 0.22 28);
+  --sidebar-ring: oklch(0.68 0.22 28);
+  --chrome-accent: #FF4D30;
+  --chrome-accent-dim: rgba(255, 77, 48, 0.16);
+  --chrome-accent-border: rgba(255, 77, 48, 0.35);
+  --chrome-glow: rgba(255, 77, 48, 0.08);
+}
 [data-accent="volt"] {
   --primary: oklch(0.93 0.22 122);
   --primary-foreground: oklch(0 0 0);
@@ -153,6 +189,10 @@
   --chart-1: oklch(0.93 0.22 122);
   --sidebar-primary: oklch(0.93 0.22 122);
   --sidebar-ring: oklch(0.93 0.22 122);
+  --chrome-accent: #CDFF00;
+  --chrome-accent-dim: rgba(205, 255, 0, 0.16);
+  --chrome-accent-border: rgba(205, 255, 0, 0.35);
+  --chrome-glow: rgba(205, 255, 0, 0.08);
 }
 [data-accent="green"] {
   --primary: oklch(0.62 0.20 145);
@@ -161,6 +201,10 @@
   --chart-1: oklch(0.62 0.20 145);
   --sidebar-primary: oklch(0.62 0.20 145);
   --sidebar-ring: oklch(0.62 0.20 145);
+  --chrome-accent: #22c55e;
+  --chrome-accent-dim: rgba(34, 197, 94, 0.16);
+  --chrome-accent-border: rgba(34, 197, 94, 0.35);
+  --chrome-glow: rgba(34, 197, 94, 0.08);
 }
 [data-accent="blue"] {
   --primary: oklch(0.5 0.2 250);
@@ -169,6 +213,10 @@
   --chart-1: oklch(0.5 0.2 250);
   --sidebar-primary: oklch(0.5 0.2 250);
   --sidebar-ring: oklch(0.5 0.2 250);
+  --chrome-accent: #3b82f6;
+  --chrome-accent-dim: rgba(59, 130, 246, 0.16);
+  --chrome-accent-border: rgba(59, 130, 246, 0.35);
+  --chrome-glow: rgba(59, 130, 246, 0.08);
 }
 [data-accent="purple"] {
   --primary: oklch(0.5 0.22 300);
@@ -177,6 +225,10 @@
   --chart-1: oklch(0.5 0.22 300);
   --sidebar-primary: oklch(0.5 0.22 300);
   --sidebar-ring: oklch(0.5 0.22 300);
+  --chrome-accent: #a855f7;
+  --chrome-accent-dim: rgba(168, 85, 247, 0.16);
+  --chrome-accent-border: rgba(168, 85, 247, 0.35);
+  --chrome-glow: rgba(168, 85, 247, 0.08);
 }
 [data-accent="orange"] {
   --primary: oklch(0.62 0.18 55);
@@ -185,6 +237,10 @@
   --chart-1: oklch(0.62 0.18 55);
   --sidebar-primary: oklch(0.62 0.18 55);
   --sidebar-ring: oklch(0.62 0.18 55);
+  --chrome-accent: #f97316;
+  --chrome-accent-dim: rgba(249, 115, 22, 0.16);
+  --chrome-accent-border: rgba(249, 115, 22, 0.35);
+  --chrome-glow: rgba(249, 115, 22, 0.08);
 }
 [data-accent="rose"] {
   --primary: oklch(0.55 0.22 350);
@@ -193,9 +249,26 @@
   --chart-1: oklch(0.55 0.22 350);
   --sidebar-primary: oklch(0.55 0.22 350);
   --sidebar-ring: oklch(0.55 0.22 350);
+  --chrome-accent: #f43f5e;
+  --chrome-accent-dim: rgba(244, 63, 94, 0.16);
+  --chrome-accent-border: rgba(244, 63, 94, 0.35);
+  --chrome-glow: rgba(244, 63, 94, 0.08);
 }
 
 /* Accent colors (dark) */
+.dark[data-accent="athletic"] {
+  --primary: oklch(0.72 0.22 28);
+  --primary-foreground: oklch(0 0 0);
+  --accent: oklch(0.72 0.22 28);
+  --ring: oklch(0.72 0.22 28);
+  --chart-1: oklch(0.72 0.22 28);
+  --sidebar-primary: oklch(0.72 0.22 28);
+  --sidebar-ring: oklch(0.72 0.22 28);
+  --chrome-accent: #FF4D30;
+  --chrome-accent-dim: rgba(255, 77, 48, 0.16);
+  --chrome-accent-border: rgba(255, 77, 48, 0.35);
+  --chrome-glow: rgba(255, 77, 48, 0.10);
+}
 .dark[data-accent="volt"] {
   --primary: oklch(0.95 0.22 122);
   --primary-foreground: oklch(0 0 0);
@@ -204,6 +277,10 @@
   --chart-1: oklch(0.95 0.22 122);
   --sidebar-primary: oklch(0.95 0.22 122);
   --sidebar-ring: oklch(0.95 0.22 122);
+  --chrome-accent: #CDFF00;
+  --chrome-accent-dim: rgba(205, 255, 0, 0.16);
+  --chrome-accent-border: rgba(205, 255, 0, 0.35);
+  --chrome-glow: rgba(205, 255, 0, 0.10);
 }
 .dark[data-accent="green"] {
   --primary: oklch(0.75 0.18 145);
@@ -212,6 +289,10 @@
   --chart-1: oklch(0.75 0.18 145);
   --sidebar-primary: oklch(0.75 0.18 145);
   --sidebar-ring: oklch(0.75 0.18 145);
+  --chrome-accent: #22c55e;
+  --chrome-accent-dim: rgba(34, 197, 94, 0.16);
+  --chrome-accent-border: rgba(34, 197, 94, 0.35);
+  --chrome-glow: rgba(34, 197, 94, 0.10);
 }
 .dark[data-accent="blue"] {
   --primary: oklch(0.7 0.2 250);
@@ -220,6 +301,10 @@
   --chart-1: oklch(0.7 0.2 250);
   --sidebar-primary: oklch(0.7 0.2 250);
   --sidebar-ring: oklch(0.7 0.2 250);
+  --chrome-accent: #3b82f6;
+  --chrome-accent-dim: rgba(59, 130, 246, 0.16);
+  --chrome-accent-border: rgba(59, 130, 246, 0.35);
+  --chrome-glow: rgba(59, 130, 246, 0.10);
 }
 .dark[data-accent="purple"] {
   --primary: oklch(0.72 0.22 300);
@@ -228,6 +313,10 @@
   --chart-1: oklch(0.72 0.22 300);
   --sidebar-primary: oklch(0.72 0.22 300);
   --sidebar-ring: oklch(0.72 0.22 300);
+  --chrome-accent: #a855f7;
+  --chrome-accent-dim: rgba(168, 85, 247, 0.16);
+  --chrome-accent-border: rgba(168, 85, 247, 0.35);
+  --chrome-glow: rgba(168, 85, 247, 0.10);
 }
 .dark[data-accent="orange"] {
   --primary: oklch(0.78 0.16 55);
@@ -236,6 +325,10 @@
   --chart-1: oklch(0.78 0.16 55);
   --sidebar-primary: oklch(0.78 0.16 55);
   --sidebar-ring: oklch(0.78 0.16 55);
+  --chrome-accent: #f97316;
+  --chrome-accent-dim: rgba(249, 115, 22, 0.16);
+  --chrome-accent-border: rgba(249, 115, 22, 0.35);
+  --chrome-glow: rgba(249, 115, 22, 0.10);
 }
 .dark[data-accent="rose"] {
   --primary: oklch(0.72 0.2 350);
@@ -244,6 +337,10 @@
   --chart-1: oklch(0.72 0.2 350);
   --sidebar-primary: oklch(0.72 0.2 350);
   --sidebar-ring: oklch(0.72 0.2 350);
+  --chrome-accent: #f43f5e;
+  --chrome-accent-dim: rgba(244, 63, 94, 0.16);
+  --chrome-accent-border: rgba(244, 63, 94, 0.35);
+  --chrome-glow: rgba(244, 63, 94, 0.10);
 }
 
 @theme inline {

@@ -15,8 +15,6 @@
       { "name": "Push ups", "duration": "45 sec", "reps": "12 reps × 3 sets" },
       { "name": "Lunges", "duration": "45 sec", "reps": "10 each leg × 3" },
       { "name": "Plank hold", "duration": "45 sec", "reps": "3 sets" },
-      { "name": "Bicep curls", "duration": "45 sec", "reps": "12 reps × 3 sets" },
-      { "name": "Shoulder press", "duration": "45 sec", "reps": "10 reps × 3 sets" },
       { "name": "Cool down", "duration": "3 min", "reps": "Stretching" }
     ]
   },

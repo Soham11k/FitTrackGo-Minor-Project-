@@ -2,26 +2,32 @@
 
 import { useEffect, useState } from "react"
 import { motion, useReducedMotion } from "framer-motion"
-import { Home, MapPin, Dumbbell, ScanLine, Trophy, User } from "lucide-react"
-import { useLocale } from "@/components/locale-provider"
-import { pulse } from "@/lib/haptics"
+import { Home, MapPin, ScanLine, Target, User } from "lucide-react"
+import { hapticMoment } from "@/lib/haptic-moments"
 import { CHROME } from "@/lib/app-chrome"
+import { CHROME_ACCENT } from "@/lib/chrome-accent"
 import { WORKOUTS } from "@/lib/workouts-theme"
 
-/**
- * Premium orange-on-black nav bar.
- * Sliding orange underline indicator; icons scale + tint on active.
- */
+const NAV_ACCENT = CHROME_ACCENT.accent
+
 const navItems = [
   { icon: Home,      labelKey: "nav.home",      id: "home"      },
   { icon: MapPin,    labelKey: "nav.run",        id: "run"       },
-  { icon: Dumbbell,  labelKey: "nav.exercises",  id: "exercises" },
   { icon: ScanLine,  labelKey: "nav.coach",      id: "ai-coach"  },
-  { icon: Trophy,    labelKey: "nav.arena",      id: "arena"     },
+  { icon: Target,    labelKey: "nav.goals",      id: "exercises" },
   { icon: User,      labelKey: "nav.profile",    id: "profile"   },
 ] as const
 
-export type TabId = (typeof navItems)[number]["id"]
+const NAV_LABELS: Record<(typeof navItems)[number]["id"], string> = {
+  home: "Home",
+  run: "Runs",
+  "ai-coach": "Coach",
+  exercises: "Goals",
+  profile: "Profile",
+}
+
+/** Primary tabs in the bottom bar; `arena` remains routable via deep links / coach. */
+export type TabId = (typeof navItems)[number]["id"] | "arena"
 
 export function BottomNav({
   activeTab,
@@ -30,7 +36,6 @@ export function BottomNav({
   activeTab: TabId
   onTabChange: (tab: TabId) => void
 }) {
-  const { t } = useLocale()
   const prefersReducedMotion = useReducedMotion()
   const [compactInactiveLabels, setCompactInactiveLabels] = useState(false)
 
@@ -52,7 +57,9 @@ export function BottomNav({
     }
   }, [])
 
-  const activeIndex = Math.max(0, navItems.findIndex((item) => item.id === activeTab))
+  const activeIndex = navItems.findIndex((item) => item.id === activeTab)
+  const underlineIndex = activeIndex >= 0 ? activeIndex : 0
+  const showUnderline = activeIndex >= 0
 
   return (
     <nav
@@ -62,31 +69,17 @@ export function BottomNav({
         borderTop: `1px solid ${CHROME.border}`,
       }}
     >
-      <div className="relative mx-auto grid max-w-lg grid-cols-6 gap-0 px-1">
-        {/* Sliding orange underline */}
-        <div className="pointer-events-none absolute inset-x-1 top-0 h-0.5 overflow-hidden">
+      <div className="relative mx-auto grid max-w-lg grid-cols-5 gap-0 px-1">
+        <div
+          className="pointer-events-none absolute inset-x-1 top-0 h-0.5 overflow-hidden"
+          style={{ opacity: showUnderline ? 1 : 0 }}
+        >
           <motion.div
-            className="h-full w-1/6 rounded-b-full"
+            className="h-full w-1/5 rounded-b-full"
             style={{
-              backgroundColor: activeTab === "exercises" ? WORKOUTS.accent : CHROME.orange,
+              backgroundColor: activeTab === "exercises" ? WORKOUTS.accent : NAV_ACCENT,
             }}
-            animate={{ x: `${activeIndex * 100}%` }}
-            transition={
-              prefersReducedMotion
-                ? { duration: 0 }
-                : { type: "spring", stiffness: 420, damping: 32, mass: 0.7 }
-            }
-          />
-        </div>
-
-        {/* Orange glow blur behind indicator */}
-        <div className="pointer-events-none absolute inset-x-1 top-0 h-0.5 overflow-hidden opacity-60">
-          <motion.div
-            className="h-full w-1/6 blur-[3px]"
-            style={{
-              backgroundColor: activeTab === "exercises" ? WORKOUTS.accent : CHROME.orange,
-            }}
-            animate={{ x: `${activeIndex * 100}%` }}
+            animate={{ x: `${underlineIndex * 100}%` }}
             transition={
               prefersReducedMotion
                 ? { duration: 0 }
@@ -97,8 +90,8 @@ export function BottomNav({
 
         {navItems.map((item) => {
           const isActive = activeTab === item.id
-          const label = t(item.labelKey)
-          const accent = item.id === "exercises" ? WORKOUTS.accent : CHROME.orange
+          const label = NAV_LABELS[item.id]
+          const accent = item.id === "exercises" ? WORKOUTS.accent : NAV_ACCENT
 
           return (
             <button
@@ -106,7 +99,7 @@ export function BottomNav({
               type="button"
               data-testid={`nav-tab-${item.id}`}
               onClick={() => {
-                pulse("tick")
+                hapticMoment("tabChange")
                 onTabChange(item.id)
               }}
               className="press-magnetic relative z-[1] flex min-h-[52px] flex-col items-center justify-center gap-0.5 py-2 focus-visible:outline-none"
@@ -119,8 +112,8 @@ export function BottomNav({
                   prefersReducedMotion
                     ? undefined
                     : isActive
-                    ? { scale: 1.18, y: -2 }
-                    : { scale: 1, y: 0 }
+                      ? { scale: 1.18, y: -2 }
+                      : { scale: 1, y: 0 }
                 }
                 transition={
                   prefersReducedMotion

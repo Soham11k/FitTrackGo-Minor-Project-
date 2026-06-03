@@ -374,21 +374,23 @@ export default function Page() {
 
   return (
     <div
-      className={`relative min-h-screen bg-background transition-opacity duration-300 ${
-        transitioning ? "opacity-0" : "opacity-100"
-      }`}
+      className={`relative min-h-screen transition-opacity duration-300 ${
+        view === "main" && (activeTab === "home" || activeTab === "run" || activeTab === "ai-coach" || activeTab === "profile" || activeTab === "exercises") ? "bg-black" : "bg-background"
+      } ${transitioning ? "opacity-0" : "opacity-100"}`}
     >
-      <AmbientBackdrop />
-      <AppHeader
-        guest={guestSession}
-        streakChip={
-          headerStreak > 0 ? (
-            <span className="shrink-0 rounded-sm border border-border bg-transparent px-2.5 py-1 text-typo-micro font-bold uppercase tracking-[0.18em] text-foreground tabular-nums">
-              <span className="text-primary">{headerStreak}d</span> streak
-            </span>
-          ) : null
-        }
-      />
+      {!(view === "main" && (activeTab === "home" || activeTab === "run" || activeTab === "ai-coach" || activeTab === "profile" || activeTab === "exercises")) ? <AmbientBackdrop /> : null}
+      {!(view === "main" && (activeTab === "home" || activeTab === "run" || activeTab === "ai-coach" || activeTab === "profile" || activeTab === "exercises")) ? (
+        <AppHeader
+          guest={guestSession}
+          streakChip={
+            headerStreak > 0 ? (
+              <span className="shrink-0 rounded-sm border border-border bg-transparent px-2.5 py-1 text-typo-micro font-bold uppercase tracking-[0.18em] text-foreground tabular-nums">
+                <span className="text-primary">{headerStreak}d</span> streak
+              </span>
+            ) : null
+          }
+        />
+      ) : null}
 
       {/* Insecure context banner (HTTP / LAN) */}
       {appState === "app" && insecureContext && !insecureBannerDismissed && (
@@ -422,6 +424,7 @@ export default function Page() {
           <TabTransition tabKey={activeTab}>
             {activeTab === "home" && (
               <Dashboard
+                guestMode={guestSession}
                 onNavigate={handleTabChange}
                 onViewAll={() => setView("history")}
                 onEnterCoachFocus={() => {
@@ -435,7 +438,7 @@ export default function Page() {
                 }}
               />
             )}
-            {activeTab === "run" && <RunTracker />}
+            {activeTab === "run" && <RunTracker guest={guestSession} streakDays={headerStreak} />}
             {activeTab === "exercises" && (
               <ExerciseLibrary
                 onOpenAICoach={handleOpenAICoachFromExercises}

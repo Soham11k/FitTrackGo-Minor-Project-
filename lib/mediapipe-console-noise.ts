@@ -29,6 +29,9 @@ export function isIgnorableMediapipeBrowserNoise(text: string): boolean {
   /** Same message sometimes omits “Disabling support…” or uses localized wording tweaks. */
   if (text.includes("inference_feedback_manager") && text.includes("Feedback manager")) return true
 
+  /** TFLite XNNPACK delegate INFO is emitted via console.error; not actionable. */
+  if (/INFO:\s*Created TensorFlow Lite XNNPACK|XNNPACK delegate/i.test(text)) return true
+
   /** Glog-style WASM lines bundled with Mediapipe Tasks CDN / model URLs. */
   if (
     (/\bW\d+\s+[\d:.]+\s+\d+\s+\S+\.cc:\d+\]/.test(text) ||
@@ -45,15 +48,46 @@ export function isIgnorableMediapipeBrowserNoise(text: string): boolean {
 
 const CONSOLE_SILENCE_KEYS = ["warn", "error", "log", "info", "debug"] as const
 
-function chainConsoleNoiseFilter(): void {
+const FILTER_MARK = Symbol("mediapipeConsoleFilter")
+
+type ConsoleFn = (...args: unknown[]) => void
+
+/** True native methods captured before any module patching (inline layout script may run first). */
+const nativeConsole: Partial<Record<(typeof CONSOLE_SILENCE_KEYS)[number], ConsoleFn>> = {}
+
+function captureNativeConsoleOnce(): void {
+  if (nativeConsole.error) return
   for (const key of CONSOLE_SILENCE_KEYS) {
-    const prev = (console[key as keyof Console] as (...a: unknown[]) => void).bind(console)
-    const next = (...args: unknown[]) => {
+    nativeConsole[key] = (console[key as keyof Console] as ConsoleFn).bind(console)
+  }
+}
+
+function markFilter(fn: ConsoleFn): ConsoleFn {
+  ;(fn as ConsoleFn & { [FILTER_MARK]?: boolean })[FILTER_MARK] = true
+  return fn
+}
+
+function isMarkedFilter(fn: unknown): fn is ConsoleFn {
+  return typeof fn === "function" && (fn as { [FILTER_MARK]?: boolean })[FILTER_MARK] === true
+}
+
+function chainConsoleNoiseFilter(forceOuter = false): void {
+  captureNativeConsoleOnce()
+  for (const key of CONSOLE_SILENCE_KEYS) {
+    const current = console[key as keyof Console] as ConsoleFn
+    if (!forceOuter && isMarkedFilter(current)) continue
+
+    const downstream = forceOuter ? current.bind(console) : (nativeConsole[key] ?? current.bind(console))
+    const next: ConsoleFn = (...args: unknown[]) => {
       const text = mediapipeWasmWarnArgsToText(args)
       if (isIgnorableMediapipeBrowserNoise(text)) return
-      prev(...args)
+      if (downstream === next) {
+        nativeConsole[key]?.(...args)
+        return
+      }
+      downstream(...args)
     }
-    ;(console as unknown as Record<string, typeof next>)[key] = next
+    ;(console as unknown as Record<string, ConsoleFn>)[key] = markFilter(next)
   }
 }
 
@@ -61,7 +95,7 @@ export function ensureMediapipeWarnFilterInstalled(): void {
   if (mediapipeConsoleFilterInstalled) return
   mediapipeConsoleFilterInstalled = true
 
-  chainConsoleNoiseFilter()
+  chainConsoleNoiseFilter(false)
 }
 
 let mediapipeOuterDevLayerAdded = false
@@ -71,7 +105,7 @@ export function prependMediapipeNoiseOuterDevLayerOnce(): void {
   if (mediapipeOuterDevLayerAdded || typeof window === "undefined") return
   mediapipeOuterDevLayerAdded = true
 
-  chainConsoleNoiseFilter()
+  chainConsoleNoiseFilter(true)
 }
 
 export async function withSuppressedMediapipeWasmWarn<T>(fn: () => Promise<T>): Promise<T> {
