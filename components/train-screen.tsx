@@ -1,17 +1,18 @@
 "use client"
 
 import { motion, useReducedMotion, AnimatePresence } from "framer-motion"
-import { Check, Clock, Flame, RefreshCw, Heart } from "lucide-react"
-import { ExerciseIllustration, type ExerciseIllustrationId } from "@/components/animated/ExerciseIllustration"
+import type { LucideIcon } from "lucide-react"
+import { Check, ChevronRight, Clock, Dumbbell, Flame, Flower2, Footprints, RefreshCw, Heart } from "lucide-react"
 import { staggerDelaySec } from "@/lib/motion"
 import type { ExerciseItem } from "@/lib/data"
 import type { TabId } from "@/components/bottom-nav"
 import { Button } from "@/components/ui/button"
+import { categoryIconStyle, WORKOUTS } from "@/lib/workouts-theme"
 import {
-  WORKOUTS,
   WorkoutsDifficultyBadge,
   WorkoutsFilterChip,
   WorkoutsCustomExerciseCta,
+  WorkoutsSectionLabel,
 } from "@/components/workouts/workouts-ui"
 
 export type TrainCategory = "all" | "strength" | "cardio" | "yoga" | "hiit"
@@ -19,23 +20,22 @@ export type TrainDuration = "all" | "short" | "medium" | "long"
 export type TrainSort    = "default" | "duration" | "calories" | "rating"
 
 const CATEGORIES: { id: TrainCategory; label: string }[] = [
-  { id: "all",      label: "All" },
+  { id: "all", label: "All" },
   { id: "strength", label: "Strength" },
-  { id: "cardio",   label: "Cardio" },
-  { id: "yoga",     label: "Yoga" },
+  { id: "cardio", label: "Cardio" },
+  { id: "yoga", label: "Yoga" },
 ]
 
-const CAT_ILLUSTRATION: Record<TrainCategory, ExerciseIllustrationId> = {
-  all:      "default",
-  strength: "squat",
-  cardio:   "run",
-  yoga:     "yoga",
-  hiit:     "high_knees",
+const CAT_ICON: Record<string, LucideIcon> = {
+  strength: Dumbbell,
+  cardio: Footprints,
+  yoga: Flower2,
+  hiit: Footprints,
 }
 
 function chipStyle(active: boolean) {
   return active
-    ? { backgroundColor: WORKOUTS.accent, color: WORKOUTS.white }
+    ? { backgroundColor: WORKOUTS.accentFixed, color: WORKOUTS.white }
     : {
         backgroundColor: WORKOUTS.chipInactive,
         color: WORKOUTS.white,
@@ -73,18 +73,18 @@ export interface TrainScreenProps {
 
 function ExerciseTile({
   ex,
-  isCompleted,
   isHighlighted,
   delay,
   onSelect,
 }: {
   ex: ExerciseItem
-  isCompleted: boolean
   isHighlighted?: boolean
   delay: number
   onSelect: () => void
 }) {
   const reduce = useReducedMotion() ?? false
+  const iconStyle = categoryIconStyle(ex.category)
+  const Icon = CAT_ICON[ex.category] ?? Dumbbell
 
   return (
     <motion.div
@@ -92,11 +92,11 @@ function ExerciseTile({
       tabIndex={0}
       onClick={onSelect}
       onKeyDown={(e) => e.key === "Enter" && onSelect()}
-      className="flex cursor-pointer gap-3 rounded-2xl p-3.5"
+      className="flex cursor-pointer items-center gap-3 rounded-2xl p-3.5"
       style={{
         backgroundColor: WORKOUTS.card,
-        border: isHighlighted ? `1px solid ${WORKOUTS.accentBorder}` : `1px solid ${WORKOUTS.cardBorder}`,
-        boxShadow: isHighlighted ? "0 0 28px -8px var(--chrome-glow)" : undefined,
+        border: isHighlighted ? `1px solid rgba(255,59,48,0.45)` : `1px solid ${WORKOUTS.cardBorder}`,
+        boxShadow: isHighlighted ? "0 0 28px -8px rgba(255,59,48,0.25)" : undefined,
       }}
       initial={reduce ? false : { opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
@@ -104,48 +104,38 @@ function ExerciseTile({
       whileTap={reduce ? undefined : { scale: 0.98 }}
     >
       <div
-        className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl"
-        style={{ backgroundColor: WORKOUTS.iconWell }}
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+        style={{ backgroundColor: iconStyle.backgroundColor }}
       >
-        <ExerciseIllustration id={CAT_ILLUSTRATION[ex.category as TrainCategory] ?? "default"} size={32} />
+        <Icon className="h-5 w-5" style={{ color: iconStyle.color }} strokeWidth={2} aria-hidden />
       </div>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <p
-            className="truncate text-[15px] font-bold leading-tight"
-            style={{ color: WORKOUTS.white }}
-          >
+          <p className="truncate text-[15px] font-bold leading-tight" style={{ color: WORKOUTS.white }}>
             {ex.title}
           </p>
-          {(isCompleted || isHighlighted) && (
-            <Check
-              className="h-4 w-4 shrink-0"
-              style={{ color: WORKOUTS.accent }}
-              strokeWidth={3}
-              aria-label={isCompleted ? "Completed" : "Selected"}
-            />
-          )}
+          {isHighlighted ? (
+            <Check className="h-4 w-4 shrink-0" style={{ color: WORKOUTS.accentFixed }} strokeWidth={3} aria-hidden />
+          ) : null}
         </div>
-        <div className="mt-1.5 flex items-center gap-3">
-          <span className="flex items-center gap-1 text-[11px] font-semibold" style={{ color: WORKOUTS.muted }}>
-            <Clock className="h-3 w-3" aria-hidden /> {ex.durationMin}m
-          </span>
-          <span className="flex items-center gap-1 text-[11px] font-semibold" style={{ color: WORKOUTS.muted }}>
-            <Flame className="h-3 w-3" aria-hidden /> {ex.calories} kcal
-          </span>
-        </div>
+        <p className="mt-1.5 text-[11px] font-semibold" style={{ color: WORKOUTS.muted }}>
+          {ex.durationMin}m
+          <span className="mx-1.5 opacity-60">·</span>
+          {ex.calories} kcal
+        </p>
         <div className="mt-2">
           <WorkoutsDifficultyBadge level={ex.difficulty} />
         </div>
       </div>
+
+      <ChevronRight className="h-4 w-4 shrink-0" style={{ color: WORKOUTS.muted }} aria-hidden />
     </motion.div>
   )
 }
 
 export function TrainScreen({
   filtered,
-  completedTitles,
   initialLoading,
   loadError,
   activeCategory,
@@ -167,10 +157,7 @@ export function TrainScreen({
 
   return (
     <div className="flex min-h-dvh flex-col" style={{ backgroundColor: WORKOUTS.bg }} data-testid="screen-goals">
-      <div
-        className="px-5 pb-3"
-        style={{ paddingTop: "max(1rem, env(safe-area-inset-top))" }}
-      >
+      <div className="px-5 pb-3" style={{ paddingTop: "max(1rem, env(safe-area-inset-top))" }}>
         <motion.h1
           className="text-[2.75rem] font-black uppercase leading-none tracking-tight"
           style={{ fontFamily: "var(--font-display), var(--font-heading), sans-serif", color: WORKOUTS.white }}
@@ -208,7 +195,7 @@ export function TrainScreen({
             <div className="flex shrink-0 gap-2">
               <Button
                 size="sm"
-                style={{ backgroundColor: WORKOUTS.accent, color: WORKOUTS.white }}
+                style={{ backgroundColor: WORKOUTS.accentFixed, color: WORKOUTS.white }}
                 onClick={onResumePaused}
               >
                 Resume
@@ -225,12 +212,12 @@ export function TrainScreen({
             className="flex items-center justify-between gap-3 rounded-2xl px-4 py-3"
             style={{ backgroundColor: WORKOUTS.accentDim, border: `1px solid ${WORKOUTS.accentBorder}` }}
           >
-            <p className="min-w-0 flex-1 text-sm" style={{ color: WORKOUTS.accent }}>{loadError}</p>
+            <p className="min-w-0 flex-1 text-sm" style={{ color: WORKOUTS.accentFixed }}>{loadError}</p>
             <button
               type="button"
               onClick={onReload}
               className="flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-bold"
-              style={{ backgroundColor: WORKOUTS.accent, color: WORKOUTS.white }}
+              style={{ backgroundColor: WORKOUTS.accentFixed, color: WORKOUTS.white }}
             >
               <RefreshCw className="h-3.5 w-3.5" /> Retry
             </button>
@@ -247,7 +234,6 @@ export function TrainScreen({
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
             >
               <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: WORKOUTS.muted }}>Duration</p>
               <div className="flex flex-wrap gap-2">
@@ -284,34 +270,29 @@ export function TrainScreen({
         {initialLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-[6.5rem] animate-pulse rounded-2xl"
-                style={{ backgroundColor: WORKOUTS.card, opacity: 0.7 }}
-              />
+              <div key={i} className="h-[6.5rem] animate-pulse rounded-2xl" style={{ backgroundColor: WORKOUTS.card, opacity: 0.7 }} />
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div
-            className="flex flex-col items-center gap-3 rounded-2xl py-12 text-center"
-            style={{ backgroundColor: WORKOUTS.card }}
-          >
+          <div className="flex flex-col items-center gap-3 rounded-2xl py-12 text-center" style={{ backgroundColor: WORKOUTS.card }}>
             <Heart className="h-10 w-10" style={{ color: WORKOUTS.muted }} />
             <p className="text-sm font-semibold" style={{ color: WORKOUTS.muted }}>No workouts match this filter</p>
           </div>
         ) : (
-          <div className="space-y-2.5">
-            {filtered.map((ex, i) => (
-              <ExerciseTile
-                key={ex.id}
-                ex={ex}
-                isCompleted={completedTitles.has(ex.title)}
-                isHighlighted={highlightedExerciseId === ex.id}
-                delay={staggerDelaySec(i, 10, 0.04)}
-                onSelect={() => onSelectExercise(ex)}
-              />
-            ))}
-          </div>
+          <>
+            <WorkoutsSectionLabel count={filtered.length} />
+            <div className="space-y-2.5">
+              {filtered.map((ex, i) => (
+                <ExerciseTile
+                  key={ex.id}
+                  ex={ex}
+                  isHighlighted={highlightedExerciseId === ex.id}
+                  delay={staggerDelaySec(i, 10, 0.04)}
+                  onSelect={() => onSelectExercise(ex)}
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>

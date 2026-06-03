@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react"
 import { Star, Clock, Flame } from "lucide-react"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 // ExerciseIllustration used in TrainScreen directly
 import { getFavorites, toggleFavorite, getWorkouts, formatErr, getStreak } from "@/lib/store-supabase"
 import { pulse } from "@/lib/haptics"
@@ -169,7 +170,7 @@ export function ExerciseLibrary({
       sortBy={sortBy}
       showFilters={showFilters}
       pausedWorkoutTitle={pausedWorkoutSnapshot?.exercise?.title ?? null}
-      highlightedExerciseId={lastViewedExerciseId ?? filtered[0]?.id ?? null}
+      highlightedExerciseId={lastViewedExerciseId}
       streakDays={streakDays}
       onSelectExercise={(ex) => {
         setLastViewedExerciseId(ex.id)
@@ -276,9 +277,13 @@ function ExerciseDetail({
 
   return (
     <div className="flex min-h-dvh flex-col pb-28" style={{ backgroundColor: WORKOUTS.bg }}>
-      <WorkoutsDetailTopBar onBack={onBack} favorite={isFavorite} onToggleFavorite={onToggleFavorite} />
+      <WorkoutsDetailTopBar
+        onBack={onBack}
+        isFavorite={isFavorite}
+        onToggleFavorite={onToggleFavorite}
+      />
 
-      <div className="px-5 pt-2">
+      <div className="px-5 pt-0">
         <div className="flex flex-wrap items-center gap-2">
           <WorkoutsDifficultyBadge level={exercise.difficulty} />
           {lastDone && (
@@ -304,7 +309,8 @@ function ExerciseDetail({
             <Flame className="h-4 w-4" /> {exercise.calories} cal
           </span>
           <span className="flex items-center gap-1.5">
-            <Star className="h-4 w-4" style={{ color: WORKOUTS.accent }} fill={WORKOUTS.accent} /> {exercise.rating}
+            <Star className="h-4 w-4" style={{ color: WORKOUTS.accentFixed }} fill={WORKOUTS.accentFixed} />{" "}
+            {exercise.rating}
           </span>
         </div>
       </div>
@@ -315,13 +321,18 @@ function ExerciseDetail({
         calories={exercise.calories}
       />
 
-      {bodyCheckOpen ? (
-        <div className="pt-2">
-          <ExerciseBodyPreview exerciseId={firstCoachId} theme="workouts" autoEnable />
-        </div>
-      ) : (
-        <WorkoutsBodyCheckBanner onEnable={() => setBodyCheckOpen(true)} />
-      )}
+      <WorkoutsBodyCheckBanner onEnable={() => setBodyCheckOpen(true)} />
+
+      <Sheet open={bodyCheckOpen} onOpenChange={setBodyCheckOpen}>
+        <SheetContent side="bottom" className="max-h-[85vh] border-t border-border bg-black">
+          <SheetHeader>
+            <SheetTitle className="text-left text-white">Body check</SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 pb-6">
+            <ExerciseBodyPreview exerciseId={firstCoachId} theme="workouts" autoEnable />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <div className="px-4 pt-6">
         <div className="mb-3 flex items-center justify-between">
@@ -345,13 +356,13 @@ function ExerciseDetail({
                 {activeStep ? (
                   <span
                     className="absolute bottom-3 left-0 top-3 w-[3px] rounded-full"
-                    style={{ backgroundColor: WORKOUTS.accent }}
+                    style={{ backgroundColor: WORKOUTS.accentFixed }}
                     aria-hidden
                   />
                 ) : null}
                 <span
                   className="w-10 shrink-0 pl-3 text-2xl font-black tabular-nums leading-none"
-                  style={{ color: activeStep ? WORKOUTS.accent : WORKOUTS.muted }}
+                  style={{ color: activeStep ? WORKOUTS.accentFixed : WORKOUTS.muted }}
                 >
                   {i + 1}
                 </span>
@@ -376,7 +387,10 @@ function ExerciseDetail({
         </div>
       </div>
 
-      <div className="sticky bottom-0 px-4 pb-6 pt-4" style={{ backgroundColor: WORKOUTS.bg }}>
+      <div
+        className="sticky bottom-0 border-t px-4 pb-6 pt-4"
+        style={{ backgroundColor: WORKOUTS.bg, borderColor: WORKOUTS.cardBorder }}
+      >
         <WorkoutsStartButton onClick={handleStartWorkout} />
       </div>
     </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { motion, useReducedMotion } from "framer-motion"
-import { Home, MapPin, ScanLine, Target, User } from "lucide-react"
+import { Home, MapPin, ScanLine, Trophy, User } from "lucide-react"
 import { hapticMoment } from "@/lib/haptic-moments"
 import { CHROME } from "@/lib/app-chrome"
 import { CHROME_ACCENT } from "@/lib/chrome-accent"
@@ -14,7 +14,7 @@ const navItems = [
   { icon: Home,      labelKey: "nav.home",      id: "home"      },
   { icon: MapPin,    labelKey: "nav.run",        id: "run"       },
   { icon: ScanLine,  labelKey: "nav.coach",      id: "ai-coach"  },
-  { icon: Target,    labelKey: "nav.goals",      id: "exercises" },
+  { icon: Trophy,    labelKey: "nav.goals",      id: "exercises" },
   { icon: User,      labelKey: "nav.profile",    id: "profile"   },
 ] as const
 
@@ -77,7 +77,7 @@ export function BottomNav({
           <motion.div
             className="h-full w-1/5 rounded-b-full"
             style={{
-              backgroundColor: activeTab === "exercises" ? WORKOUTS.accent : NAV_ACCENT,
+              backgroundColor: activeTab === "exercises" ? WORKOUTS.accentFixed : NAV_ACCENT,
             }}
             animate={{ x: `${underlineIndex * 100}%` }}
             transition={
@@ -91,7 +91,8 @@ export function BottomNav({
         {navItems.map((item) => {
           const isActive = activeTab === item.id
           const label = NAV_LABELS[item.id]
-          const accent = item.id === "exercises" ? WORKOUTS.accent : NAV_ACCENT
+          const accent = item.id === "exercises" ? WORKOUTS.accentFixed : NAV_ACCENT
+          const showGoalsDot = item.id === "exercises" && isActive
 
           return (
             <button
@@ -106,6 +107,13 @@ export function BottomNav({
               aria-label={label}
               title={label}
             >
+              {showGoalsDot ? (
+                <span
+                  className="absolute top-1.5 h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: WORKOUTS.accentFixed }}
+                  aria-hidden
+                />
+              ) : null}
               <motion.span
                 className="relative flex items-center justify-center"
                 animate={

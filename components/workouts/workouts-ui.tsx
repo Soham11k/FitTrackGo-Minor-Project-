@@ -1,6 +1,12 @@
 "use client"
 
-import { ChevronLeft, Play, Plus } from "lucide-react"
+import { ChevronLeft, MoreHorizontal, Play, Plus, Bookmark } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { WORKOUTS, difficultyStyle } from "@/lib/workouts-theme"
 
 export { WORKOUTS }
@@ -21,7 +27,7 @@ export function WorkoutsFilterChip({
       className="shrink-0 rounded-full px-4 py-2 text-[11px] font-black uppercase tracking-[0.12em] transition-colors"
       style={
         active
-          ? { backgroundColor: WORKOUTS.accent, color: WORKOUTS.white }
+          ? { backgroundColor: WORKOUTS.accentFixed, color: WORKOUTS.white }
           : {
               backgroundColor: WORKOUTS.chipInactive,
               color: WORKOUTS.white,
@@ -50,6 +56,19 @@ export function WorkoutsDifficultyBadge({ level }: { level: string }) {
   )
 }
 
+export function WorkoutsSectionLabel({ count }: { count: number }) {
+  return (
+    <div className="flex items-center justify-between px-1 pb-2 pt-1">
+      <p className="text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: WORKOUTS.muted }}>
+        Workouts
+      </p>
+      <p className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: WORKOUTS.muted }}>
+        {count} total
+      </p>
+    </div>
+  )
+}
+
 export function WorkoutsCustomExerciseCta({ onClick }: { onClick: () => void }) {
   return (
     <button
@@ -57,24 +76,24 @@ export function WorkoutsCustomExerciseCta({ onClick }: { onClick: () => void }) 
       onClick={onClick}
       className="flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-3.5 text-[11px] font-black uppercase tracking-[0.1em] transition-opacity hover:opacity-90 active:scale-[0.99]"
       style={{
-        borderColor: WORKOUTS.accent,
-        color: WORKOUTS.accent,
+        borderColor: WORKOUTS.accentFixed,
+        color: WORKOUTS.accentFixed,
         backgroundColor: "transparent",
       }}
     >
       <Plus className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
-      Custom exercise for AI Coach
+      + Custom exercise for AI Coach
     </button>
   )
 }
 
 export function WorkoutsDetailTopBar({
   onBack,
-  favorite,
+  isFavorite,
   onToggleFavorite,
 }: {
   onBack: () => void
-  favorite?: boolean
+  isFavorite?: boolean
   onToggleFavorite?: () => void
 }) {
   return (
@@ -93,23 +112,19 @@ export function WorkoutsDetailTopBar({
         Back
       </button>
       {onToggleFavorite ? (
-        <button
-          type="button"
-          onClick={onToggleFavorite}
-          className="flex h-9 w-9 items-center justify-center"
-          aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            className="h-5 w-5"
-            fill={favorite ? WORKOUTS.accent : "none"}
-            stroke={favorite ? WORKOUTS.accent : WORKOUTS.muted}
-            strokeWidth={2}
-            aria-hidden
-          >
-            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-          </svg>
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className="flex h-9 w-9 items-center justify-center" aria-label="More options">
+              <MoreHorizontal className="h-5 w-5" style={{ color: WORKOUTS.muted }} aria-hidden />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="border-border bg-card">
+            <DropdownMenuItem onClick={onToggleFavorite}>
+              <Bookmark className="mr-2 h-4 w-4" />
+              {isFavorite ? "Remove from favorites" : "Save to favorites"}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       ) : (
         <span className="w-9" aria-hidden />
       )}
@@ -123,7 +138,7 @@ export function WorkoutsWithAIBadge({ active = false }: { active?: boolean }) {
       className="shrink-0 rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.06em]"
       style={
         active
-          ? { backgroundColor: WORKOUTS.accent, color: WORKOUTS.white }
+          ? { backgroundColor: WORKOUTS.accentFixed, color: WORKOUTS.white }
           : {
               backgroundColor: WORKOUTS.iconWell,
               color: WORKOUTS.white,
@@ -146,9 +161,9 @@ export function WorkoutsMetricGrid({
   calories: number | string
 }) {
   const stats = [
-    { value: exercises, label: "Exercises" },
-    { value: `${durationMin} M`, label: "Duration" },
-    { value: calories, label: "Calories" },
+    { value: exercises, label: "Exercises", highlight: false },
+    { value: `${durationMin} M`, label: "Duration", highlight: false },
+    { value: calories, label: "Calories", highlight: true },
   ]
 
   return (
@@ -163,8 +178,11 @@ export function WorkoutsMetricGrid({
           style={i < stats.length - 1 ? { borderRight: `1px solid ${WORKOUTS.cardBorder}` } : undefined}
         >
           <span
-            className="block text-xl font-black tabular-nums leading-none uppercase"
-            style={{ color: WORKOUTS.white, fontFamily: "var(--font-display), var(--font-heading), sans-serif" }}
+            className="block text-xl font-black tabular-nums leading-none"
+            style={{
+              color: stat.highlight ? WORKOUTS.accentFixed : WORKOUTS.white,
+              fontFamily: "var(--font-display), var(--font-heading), sans-serif",
+            }}
           >
             {stat.value}
           </span>
@@ -183,7 +201,7 @@ export function WorkoutsStartButton({ onClick }: { onClick: () => void }) {
       type="button"
       onClick={onClick}
       className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-black uppercase tracking-[0.1em] transition-opacity hover:opacity-90 active:scale-[0.98]"
-      style={{ backgroundColor: WORKOUTS.accent, color: WORKOUTS.white }}
+      style={{ backgroundColor: WORKOUTS.accentFixed, color: WORKOUTS.white }}
     >
       <Play className="h-4 w-4 shrink-0 fill-current" aria-hidden />
       Start workout
@@ -205,19 +223,21 @@ export function WorkoutsBodyCheckBanner({
     >
       <div
         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-        style={{ backgroundColor: WORKOUTS.accentDim, border: `1px solid ${WORKOUTS.accentBorder}` }}
+        style={{ backgroundColor: "rgba(255,59,48,0.18)", border: "1px solid rgba(255,59,48,0.35)" }}
       >
-        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke={WORKOUTS.accent} strokeWidth={2} aria-hidden>
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke={WORKOUTS.accentFixed} strokeWidth={2} aria-hidden>
           <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
           <circle cx="12" cy="13" r="4" />
         </svg>
       </div>
-      <p className="min-w-0 flex-1 text-xs leading-snug" style={{ color: WORKOUTS.muted }}>
-        <span className="font-bold" style={{ color: WORKOUTS.white }}>
-          Body check:
-        </span>{" "}
-        Preview your position with live body tracking
-      </p>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-black uppercase tracking-[0.06em]" style={{ color: WORKOUTS.accentFixed }}>
+          Body check
+        </p>
+        <p className="mt-0.5 text-xs leading-snug" style={{ color: WORKOUTS.muted }}>
+          Preview your position with live body tracking
+        </p>
+      </div>
       <button
         type="button"
         onClick={onEnable}
