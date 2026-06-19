@@ -2,26 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
-import Link from "next/link"
 import { CHROME } from "@/lib/app-chrome"
 import {
   Camera,
-  CheckCircle2,
-  AlertCircle,
-  Play,
-  RotateCcw,
   ChevronRight,
-  Zap,
-  Target,
-  Shield,
   UserCheck,
   Phone,
-  Crosshair,
-  User,
   X,
-  Columns2,
-  Swords,
-  Sparkles,
 } from "lucide-react"
 import { initPoseDetection, detectPose, drawSkeleton, getBodyScanDetail, assessEnvironment, getDetectionQuality, type EnvironmentAssessment } from "@/lib/pose-detection"
 import { COACH_FRAME_INTERVAL_MS } from "@/lib/pose-config"
@@ -49,7 +36,6 @@ import { effectiveRepCount, isVerifiedMovement } from "@/lib/competition"
 import { recordCoachSessionMemory } from "@/lib/coach-memory"
 import { hapticRepPulse, getCoachA11yPrefs, setCoachA11yPrefs, type CoachA11yPrefs } from "@/lib/coach-a11y"
 import { SessionDnaCard, type SessionDnaProps } from "@/components/session-dna-card"
-import { RingGauge } from "@/components/ring-gauge"
 import { useLocale } from "@/components/locale-provider"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
@@ -76,8 +62,6 @@ import { playFallAlarm, stopFallAlarm } from "@/lib/alarm-sound"
 import { AICoachLlmPanel } from "@/components/ai-coach-llm-panel"
 import { consumeAICoachIntent } from "@/lib/ai-coach-intent"
 import { saveCoachPickerSnapshot, loadCoachPickerSnapshot } from "@/lib/coach-picker-snapshot"
-import { topCuesFromBreakdown } from "@/lib/coach-session-cues"
-import { CoachRepTimeline } from "@/components/coach-rep-timeline"
 import { captureRepTrace, aggregateTopFaults, type RepTracePair } from "@/lib/rep-trace"
 import { mergeFaultsFromTrace } from "@/lib/ai-coach/rep-feedback-local"
 import { CoachSetRecorder } from "@/lib/coach-replay/recorder"
@@ -88,11 +72,7 @@ import { isCoachMidsetTipsEnabled } from "@/lib/coach-midset-tips"
 import { CoachFinishShareBar } from "@/components/coach-finish-recap"
 import { CoachReplaySheet } from "@/components/coach-replay-sheet"
 import { CueFocusProvider } from "@/components/coach/cue-focus-context"
-import { InteractiveCue } from "@/components/coach/interactive-cue"
 import type { TabId } from "@/components/bottom-nav"
-import { StatDisplay } from "@/components/ui/stat-display"
-import { CelebrationBurst } from "@/components/ui/celebration-burst"
-import { MotionCelebrate } from "@/components/motion-celebrate"
 import { MobilityCoach } from "@/components/mobility-coach"
 import { agentDebugLog } from "@/lib/debug-agent-log"
 import {
@@ -111,13 +91,8 @@ import type { UserCustomExercise } from "@/lib/custom-exercises/types"
 import type { CoachRecord } from "@/lib/store"
 import { setArenaDuelExerciseLabel } from "@/lib/arena-duel-intent"
 import { CompareSessionsPanel } from "@/components/compare-sessions-sheet"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
-import { ExerciseBodyPreview } from "@/components/exercise-body-preview"
-// ScreenTitle replaced by coach form chrome
-import { AnimatedCounter } from "@/components/animated/AnimatedCounter"
-import { ParticleBurst } from "@/components/animated/ParticleBurst"
 import {
   COACH_FORM,
   CoachBackButton,
@@ -195,7 +170,6 @@ export function AICoach({
   useEffect(() => {
     cueHighlightRef.current = cueHighlight
   }, [cueHighlight])
-  const [selectedRecapRep, setSelectedRecapRep] = useState<number | null>(null)
   const [liveFeedback, setLiveFeedback] = useState("Position yourself in frame to start.")
   const [isGoodForm, setIsGoodForm] = useState(true)
   const [poseReady, setPoseReady] = useState(false)
@@ -219,7 +193,6 @@ export function AICoach({
   const [compareBaseline, setCompareBaseline] = useState<CoachRecord | null>(null)
   const [compareCurrent, setCompareCurrent] = useState<CoachRecord | null>(null)
   const [recapIsPr, setRecapIsPr] = useState(false)
-  const [sessionCelebrateBurst, setSessionCelebrateBurst] = useState(false)
   const [loadKg, setLoadKg] = useState<number | undefined>(undefined)
   const [bodyWeightKg, setBodyWeightKg] = useState<number | undefined>(undefined)
   const [weightUnitPref, setWeightUnitPref] = useState<"kg" | "lb">("kg")
@@ -235,7 +208,6 @@ export function AICoach({
   const [a11yPrefs, setA11yPrefs] = useState<CoachA11yPrefs>(() =>
     typeof window !== "undefined" ? getCoachA11yPrefs() : { hapticOnRep: true, announceReps: true, reduceMotion: false, highContrastVideo: false }
   )
-  const [repBounce, setRepBounce] = useState(false)
   const prevFormGoodRef = useRef(true)
   const displayedScoreRef = useRef(0)
   const goalReachedAnnouncedRef = useRef(false)
@@ -340,13 +312,6 @@ export function AICoach({
     }
     return "Position yourself in frame to start."
   }, [liveFeedback, resolvedExerciseTips])
-
-  const coachSetupTips = useMemo(() => resolvedExerciseTips.slice(0, 3), [resolvedExerciseTips])
-
-  const coachLiveBreakdownHints = useMemo(
-    () => breakdown.filter((b) => !b.ok).slice(0, 2),
-    [breakdown],
-  )
 
   /** Resolve the FormSpec for the active exercise, if one exists. */
   const coachLoadSpec = (id: string) => (coachHasSpec(id) ? coachLoadSpecRaw(id) ?? null : null)
@@ -545,7 +510,6 @@ export function AICoach({
     lastLiveFeedbackRef.current = ""
     setLiveFeedback("Position yourself in frame to start.")
     setRecapBreakdown([])
-    setSelectedRecapRep(null)
     repScoreStatsRef.current = { sum: 0, w: 0, min: null }
     lastPhaseRef.current = "idle"
     phaseBeforeTopStreakRef.current = null
@@ -577,7 +541,6 @@ export function AICoach({
     lastRepScoreWindowRef.current = []
     lastMidsetTipAtRef.current = 0
     setRecapIsPr(false)
-    setSessionCelebrateBurst(false)
     setA11yPrefs(getCoachA11yPrefs())
     setState("detecting")
 
@@ -648,12 +611,10 @@ export function AICoach({
     const sessionScore = sessionFormScore(repScores, score)
     setScore(sessionScore)
     setRecapBreakdown([...breakdown])
-    setSelectedRecapRep(repScores.length > 0 ? repScores.length - 1 : null)
     setFeedback(finalFeedback)
     setState("feedback")
     setFinishShareSessionId(null)
     setReplayTarget({ sessionId: null, clipId: null })
-    setSessionCelebrateBurst(false)
 
     if (selectedSpecId && (reps > 0 || sessionScore > 0)) {
       let prevBestScore = 0
@@ -722,7 +683,6 @@ export function AICoach({
         if (insertedIdLocal) setFinishShareSessionId(insertedIdLocal)
         recordCoachSessionMemory(exerciseName, repScores, rounded)
         toast.success(`Saved · ${eff.toFixed(1)} effective reps · ${rounded}% form${verified ? " · Verified" : ""}`)
-        setSessionCelebrateBurst(rounded >= 80)
         if (rounded > prevBestScore && reps > 0) {
           toast.success(`New personal best — ${exerciseName} at ${rounded}% form`, { duration: 4500 })
           try {
@@ -806,10 +766,8 @@ export function AICoach({
     setFeedback([])
     setBreakdown([])
     setRecapBreakdown([])
-    setSelectedRecapRep(null)
     setSessionDna(null)
     setRecapIsPr(false)
-    setSessionCelebrateBurst(false)
     repTracesRef.current = []
     repDnaDataRef.current = []
     repReplayBufferRef.current.clear()
@@ -1352,8 +1310,6 @@ export function AICoach({
             bottomWasHeldRef.current = false
             phaseBeforeTopStreakRef.current = null
             skeletonAnim.onRepComplete(result.landmarks)
-            setRepBounce(true)
-            setTimeout(() => setRepBounce(false), 400)
             const topTrace = captureRepTrace(result.landmarks, exercise, "top", traceOpts)
             const bottomTrace = lastBottomTraceRef.current ?? captureRepTrace(result.landmarks, exercise, "bottom", traceOpts)
             repTracesRef.current.push({
@@ -2015,14 +1971,6 @@ export function AICoach({
   }
 
   const avgRepScore = sessionFormScore(repScores, score)
-  const effLine =
-    sessionDna != null
-      ? `${sessionDna.effectiveReps.toFixed(1)} effective reps${sessionDna.verifiedMovement ? " · Verified" : ""}`
-      : null
-  const traceCues = aggregateTopFaults(repTracesRef.current, 4)
-  const recapCues = traceCues.length
-    ? traceCues
-    : topCuesFromBreakdown(recapBreakdown.length ? recapBreakdown : breakdown, feedback, 4)
   const finalScore = sessionDna?.score ?? avgRepScore
 
   const tryAgain = () => {
@@ -2045,7 +1993,6 @@ export function AICoach({
     setFeedback([])
     setBreakdown([])
     setRecapBreakdown([])
-    setSelectedRecapRep(null)
     setScore(100)
   }
 
@@ -2128,6 +2075,28 @@ export function AICoach({
                   replayTarget.sessionId || replayTarget.clipId ? () => setReplayOpen(true) : undefined
                 }
               />
+            ) : null}
+            {sessionDna != null ? (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 rounded-xl border-white/15 bg-transparent text-white hover:bg-white/5"
+                  onClick={() => void handleOpenCompareSheet()}
+                >
+                  Compare sessions
+                </Button>
+                {onNavigate ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1 rounded-xl border-white/15 bg-transparent text-white hover:bg-white/5"
+                    onClick={handleOpenArenaFromRecap}
+                  >
+                    Open Arena
+                  </Button>
+                ) : null}
+              </div>
             ) : null}
           </>
         }

@@ -219,7 +219,7 @@ function RunMapHero({ reduce, isLive, distanceKm }: { reduce: boolean; isLive: b
 
 function RunHeroCard({
   isIdle,
-  isLive,
+  isLive: _isLive,
   distance,
   reduce,
   mapSlot,

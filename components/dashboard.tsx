@@ -38,11 +38,6 @@ function runDistanceKm(r: { distance?: number }): number {
   return Number.isFinite(n) ? n : 0
 }
 
-function localDateYmd(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-}
-
 function formatSleepShort(min: number) {
   const h = Math.floor(min / 60)
   const m = min % 60
@@ -87,7 +82,6 @@ export function Dashboard({
   const [googleFitSteps, setGoogleFitSteps] = useState<number | null>(null)
   const [wearableMoveCalBump, setWearableMoveCalBump] = useState(0)
   const [allCoachSessions, setAllCoachSessions] = useState<CoachRecord[]>([])
-  const [heartBpm, setHeartBpm] = useState<number | null>(null)
   const [restingHr, setRestingHr] = useState<number | null>(null)
 
   const onWearableHomeReadiness = useCallback((next: WearableDashboardReadiness | null) => {
@@ -242,19 +236,9 @@ export function Dashboard({
     load()
   }, [isActive, retryBump])
 
-  // Live vitals for the heart-rate card
   useEffect(() => {
     if (!isActive) return
     let cancelled = false
-
-    void fetch(`/api/wearables/live?date=${encodeURIComponent(localDateYmd())}`, { credentials: "include" })
-      .then(async (r) => {
-        const j = (await r.json()) as { heartBpm?: number | null; connected?: boolean }
-        if (!cancelled && r.ok) setHeartBpm(typeof j.heartBpm === "number" ? j.heartBpm : null)
-      })
-      .catch(() => {
-        if (!cancelled) setHeartBpm(null)
-      })
 
     void fetch(`/api/wearables/history?limit=14`, { credentials: "include" })
       .then(async (r) => {

@@ -2,7 +2,7 @@
 
 import { motion, useReducedMotion, AnimatePresence } from "framer-motion"
 import type { LucideIcon } from "lucide-react"
-import { Check, ChevronRight, Clock, Dumbbell, Flame, Flower2, Footprints, RefreshCw, Heart } from "lucide-react"
+import { Check, ChevronRight, Dumbbell, Flower2, Footprints, RefreshCw, Heart } from "lucide-react"
 import { staggerDelaySec } from "@/lib/motion"
 import type { ExerciseItem } from "@/lib/data"
 import type { TabId } from "@/components/bottom-nav"
