@@ -8,12 +8,11 @@ test("guest entry stays in app shell", async ({ page }) => {
   await page.goto("/")
 
   await expect(page.locator("a, button").first()).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByPlaceholder("EMAIL ADDRESS")).toBeVisible({ timeout: 15_000 })
+  const guestBtn = page.getByRole("button", { name: /continue as guest/i })
+  await expect(guestBtn).toBeVisible({ timeout: 15_000 })
 
-  await page
-    .getByRole("button", { name: /continue as guest — works without cloud/i })
-    .click()
+  await guestBtn.click()
 
   await expect(page.getByTestId("nav-tab-home")).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByPlaceholder("EMAIL ADDRESS")).not.toBeVisible({ timeout: 5_000 })
+  await expect(page.getByRole("heading", { name: /welcome back/i })).not.toBeVisible({ timeout: 5_000 })
 })

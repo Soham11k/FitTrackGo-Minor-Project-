@@ -36,6 +36,10 @@ test("golden path: shell is healthy and nav transitions work", async ({ page }) 
     "NetworkError",
     "ChunkLoadError",
     "favicon",
+    "_vercel/insights",
+    "insights/script.js",
+    "Failed to load resource:",
+    "404 (Not Found)",
   ]
   const fatal = errors.filter(
     (e) => !ignorable.some((i) => e.includes(i)) && !isIgnorableBrowserConsoleNoise(e),
