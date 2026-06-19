@@ -1,4 +1,5 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js"
+import { ensureClientSessionForDb, isRlsViolation } from "@/lib/supabase/ensure-profile"
 
 function isLikelyRpcNotDeployed(error: unknown): boolean {
   const o = error as { code?: string; message?: string }
@@ -15,7 +16,7 @@ function isLikelyRpcNotDeployed(error: unknown): boolean {
  * Safe to no-op when name is missing; logs non-fatal errors.
  */
 export async function syncOAuthProfileToRow(
-  supabase: Pick<SupabaseClient, "from" | "rpc">,
+  supabase: SupabaseClient,
   user: Pick<User, "id" | "email" | "user_metadata">
 ): Promise<void> {
   const oauthName =
@@ -27,17 +28,23 @@ export async function syncOAuthProfileToRow(
 
   if (!oauthName) return
 
+  try {
+    await ensureClientSessionForDb(supabase)
+  } catch {
+    return
+  }
+
   const { error: rpcError } = await supabase.rpc("sync_own_profile_name", {
     p_name: oauthName,
   })
 
   if (!rpcError) return
 
-  if (isLikelyRpcNotDeployed(rpcError)) {
+  if (isLikelyRpcNotDeployed(rpcError) || isRlsViolation(rpcError)) {
     const { error: up } = await supabase
       .from("profiles")
       .upsert({ id: user.id, name: oauthName }, { onConflict: "id" })
-    if (up) console.error("Profile sync error (fallback upsert):", up)
+    if (up && !isRlsViolation(up)) console.error("Profile sync error (fallback upsert):", up)
     return
   }
 

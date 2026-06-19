@@ -17,11 +17,16 @@ import {
 import { formatErr } from '@/lib/format-err'
 import {
   decryptRunPath,
-  maybeDecryptProfileName,
   maybeEncryptProfileNameForWrite,
   runPathCipherColumnUnsupported,
-  scheduleEncryptPlainProfileNameIfNeeded,
 } from '@/lib/store-supabase/user-data-field-crypto'
+import {
+  ensureClientSessionForDb,
+  ensureOwnProfileRow,
+  isRlsViolation,
+  mapProfileRow,
+  type ProfileRow,
+} from '@/lib/supabase/ensure-profile'
 
 export { formatErr }
 
@@ -165,16 +170,6 @@ async function retryWithBackoff<T>(
   throw new Error('Max retries exceeded')
 }
 
-function isLikelyRpcNotDeployed(error: unknown): boolean {
-  const o = error as { code?: string; message?: string }
-  const code = String(o?.code ?? '')
-  const msg = String(o?.message ?? '').toLowerCase()
-  return (
-    code === 'PGRST202' ||
-    (/\bcould not find the function\b/.test(msg) && /\bschema cache\b/.test(msg))
-  )
-}
-
 // Profile functions
 export async function getProfile(): Promise<UserProfile> {
   return retryWithBackoff(async () => {
@@ -195,85 +190,23 @@ export async function getProfile(): Promise<UserProfile> {
     }
     if (!user) throw new Error('Not authenticated')
 
-  const { data, error } = await getSupabase()
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
-
-  // No row returned (.single() → PGRST116). Common cases: truly missing row, or a race with
-  // `handle_new_user` (migration trigger) that already inserted — plain INSERT then 23505.
-  if (error && error.code === 'PGRST116') {
-    const defaultName =
-      user.user_metadata?.name ||
-      user.user_metadata?.full_name ||
-      user.user_metadata?.display_name ||
-      user.email?.split('@')[0] ||
-      'Athlete'
-
-    const joinDateStr = new Date().toISOString().split('T')[0]
     const sb = getSupabase()
-    const { error: rpcError } = await sb.rpc('ensure_own_profile_bootstrap', {
-      p_name: defaultName,
-      p_level: 'beginner',
-      p_goals: [] as string[],
-      p_join_date: joinDateStr,
-      p_onboarded: false,
-    })
+    await ensureClientSessionForDb(sb)
 
-    let ensureFailed = rpcError ?? null
-
-    // RPC shipped in migration `20261201000000_profiles_ensure_rpc.sql` — if DB never got it,
-    // PostgREST returns PGRST202. Fall back to direct upsert (works when RLS allows JWT).
-    if (ensureFailed && isLikelyRpcNotDeployed(rpcError)) {
-      console.warn(
-        '[profiles] ensure_own_profile_bootstrap RPC missing — using client upsert. Run migrations (e.g. npm run db:push or paste migration SQL in Supabase).',
-      )
-      const { error: upsertError } = await sb
-        .from('profiles')
-        .upsert(
-          {
-            id: user.id,
-            name: defaultName,
-            level: 'beginner',
-            goals: [],
-            join_date: joinDateStr,
-            onboarded: false,
-          },
-          { onConflict: 'id', ignoreDuplicates: true },
-        )
-      ensureFailed = upsertError ?? null
-    }
-
-    if (ensureFailed) {
-      const errMsg = formatErr(ensureFailed)
-      console.error('Failed to ensure profile:', errMsg)
-      throw new Error(`Failed to create profile: ${errMsg}`)
-    }
-
-    const { data: row, error: again } = await sb
+    const { data, error } = await sb
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single()
 
-    if (again || !row) {
-      const errMsg = again ? formatErr(again) : 'empty profile after upsert'
-      console.error('Failed to load profile after ensure:', errMsg)
-      throw new Error(`Failed to load profile: ${errMsg}`)
+    if (error && error.code === 'PGRST116') {
+      const ensured = await ensureOwnProfileRow(sb, user)
+      if (!ensured.ok) {
+        console.error('Failed to ensure profile:', ensured.error)
+        throw new Error(`Failed to create profile: ${ensured.error}`)
+      }
+      return mapProfileRow(user.id, ensured.row)
     }
-
-    scheduleEncryptPlainProfileNameIfNeeded(user.id, row.name ?? null)
-    return {
-      name: await maybeDecryptProfileName(row.name),
-      level: (row.level as UserProfile['level']) || 'beginner',
-      goals: row.goals || [],
-      joinDate: row.join_date || new Date().toISOString().split('T')[0],
-      onboarded: row.onboarded || false,
-      bodyWeightKg: row.body_weight_kg ?? undefined,
-      weightUnit: (row.weight_unit as UserProfile['weightUnit']) ?? 'kg',
-    }
-  }
 
   // Other errors (network, permission, etc.)
   if (error) {
@@ -284,22 +217,16 @@ export async function getProfile(): Promise<UserProfile> {
 
   if (!data) throw new Error('Profile missing')
 
-  scheduleEncryptPlainProfileNameIfNeeded(user.id, data.name ?? null)
-  return {
-    name: await maybeDecryptProfileName(data.name),
-    level: (data.level as UserProfile['level']) || 'beginner',
-    goals: data.goals || [],
-    joinDate: data.join_date || new Date().toISOString().split('T')[0],
-    onboarded: data.onboarded || false,
-    bodyWeightKg: data.body_weight_kg ?? undefined,
-    weightUnit: (data.weight_unit as UserProfile['weightUnit']) ?? 'kg',
-  }
+  return mapProfileRow(user.id, data as ProfileRow)
   })
 }
 
 export async function saveProfile(patch: Partial<UserProfile>) {
   const { data: { user } } = await getCachedAuthUser()
   if (!user) throw new Error('Not authenticated')
+
+  const sb = getSupabase()
+  await ensureClientSessionForDb(sb)
 
   const updates: Partial<{
     name: string
@@ -316,11 +243,20 @@ export async function saveProfile(patch: Partial<UserProfile>) {
   if (patch.bodyWeightKg !== undefined) updates.body_weight_kg = patch.bodyWeightKg ?? null
   if (patch.weightUnit !== undefined) updates.weight_unit = patch.weightUnit
 
-  const { error } = await getSupabase()
+  const { error } = await sb
     .from('profiles')
     .upsert({ id: user.id, ...updates }, { onConflict: 'id' })
 
-  if (error) throw error
+  if (error) {
+    if (isRlsViolation(error)) {
+      const ensured = await ensureOwnProfileRow(sb, user)
+      if (ensured.ok) {
+        const retry = await sb.from('profiles').upsert({ id: user.id, ...updates }, { onConflict: 'id' })
+        if (!retry.error) return
+      }
+    }
+    throw error
+  }
 }
 
 export async function refreshStreak(): Promise<number> {
