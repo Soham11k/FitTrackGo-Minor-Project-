@@ -31,7 +31,9 @@
     "cap:sync": "npx cap sync android",
     "android": "npm run brand:android && npm run build:android && npx cap sync android && npx cap open android",
     "test:e2e": "npx playwright test",
-    "test:e2e:ui": "npx playwright test --ui"
+    "test:e2e:ui": "npx playwright test --ui",
+    "env:vercel": "node scripts/push-vercel-env.mjs",
+    "deploy:vercel": "node scripts/deploy-vercel.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.1.0",
