@@ -17,6 +17,8 @@ import {
   UserCheck,
   Heart,
   RefreshCw,
+  Smartphone,
+  Watch,
   Download,
   Flame,
   Pencil,
@@ -78,6 +80,25 @@ const PROFILE = {
   displayFont: CHROME.homeDisplayFont,
   labelFont: CHROME.homeLabelFont,
 } as const
+
+type ProviderLink = {
+  configured: boolean
+  connected: boolean
+  lastSyncAt: string | null
+}
+
+function readProviderLink(
+  providers: Record<string, { configured?: boolean; connected?: boolean; lastSyncAt?: string | null }> | undefined,
+  id: string
+): ProviderLink | null {
+  const row = providers?.[id]
+  if (!row) return null
+  return {
+    configured: Boolean(row.configured),
+    connected: Boolean(row.connected),
+    lastSyncAt: row.lastSyncAt ?? null,
+  }
+}
 
 function ProfileCard({
   children,
@@ -261,6 +282,8 @@ export function ProfileScreen({
     connected: boolean
     lastSyncAt: string | null
   } | null>(null)
+  const [wearableAppleHealth, setWearableAppleHealth] = useState<ProviderLink | null>(null)
+  const [wearableGarmin, setWearableGarmin] = useState<ProviderLink | null>(null)
   const reduceProfileMotion = useReducedMotion() ?? false
   // Use singleton client to prevent lock conflicts
   const supabase = createClient()
@@ -418,19 +441,16 @@ export function ProfileScreen({
         }
         if (cancelled) return
         if (!j.fitbit) {
-          if (!cancelled) setWearableGoogleFit(null)
+          if (!cancelled) {
+            setWearableGoogleFit(null)
+            setWearableAppleHealth(null)
+            setWearableGarmin(null)
+          }
           return
         }
-        const gf = j.providers?.google_fit
-        setWearableGoogleFit(
-          gf
-            ? {
-                configured: Boolean(gf.configured),
-                connected: Boolean(gf.connected),
-                lastSyncAt: (gf.lastSyncAt as string | null) ?? null,
-              }
-            : null
-        )
+        setWearableGoogleFit(readProviderLink(j.providers, "google_fit"))
+        setWearableAppleHealth(readProviderLink(j.providers, "apple_health"))
+        setWearableGarmin(readProviderLink(j.providers, "garmin"))
         setWearableStatus({
           configured: j.fitbit.configured,
           connected: j.fitbit.connected,
@@ -443,6 +463,8 @@ export function ProfileScreen({
         if (!cancelled) {
           setWearableStatus(null)
           setWearableGoogleFit(null)
+          setWearableAppleHealth(null)
+          setWearableGarmin(null)
         }
       } finally {
         if (!cancelled) setWearableLoading(false)
@@ -481,16 +503,9 @@ export function ProfileScreen({
         >
       }
       if (j.fitbit) {
-        const gf = j.providers?.google_fit
-        setWearableGoogleFit(
-          gf
-            ? {
-                configured: Boolean(gf.configured),
-                connected: Boolean(gf.connected),
-                lastSyncAt: (gf.lastSyncAt as string | null) ?? null,
-              }
-            : null
-        )
+        setWearableGoogleFit(readProviderLink(j.providers, "google_fit"))
+        setWearableAppleHealth(readProviderLink(j.providers, "apple_health"))
+        setWearableGarmin(readProviderLink(j.providers, "garmin"))
         setWearableStatus({
           configured: j.fitbit.configured,
           connected: j.fitbit.connected,
@@ -1249,6 +1264,80 @@ export function ProfileScreen({
                 ) : (
                   <span className="text-[10px]" style={{ color: PROFILE.muted }}>
                     Not configured
+                  </span>
+                )}
+              </div>
+            </ProfileCard>
+
+            <ProfileCard delay={0.4} className="!p-3.5">
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                  style={{ backgroundColor: PROFILE.accentDim }}
+                >
+                  <Smartphone className="h-4 w-4" style={{ color: PROFILE.accent }} aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold" style={{ color: PROFILE.text }}>
+                    Apple Health
+                  </p>
+                  <p className="text-[10px]" style={{ color: PROFILE.muted }}>
+                    {wearableAppleHealth?.connected
+                      ? wearableAppleHealth.lastSyncAt
+                        ? `Last import · ${new Date(wearableAppleHealth.lastSyncAt).toLocaleDateString()}`
+                        : "Imported on this account"
+                      : "Phone import only. There is no web sign-in."}
+                  </p>
+                </div>
+                {wearableAppleHealth?.connected ? (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold"
+                    style={{ color: CHROME.gpsGreen, backgroundColor: `${CHROME.gpsGreen}12` }}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: CHROME.gpsGreen }} />
+                    Saved
+                  </span>
+                ) : (
+                  <span className="text-[10px]" style={{ color: PROFILE.muted }}>
+                    On device
+                  </span>
+                )}
+              </div>
+            </ProfileCard>
+
+            <ProfileCard delay={0.44} className="!p-3.5">
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                  style={{ backgroundColor: `${CHROME.gpsGreen}15` }}
+                >
+                  <Watch className="h-4 w-4" style={{ color: CHROME.gpsGreen }} aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold" style={{ color: PROFILE.text }}>
+                    Garmin
+                  </p>
+                  <p className="text-[10px]" style={{ color: PROFILE.muted }}>
+                    {wearableGarmin?.connected
+                      ? wearableGarmin.lastSyncAt
+                        ? `Last sync · ${new Date(wearableGarmin.lastSyncAt).toLocaleDateString()}`
+                        : "Connected"
+                      : wearableGarmin?.configured
+                        ? "Account link is not finished yet"
+                        : "Not configured"}
+                  </p>
+                </div>
+                {wearableGarmin?.connected ? (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold"
+                    style={{ color: CHROME.gpsGreen, backgroundColor: `${CHROME.gpsGreen}12` }}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: CHROME.gpsGreen }} />
+                    Live
+                  </span>
+                ) : (
+                  <span className="text-[10px]" style={{ color: PROFILE.muted }}>
+                    {wearableGarmin?.configured ? "Pending" : "Off"}
                   </span>
                 )}
               </div>

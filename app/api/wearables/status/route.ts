@@ -84,25 +84,6 @@ export async function GET() {
     }
   }
 
-  if (!fitbitCfg && !googleCfg) {
-    return NextResponse.json({
-      fitbit: {
-        configured: false,
-        connected: false,
-        lastSyncAt: null,
-        setupError: undefined,
-        setup: {
-          oauthCallbackUrl: getFitbitCallbackUrl(),
-          reason: "missing_keys",
-          serverHasClientId: hasClientId,
-          serverHasClientSecret: hasClientSecret,
-        },
-        latest: null,
-      },
-      providers: providersSkeleton,
-    })
-  }
-
   const supabase = await createClient()
   const {
     data: { user },
@@ -114,6 +95,24 @@ export async function GET() {
 
   const admin = createServiceRoleClient()
   if (!admin) {
+    if (!fitbitCfg && !googleCfg) {
+      return NextResponse.json({
+        fitbit: {
+          configured: false,
+          connected: false,
+          lastSyncAt: null,
+          setupError: undefined,
+          setup: {
+            oauthCallbackUrl: getFitbitCallbackUrl(),
+            reason: "missing_keys",
+            serverHasClientId: hasClientId,
+            serverHasClientSecret: hasClientSecret,
+          },
+          latest: null,
+        },
+        providers: providersSkeleton,
+      })
+    }
     const fb = {
       configured: fitbitCfg,
       connected: false,
